@@ -19,7 +19,7 @@ const PIN_PATTERN = /^\d{4,6}$/;
 // seed-sandbox names the product and plan "<ORG_NAME> monthly gift", and PayPal caps both names at 127 characters.
 const ORG_NAME_MAX = 127 - ' monthly gift'.length;
 
-const LIMITS = Object.freeze({
+export const LIMITS = Object.freeze({
   pendingTtlMs: 120000,
   tokenTtlMs: 60000,
   callIdleMs: 600000,
@@ -87,7 +87,8 @@ function parseOrgName(raw, errors) {
     errors.push('ORG_NAME must not contain digits, @ or $');
     return name;
   }
-  const facts = extractSpokenFacts(name);
+  // The strict scan, the same one the facts check runs, so a name like "Second Harvest" can never fail a call.
+  const facts = extractSpokenFacts(name, { strict: true });
   if (facts.length > 0) errors.push(`ORG_NAME must not contain a status word, amount or date the line only takes from PayPal, found ${facts.map((f) => `"${f.value}"`).join(', ')}`);
   return name;
 }

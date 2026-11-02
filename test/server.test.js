@@ -176,3 +176,20 @@ test('on Render, wrong PINs add up across calls from one address and then stop P
     own.s.close();
   }
 });
+
+test('turns say which reply they answer, gaps say whether the reply played, and calls log their engine signals', async () => {
+  // What Chrome's device toolbar sends for its iPhone presets, from a page whose engine signals are Chrome's.
+  const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
+  const start = await (await postJson('/api/calls', { script: 1, userAgent: iphone, client: { vendor: 'Google Inc.', chrome: true, uaData: true } })).json();
+  const bad = await postJson(`/api/calls/${start.callId}/turn`, { text: PIN, source: 'keypad', answering: 'zero' });
+  assert.equal(bad.status, 400);
+  assert.equal((await postJson(`/api/calls/${start.callId}/turn`, { text: PIN, source: 'keypad', answering: start.turn })).status, 200);
+  assert.equal((await postJson(`/api/calls/${start.callId}/gap`, { turn: 1, gapMs: 900, source: 'keypad', muted: false, played: false })).status, 200);
+  assert.equal((await postJson(`/api/calls/${start.callId}/gap`, { turn: 1, gapMs: 900, source: 'keypad', played: 'no' })).status, 400);
+  const events = deps.ledger.byCall(start.callId);
+  const callStart = events.find((e) => e.type === 'call_start');
+  assert.equal(callStart.engine, 'chromium');
+  assert.equal(callStart.browser, 'other', 'Chrome with an iPhone agent is never Safari');
+  assert.equal(events.find((e) => e.type === 'heard').answering, 0);
+  assert.equal(events.find((e) => e.type === 'gap').played, false);
+});

@@ -37,7 +37,11 @@
     'audio-capture': 'No microphone was found. Please type instead.',
   };
 
-  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], primed: false, voiceGaps: [], listening: null };
+  // lastTurn is the turn of the last reply this page received. Each turn says it answers that reply, so a yes only counts for a proposal the caller heard.
+  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0 };
+
+  // Engine signals a user-agent override, such as Chrome's device toolbar, does not change. The line checks them against the agent.
+  const engineSignals = () => ({ vendor: String(navigator.vendor || ''), chrome: typeof window.chrome !== 'undefined', uaData: 'userAgentData' in navigator });
 
   async function api(path, body) {
     const init = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
@@ -64,9 +68,9 @@
 
   // ---- Script picker ----
 
-  function renderLines() {
+  function renderLines(number = els.script.value) {
     els.lines.replaceChildren();
-    const script = state.scripts.find((s) => String(s.number) === els.script.value);
+    const script = state.scripts.find((s) => String(s.number) === String(number));
     const lines = script ? script.lines : ['Enter your PIN on the keypad, then ask about your monthly gift.'];
     for (const line of lines) {
       const item = document.createElement('li');
@@ -107,7 +111,7 @@
     window.speechSynthesis.speak(warm);
   }
 
-  /** Calls onStart(played) once, with played false when the reply never began, so its gap does not count. */
+  /** Calls onStart(played) once, with played false when the reply was cut off or failed before it began. */
   function speak(text, onStart) {
     let started = false;
     const fire = (played) => { if (!started) { started = true; onStart(played); } };
@@ -257,14 +261,18 @@
     els.typed.open = true;
   }
 
-  function logGap(callId, turn, startedAt, source, muted) {
+  /**
+   * muted is the mute switch alone. played is false when the reply was talked over or failed before it began,
+   * and the grader then counts that turn as never starting, so a cut-off reply can't make the median look fast.
+   */
+  function logGap(callId, turn, startedAt, source, muted, played) {
     const gapMs = Math.max(0, Math.round(performance.now() - startedAt));
-    els.gapLast.textContent = `${seconds(gapMs)}${muted ? ', muted' : ''}`;
-    if (source === 'voice' && !muted) {
+    els.gapLast.textContent = `${seconds(gapMs)}${muted ? ', muted' : played ? '' : ', the reply never started'}`;
+    if (source === 'voice' && !muted && played) {
       state.voiceGaps.push(gapMs);
       els.gapMedian.textContent = `${seconds(median(state.voiceGaps))} over ${state.voiceGaps.length} ${state.voiceGaps.length === 1 ? 'turn' : 'turns'}`;
     }
-    api(`/api/calls/${callId}/gap`, { turn, gapMs, source, muted }).catch(() => {});
+    api(`/api/calls/${callId}/gap`, { turn, gapMs, source, muted, played }).catch(() => {});
   }
 
   async function startCall() {
@@ -272,10 +280,15 @@
     hideError();
     try {
       const script = els.script.value ? Number(els.script.value) : null;
-      const data = await api('/api/calls', { script, userAgent: navigator.userAgent });
+      const data = await api('/api/calls', { script, userAgent: navigator.userAgent, client: engineSignals() });
       state.callId = data.callId;
+      state.lastTurn = data.turn;
       state.pin = '';
       renderPin();
+      // The picker goes back to Free call, so a stray second call is never filed under this script.
+      // The lines of the running script stay on screen.
+      els.script.value = '';
+      renderLines(script ?? '');
       els.transcript.textContent = '';
       els.reply.textContent = data.reply;
       applyState(data.state);
@@ -314,11 +327,12 @@
     els.transcript.textContent = shownText(clean, source);
     setBusy(true);
     try {
-      const data = await api(`/api/calls/${callId}/turn`, { text: clean, source });
+      const data = await api(`/api/calls/${callId}/turn`, { text: clean, source, answering: state.lastTurn });
+      state.lastTurn = data.turn;
       els.reply.textContent = data.reply;
       applyState(data.state);
       const muted = isMuted();
-      speak(data.reply, (played) => logGap(callId, data.turn, startedAt, source, muted || !played));
+      speak(data.reply, (played) => logGap(callId, data.turn, startedAt, source, muted, played));
       await refreshEvents(callId);
     } catch (error) {
       els.status.textContent = error.message;
@@ -414,7 +428,7 @@
   }
 
   function wire() {
-    els.script.addEventListener('change', renderLines);
+    els.script.addEventListener('change', () => renderLines());
     els.start.addEventListener('click', () => (state.callId && !state.ended ? endCall() : startCall()));
     els.talk.addEventListener('pointerdown', (event) => { event.preventDefault(); startListening(); });
     for (const name of ['pointerup', 'pointercancel', 'pointerleave']) els.talk.addEventListener(name, stopListening);

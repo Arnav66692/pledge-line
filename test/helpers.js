@@ -39,25 +39,33 @@ export function buildStack({ env = {}, clock = makeClock(), mockOptions = {}, ro
   const gate = createGate({ ledger, tokens, now: clock.now, pendingTtlMs: config.limits.pendingTtlMs });
   const routerImpl = router ?? createRouter({ mode: 'rules' });
   const calls = createCallService({ config, ledger, paypal, router: routerImpl, gate, now: clock.now, sleep: async () => {} });
-  return { config, ledger, tokens, paypal, gate, router: routerImpl, calls, clock };
+  // The turn of the last reply each call received, sent with the next turn as the page does.
+  return { config, ledger, tokens, paypal, gate, router: routerImpl, calls, clock, answered: new Map() };
+}
+
+/** One turn, sent the way the page sends it, answering the last reply this call received (turn 0 is the greeting). */
+async function turnAsPage(stack, callId, input) {
+  const result = await stack.calls.turn(callId, { ...input, answering: stack.answered.get(callId) ?? 0 });
+  stack.answered.set(callId, result.turn);
+  return result;
 }
 
 export async function runScript(stack, script) {
   const { callId } = stack.calls.start({ script: script.number, userAgent: 'node-test' });
   const replies = [];
   for (const turn of scriptTurns(script, stack.config.pin)) {
-    replies.push((await stack.calls.turn(callId, turn)).reply);
+    replies.push((await turnAsPage(stack, callId, turn)).reply);
   }
   return { callId, replies };
 }
 
 export async function say(stack, callId, text, source = 'typed') {
-  return stack.calls.turn(callId, { text, source });
+  return turnAsPage(stack, callId, { text, source });
 }
 
 export async function verifiedCall(stack, script = null) {
   const { callId } = stack.calls.start({ script, userAgent: 'node-test' });
-  await stack.calls.turn(callId, { text: stack.config.pin, source: 'keypad' });
+  await turnAsPage(stack, callId, { text: stack.config.pin, source: 'keypad' });
   return callId;
 }
 

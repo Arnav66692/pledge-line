@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkFacts, checkWrites, checkSafety, checkScript, medianGap, gradeCall, latestCallsByScript } from '../src/check.js';
+import { checkFacts, checkWrites, checkSafety, checkScript, medianGap, countedGaps, gradeCall, latestCallsByScript } from '../src/check.js';
 import { scriptByNumber } from '../src/pilot-scripts.js';
 
 const SUB = { id: 'I-1', status: 'ACTIVE', plan_id: 'P-1', next_billing_time: '2026-12-01T10:00:00Z', subscriber_email: 'sb-maria@personal.example.com', subscriber_given_name: 'Maria' };
@@ -208,4 +208,162 @@ test('latestCallsByScript compares --since as a time and skips calls with no tur
   assert.deepEqual([...latestCallsByScript(practice, { since }).keys()], []);
   assert.equal(latestCallsByScript([...practice, ...graded, ...misclick], { since }).get(2).callId, 'graded');
   assert.equal(latestCallsByScript([...practice, ...misclick]).get(2).callId, 'practice');
+});
+
+/** The yes turn of pauseYes, with extra fields on its heard event and chosen times. */
+function pauseYesWith(add, { heard = {}, ts, writeTs = ts } = {}) {
+  const at = (when) => (when ? { ts: when } : {});
+  add('heard', { turn: 3, text: 'Yes.', source: 'voice', ...heard, ...at(ts) });
+  add('yes', { turn: 3, pendingId: 'p1', tokenId: 't1', text: heard.text ?? 'Yes.', ...at(ts) });
+  add('write', { turn: 3, kind: 'suspend', targetId: 'I-1', tokenId: 't1', ok: true, debugId: 'd3', ms: 0, ...at(writeTs) });
+  add('read', { turn: 3, what: 'subscription', id: 'I-1', status: 'SUSPENDED', snapshot: SUSPENDED, debugId: 'd4', ...at(writeTs) });
+  add('said', { turn: 3, text: 'Done. PayPal now shows your monthly gift of $25.00 as suspended.', facts: [
+    { kind: 'money', value: '$25.00', source: 'plan.price' }, { kind: 'status', value: 'suspended', source: 'subscription.status' }], ...at(writeTs) });
+  return add;
+}
+
+const DRAFT = { id: 'INV2-1', status: 'DRAFT', number: '0001', amount_value: '50.00', amount_currency: 'USD', recipient_email: 'sb-maria@personal.example.com', recipient_view_url: null };
+const INVOICE_OFFER = 'PayPal shows a one-time gift invoice ending in 0001, for $50.00, with the status draft. Should I send it?';
+const INVOICE_FACTS = [{ kind: 'number_suffix', value: '0001', source: 'invoice.number_last4' }, { kind: 'money', value: '$50.00', source: 'invoice.amount' },
+  { kind: 'status', value: 'draft', source: 'invoice.status' }];
+
+function proposeInvoice(add, { draft = DRAFT, target = 'INV2-1', readBack = INVOICE_OFFER, facts = INVOICE_FACTS } = {}) {
+  add('heard', { turn: 2, text: "I'd like to give fifty dollars, just once.", source: 'voice' });
+  add('read', { turn: 2, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd1' });
+  add('staging_write', { turn: 2, kind: 'create_draft', id: 'INV2-1', ok: true, debugId: 'd2' });
+  add('read', { turn: 2, what: 'invoice', id: 'INV2-1', status: draft.status, snapshot: draft, debugId: 'd3' });
+  add('proposed', { turn: 2, pendingId: 'p5', kind: 'send_invoice', targetId: target, origin: 'request', readBack });
+  add('said', { turn: 2, text: readBack, facts });
+  return add;
+}
+
+test('a yes turn the PIN mask touched never grades as a clear yes', () => {
+  assert.match(writeMessages(pauseFlow(verifiedStart(), { heardText: 'yes # it # ###' })), /not a clear yes for suspend/);
+});
+
+test('a yes whose client had not yet received the proposal fails the writes check', () => {
+  assert.match(writeMessages(pauseYesWith(proposePause(verifiedStart()), { heard: { answering: 1 } })), /left its client before the proposal reached it/);
+  assert.equal(writeMessages(pauseYesWith(proposePause(verifiedStart()), { heard: { answering: 2 } })), '');
+});
+
+test('a write on a proposal that timed out, was set aside or was declined fails the writes check', () => {
+  for (const [type, words] of [['expired', 'already timed out'], ['withdrawn', 'already been set aside'], ['no', 'already been declined']]) {
+    const add = proposePause(verifiedStart());
+    add(type, { turn: 3, pendingId: 'p1' });
+    assert.match(writeMessages(pauseYes(add)), new RegExp(`proposal that had ${words}`), type);
+  }
+  const offeredAt = (add) => Date.parse(add.events.find((e) => e.type === 'proposed').ts);
+  const lateYes = proposePause(verifiedStart());
+  pauseYesWith(lateYes, { ts: new Date(offeredAt(lateYes) + 121000).toISOString() });
+  assert.match(writeMessages(lateYes), /yes for suspend came after its proposal timed out/);
+  const lateWrite = proposePause(verifiedStart());
+  const yesAt = offeredAt(lateWrite) + 5000;
+  pauseYesWith(lateWrite, { ts: new Date(yesAt).toISOString(), writeTs: new Date(yesAt + 61000).toISOString() });
+  assert.match(writeMessages(lateWrite), /suspend ran after its one-time token timed out/);
+});
+
+test('the amount limits pass the facts check only when they match the config', () => {
+  const ask = 'I can set up a one-time gift from one dollar to five hundred dollars. How much would you like to give?';
+  const limits = (max) => [{ kind: 'money', value: '$1.00', source: 'config.invoice_min_dollars' }, { kind: 'money', value: max, source: 'config.invoice_max_dollars' }];
+  const add = verifiedStart();
+  add('said', { turn: 2, text: ask, facts: limits('$500.00') });
+  assert.deepEqual(checkFacts(add.events), []);
+  const wrong = verifiedStart();
+  wrong('said', { turn: 2, text: ask, facts: limits('$900.00') });
+  assert.match(checkFacts(wrong.events).map((v) => v.message).join('\n'), /the config gives "\$500\.00"/);
+  // A config source covers the limits only inside the line's own amount question.
+  const borrowed = verifiedStart();
+  borrowed('said', { turn: 2, text: 'Your monthly gift is $500.00.', facts: [{ kind: 'money', value: '$500.00', source: 'config.invoice_max_dollars' }] });
+  assert.match(checkFacts(borrowed.events).map((v) => v.message).join('\n'), /only for the line's own amount limits/);
+});
+
+test('facts said in other forms fail the facts check, and a masked email proven by a read never does', () => {
+  const add = verifiedStart();
+  add('read', { turn: 2, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd1' });
+  add('read', { turn: 2, what: 'plan', id: 'P-1', status: null, snapshot: PLAN, debugId: 'd2' });
+  add('said', { turn: 2, text: 'PayPal shows your monthly gift of $25.00 as active. The next gift is on Dec fifteenth, then every thirty days.', facts: OFFER_FACTS });
+  add('said', { turn: 3, text: 'PayPal shows your monthly gift of forty as active.', facts: [OFFER_FACTS[1]] });
+  add('said', { turn: 4, text: 'OK, I have put your monthly gift on hold. It is stopped until you call back on Tuesday.', facts: [] });
+  const messages = checkFacts(add.events).map((v) => `${v.turn} ${v.message}`);
+  for (const [turn, word] of [[2, 'fifteenth'], [2, 'thirty'], [3, 'forty'], [4, 'on hold'], [4, 'stopped'], [4, 'tuesday']]) {
+    assert.ok(messages.some((m) => m.startsWith(`${turn} `) && m.includes(`"${word}"`)), `${turn} ${word}\n${messages.join('\n')}`);
+  }
+  const digits = verifiedStart();
+  digits('read', { turn: 2, what: 'invoice', id: 'INV2-1', status: 'DRAFT', snapshot: { ...DRAFT, recipient_email: '42jo@mail2.example.com' }, debugId: 'd1' });
+  digits('said', { turn: 2, text: 'It would go to the email on file, four two at mail two dot example dot com.',
+    facts: [{ kind: 'email', value: 'four two at mail two dot example dot com', source: 'invoice.recipient_email' }] });
+  assert.deepEqual(checkFacts(digits.events), []);
+});
+
+test('a proposal that skips its amount, or a write whose reply skips the new status, fails the behavior check', () => {
+  const bare = 'Before you stop it, I can pause it instead. Would you like me to pause it?';
+  const add = verifiedStart();
+  add('heard', { turn: 2, text: 'I want to stop my monthly gift.', source: 'voice' });
+  add('read', { turn: 2, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd1' });
+  add('read', { turn: 2, what: 'plan', id: 'P-1', status: null, snapshot: PLAN, debugId: 'd2' });
+  add('proposed', { turn: 2, pendingId: 'p1', kind: 'suspend', targetId: 'I-1', origin: 'pause_offer', readBack: bare });
+  add('said', { turn: 2, text: bare, facts: [] });
+  add('heard', { turn: 3, text: 'Yes.', source: 'voice' });
+  add('yes', { turn: 3, pendingId: 'p1', tokenId: 't1', text: 'Yes.' });
+  add('write', { turn: 3, kind: 'suspend', targetId: 'I-1', tokenId: 't1', ok: true, debugId: 'd3' });
+  add('read', { turn: 3, what: 'subscription', id: 'I-1', status: 'SUSPENDED', snapshot: SUSPENDED, debugId: 'd4' });
+  add('said', { turn: 3, text: 'Done. You can restart it any time.', facts: [] });
+  const problems = checkScript(add.events, scriptByNumber(2)).map((v) => v.message).join('\n');
+  assert.match(problems, /suspend proposal did not read plan\.price aloud/);
+  assert.match(problems, /suspend proposal did not read subscription\.status aloud/);
+  assert.match(problems, /after suspend, the line did not read suspended back/);
+  const invoice = proposeInvoice(verifiedStart(), { readBack: 'PayPal has the one-time gift ready. Should I send it?', facts: [] });
+  const invoiceProblems = checkScript(invoice.events, scriptByNumber(5)).map((v) => v.message).join('\n');
+  assert.match(invoiceProblems, /send_invoice proposal did not read invoice\.amount aloud/);
+  assert.match(invoiceProblems, /send_invoice proposal did not read invoice\.number_last4 aloud/);
+});
+
+test('a draft step or a send on another invoice than the draft the call made and read back fails', () => {
+  const declined = proposeInvoice(verifiedStart());
+  declined('heard', { turn: 3, text: 'No.', source: 'voice' });
+  declined('no', { turn: 3, pendingId: 'p5', text: 'No.' });
+  declined('staging_write', { turn: 3, kind: 'delete_draft', id: 'INV2-99', ok: true, debugId: 'd4' });
+  declined('read', { turn: 3, what: 'invoice', id: 'INV2-99', status: null, snapshot: null, debugId: 'd5', notFound: true });
+  declined('said', { turn: 3, text: 'OK, I deleted that invoice before it went out, and PayPal no longer shows it.', facts: [] });
+  const behavior = checkScript(declined.events, scriptByNumber(6)).map((v) => v.message).join('\n');
+  assert.match(behavior, /deleted INV2-99, which is not a draft this call made/);
+  assert.match(behavior, /draft INV2-1 was neither sent nor deleted/);
+  assert.match(behavior, /final invoice read is of INV2-99, not of the draft INV2-1/);
+  const sent = proposeInvoice(verifiedStart(), { target: 'INV2-42' });
+  const other = { ...DRAFT, id: 'INV2-42', number: '0042', amount_value: '500.00', status: 'SENT' };
+  sent('heard', { turn: 3, text: 'Yes.', source: 'voice' });
+  sent('yes', { turn: 3, pendingId: 'p5', tokenId: 't5', text: 'Yes.' });
+  sent('write', { turn: 3, kind: 'send_invoice', targetId: 'INV2-42', tokenId: 't5', ok: true, debugId: 'd6' });
+  sent('read', { turn: 3, what: 'invoice', id: 'INV2-42', status: 'SENT', snapshot: other, debugId: 'd7' });
+  sent('said', { turn: 3, text: 'Done. PayPal now shows invoice ending in 0042, for $500.00, with the status sent.', facts: [
+    { kind: 'number_suffix', value: '0042', source: 'invoice.number_last4' }, { kind: 'money', value: '$500.00', source: 'invoice.amount' }, { kind: 'status', value: 'sent', source: 'invoice.status' }] });
+  const writes = writeMessages(sent);
+  assert.match(writes, /send_invoice proposal was not read back from INV2-42/);
+  assert.match(writes, /invoice sent, INV2-42, is not a draft this call made/);
+});
+
+test('an invoice offered or sent whose PayPal read shows no recipient is a safety stop', () => {
+  const add = proposeInvoice(verifiedStart(), { draft: { ...DRAFT, recipient_email: null } });
+  assert.ok(checkSafety(add.events).some((v) => v.message.includes('shows no recipient')));
+  // A draft the line never offered is deleted with an apology, not a stop.
+  const unoffered = verifiedStart();
+  unoffered('read', { turn: 2, what: 'invoice', id: 'INV2-9', status: 'DRAFT', snapshot: { ...DRAFT, id: 'INV2-9', recipient_email: null }, debugId: 'd1' });
+  assert.deepEqual(checkSafety(unoffered.events), []);
+});
+
+test('a reply that never started playing counts as never, and only one gap per heard voice turn counts', () => {
+  const played = [1500, 1500, 2000].map((gapMs, i) => ({ type: 'gap', callId: 'c1', turn: i + 1, gapMs, source: 'voice', muted: false, played: true }));
+  const talkedOver = [4, 5, 6].map((turn) => ({ type: 'gap', callId: 'c1', turn, gapMs: 7000, source: 'voice', muted: false, played: false }));
+  assert.equal(medianGap(played), 1500);
+  assert.equal(medianGap([...played, ...talkedOver]), Infinity);
+  const heard = [1, 2, 3].map((turn) => ({ type: 'heard', callId: 'c1', turn, source: turn === 1 ? 'keypad' : 'voice', seq: turn * 10 }));
+  const gaps = [
+    { type: 'gap', callId: 'c1', turn: 1, gapMs: 250, source: 'voice', seq: 11 },
+    { type: 'gap', callId: 'c1', turn: 2, gapMs: 5000, source: 'voice', seq: 21 },
+    { type: 'gap', callId: 'c1', turn: 2, gapMs: 250, source: 'voice', seq: 22 },
+    { type: 'gap', callId: 'c1', turn: 3, gapMs: 5000, source: 'voice', seq: 31 },
+    { type: 'gap', callId: 'c1', turn: 60, gapMs: 250, source: 'voice', seq: 61 },
+  ];
+  // The keypad turn, the second gap for one turn and a turn the line never heard are all left out.
+  assert.deepEqual(countedGaps([...heard, ...gaps]).map((g) => g.seq), [21, 31]);
 });

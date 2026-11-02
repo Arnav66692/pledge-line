@@ -126,3 +126,41 @@ test('every template follows the voice rules', () => {
     assert.deepEqual(say.extractSpokenFacts(p.text), [], p.text);
   }
 });
+
+test('the strict scan finds facts said in forms no template uses', () => {
+  const found = (text) => say.extractSpokenFacts(text, { strict: true }).map((f) => f.value);
+  assert.deepEqual(found('The next gift is on Dec fifteenth, then every thirty days.'), ['fifteenth', 'thirty']);
+  assert.deepEqual(found('Your monthly gift of forty is active.'), ['active', 'forty']);
+  assert.deepEqual(found('It is on hold, stopped until Tuesday, and inactive now.'), ['tuesday', 'on hold', 'stopped', 'inactive']);
+  assert.deepEqual(found('PayPal turned it back on today.'), ['today', 'back on']);
+  assert.deepEqual(found('Your gift has ended.'), ['ended']);
+  assert.deepEqual(found('Dec first, or the first of the month.'), ['first', 'first']);
+  // The line's own phrases that carry no fact.
+  assert.deepEqual(found('This call has ended. You have two tries left. I need your PIN first. I can set up a one-time gift.'), []);
+  // A masked email proven against a read is set aside, digits spelled as words and all.
+  assert.deepEqual(say.extractSpokenFacts('It would go to four two at mail two dot example dot com.', { strict: true, skip: ['four two at mail two dot example dot com'] }), []);
+});
+
+test('no template trips the strict scan, so an honest reply never fails the facts check', () => {
+  const statuses = ['ACTIVE', 'SUSPENDED', 'CANCELLED'];
+  const subs = statuses.map((status) => ({ ...SUB, status }));
+  const texts = [
+    say.greeting('Sunny Hollow Pantry'), say.askPin(), say.pinOk(), say.pinBad(2), say.pinBad(1), say.pinLocked(), say.pinLimit(),
+    ...subs.flatMap((sub) => [say.giftStatus(sub, PLAN, { timeZone: 'America/Los_Angeles' }), say.pauseOffer(sub, PLAN), say.cancelConfirm(sub, PLAN),
+      say.resumeConfirm(sub, PLAN), say.pauseConfirm(sub, PLAN), ...['suspend', 'activate', 'cancel'].flatMap((kind) => [say.nothingTo(kind, sub, PLAN),
+        say.afterWrite(kind, sub, PLAN), say.afterWrite(kind, sub, PLAN, { ok: false })])]),
+    ...['DRAFT', 'SENT', 'UNPAID'].flatMap((status) => [say.invoiceConfirm({ ...INV, status }, 'Sunny Hollow Pantry'), say.afterWrite('send_invoice', { ...INV, status }, null)]),
+    say.afterWrite('suspend', null, PLAN), say.afterWrite('send_invoice', null, null), say.declined('cancel'), say.draftDeleted(true), say.draftDeleted(false),
+    say.otherEmail(), say.help(), say.goodbye(), say.unclear(), say.notVerified(), say.noSubscription(), say.noEmail(), say.amountOutOfRange(1, 500),
+    say.nothingPending(), say.needYesOrNo(), say.callEnded(), say.staffCallback(), say.paypalProblem(), say.tooLong(), say.turnLimit(), say.expiredNotice(),
+    say.noPause(), say.setAside(), ...Object.values(say.EMPATHY_PHRASES).map((text) => ({ text })),
+    { text: 'If you would like to give a one-time gift to the email on file, tell me the amount.' },
+  ].map((p) => p.text);
+  for (const text of texts) assert.deepEqual(say.extractSpokenFacts(text, { strict: true }), say.extractSpokenFacts(text), text);
+});
+
+test('the amount limits are declared as config facts, so the facts check can hold them to the config', () => {
+  const ask = say.amountOutOfRange(1, 500);
+  assert.deepEqual(ask.facts, [{ kind: 'money', value: '$1.00', source: 'config.invoice_min_dollars' }, { kind: 'money', value: '$500.00', source: 'config.invoice_max_dollars' }]);
+  assert.deepEqual(say.extractSpokenFacts(ask.text, { strict: true }), [{ kind: 'money', value: '$1.00' }, { kind: 'money', value: '$500.00' }]);
+});

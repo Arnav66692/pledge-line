@@ -1,20 +1,30 @@
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import * as say from './say.js';
 import { parseAmountDollars } from './router.js';
-import { spokenDigits, runDigits, DIGIT_CARRIERS } from './numbers.js';
+import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
 import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } from './gate.js';
 import { toSnapshot, PayPalError } from './paypal.js';
+
+export { maskPinText };
 
 const RE_READ_TRIES = 3;
 const RE_READ_GAP_MS = 600;
 const MIN_SPOKEN_PIN_DIGITS = 4;
 const USER_AGENT_MAX = 300;
+const VENDOR_MAX = 80;
+// The engine each named browser runs on. A user-agent override, such as Chrome's device toolbar, does not change it.
+const BROWSER_ENGINES = Object.freeze({ chrome: 'chromium', edge: 'chromium', safari: 'webkit', firefox: 'gecko' });
 const EXPECTED_STATUS = Object.freeze({ suspend: 'SUSPENDED', activate: 'ACTIVE', cancel: 'CANCELLED' });
 const WRITER_METHODS = Object.freeze({ suspend: 'suspendSubscription', activate: 'activateSubscription', cancel: 'cancelSubscription', send_invoice: 'sendInvoice' });
 const PENDING_LABELS = Object.freeze({ suspend: 'Pause the monthly gift', activate: 'Restart the monthly gift', cancel: 'Cancel the monthly gift', send_invoice: 'Send the one-time gift invoice' });
 const BARE_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'correct', 'ok', 'okay', 'please', 'do', 'go', 'ahead', 'it', 'that', "that's", 'is',
   'right', 'confirm', 'no', 'nope', 'nah', 'thanks', 'thank', 'you', 'not', 'now', 'never', 'mind', 'nevermind', 'keep', 'leave', "don't", 'dont']);
-const EMAIL_PATTERNS = [/[^\s@]+@[^\s@]+\.[^\s@]+/g, /\bat\s+[a-z0-9.-]+(?:\s+[a-z0-9.-]+){0,3}\s+dot\s+[a-z]{2,}\b/gi];
+// "x@y", "x at y dot z" and "x at y.z". NFKC first, so a full-width or small @ counts as @.
+const EMAIL_PATTERNS = [
+  /[^\s@]+@[^\s@]+/g,
+  /\bat\s+[a-z0-9.-]+(?:\s+[a-z0-9.-]+){0,3}\s+(?:dot|period)\s+[a-z]{2,}\b/gi,
+  /\bat\s+[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/gi,
+];
 
 export class CallNotFound extends Error {
   constructor() {
@@ -30,28 +40,15 @@ export function parsePinDigits(text) {
   return spokenDigits(text);
 }
 
-/** Masks every digit and every word that can carry one, homophones included, so a spoken PIN never lands in the ledger (I4). */
-export function maskPinText(text) {
-  return String(text ?? '').replace(/\p{Nd}/gu, '#').replace(/[A-Za-z]+/g, (word) => (DIGIT_CARRIERS.has(word.toLowerCase()) ? '#' : word));
-}
+// "bob (at) gmail (dot) com" reads like "bob at gmail dot com".
+const emailText = (text) => String(text ?? '').normalize('NFKC').replace(/\(\s*(at|dot)\s*\)/gi, ' $1 ');
 
 export function looksLikeEmail(text) {
-  return EMAIL_PATTERNS.some((pattern) => new RegExp(pattern.source, pattern.flags.replace('g', '')).test(String(text ?? '')));
+  const prepared = emailText(text);
+  return EMAIL_PATTERNS.some((pattern) => new RegExp(pattern.source, pattern.flags.replace('g', '')).test(prepared));
 }
 
-const stripEmails = (text) => EMAIL_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, ' '), String(text ?? ''));
-
-// Digits from other scripts are masked whole rather than read.
-const OTHER_SCRIPT_DIGIT = /(?![0-9])\p{Nd}/u;
-
-/** True when the PIN shows up in any reading of the text, so the turn is masked before it is logged or routed. */
-function containsPin(text, pin) {
-  if (typeof pin !== 'string' || pin === '') return false;
-  const raw = String(text ?? '');
-  if (OTHER_SCRIPT_DIGIT.test(raw)) return true;
-  const readings = [raw.replace(/\D/g, ''), spokenDigits(raw), spokenDigits(raw, { homophones: true }), runDigits(raw)];
-  return readings.some((digits) => digits.includes(pin));
-}
+const stripEmails = (text) => EMAIL_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, ' '), emailText(text));
 
 function pinMatches(candidate, pin) {
   if (typeof pin !== 'string' || pin === '') return false;
@@ -65,7 +62,7 @@ function isBareYesOrNo(text) {
   return norm.split(' ').every((word) => BARE_WORDS.has(word));
 }
 
-export function detectBrowser(userAgent) {
+function browserFromAgent(userAgent) {
   const ua = String(userAgent ?? '');
   if (/Edg(e|A|iOS)?\//.test(ua)) return 'edge';
   if (/Firefox\/|FxiOS\//.test(ua)) return 'firefox';
@@ -73,6 +70,27 @@ export function detectBrowser(userAgent) {
   if (/Chrome\/|CriOS\//.test(ua)) return 'chrome';
   if (/Safari\//.test(ua) && /Version\//.test(ua)) return 'safari';
   return 'other';
+}
+
+/** Keeps only the engine signals the page sends, so nothing else from the client reaches the ledger. */
+export function normalizeClient(client) {
+  if (!client || typeof client !== 'object' || typeof client.vendor !== 'string') return null;
+  return { vendor: client.vendor.slice(0, VENDOR_MAX), chrome: client.chrome === true, uaData: client.uaData === true };
+}
+
+/** The engine the page's own signals point to. window.chrome and navigator.userAgentData exist only in Chromium. */
+export function engineOf(client) {
+  const signals = normalizeClient(client);
+  if (!signals) return 'unknown';
+  if (signals.chrome || signals.uaData) return 'chromium';
+  if (/^Apple/.test(signals.vendor)) return 'webkit';
+  return signals.vendor === '' ? 'gecko' : 'unknown';
+}
+
+/** The browser the user agent names, kept only when the engine signals agree, so a spoofed agent counts as other. */
+export function detectBrowser(userAgent, client = null) {
+  const named = browserFromAgent(userAgent);
+  return named !== 'other' && BROWSER_ENGINES[named] === engineOf(client) ? named : 'other';
 }
 
 function normalizeScript(script) {
@@ -320,7 +338,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   async function otherEmailTurn(ctx, text, routedAmount = 0) {
     refused(ctx, 'other_email');
-    const amount = routedAmount > 0 ? routedAmount : parseAmountDollars(stripEmails(text));
+    // Only an amount said as money counts here, so digits left over from a spoken address never become a gift.
+    const amount = routedAmount > 0 ? routedAmount : parseAmountDollars(stripEmails(text), { needCurrency: true });
     if (!(amount > 0)) return say.combine(say.otherEmail(), 'If you would like to give a one-time gift to the email on file, tell me the amount.');
     return say.combine(say.otherEmail(), await oneTimeTurn(ctx, amount));
   }
@@ -340,6 +359,9 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return routed;
   }
 
+  // A proposal that expired or was set aside is never read out again as if it still waited for a yes.
+  const repeatLast = (call) => (call.lastSaidPending && call.lastSaidPending !== call.pending?.id ? say.nothingPending() : say.repeat(call.lastSaid));
+
   async function handleIntent(ctx, routed, text) {
     const { call } = ctx;
     switch (routed.intent) {
@@ -348,10 +370,11 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       case 'cancel_now': return cancelTurn(ctx);
       case 'pause_gift': return pauseTurn(ctx);
       case 'resume_gift': return resumeTurn(ctx);
-      case 'one_time_gift': return oneTimeTurn(ctx, routed.amountDollars > 0 ? routed.amountDollars : parseAmountDollars(text));
+      // The router's amount only. When it heard none, the line asks, rather than reading another number in the turn as one.
+      case 'one_time_gift': return oneTimeTurn(ctx, routed.amountDollars);
       case 'other_email': return otherEmailTurn(ctx, text, routed.amountDollars);
       case 'help': return say.help();
-      case 'repeat': return say.repeat(call.lastSaid);
+      case 'repeat': return repeatLast(call);
       case 'staff_callback':
         log(call, { type: 'staff_callback', turn: ctx.turn });
         return say.staffCallback();
@@ -395,7 +418,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   async function yesTurn(ctx, text) {
     const { call } = ctx;
-    const approval = gate.approve(call, text, ctx.turn);
+    const approval = gate.approve(call, text, ctx.turn, ctx.answering);
     if (!approval) return call.pending ? askAgain(ctx) : say.nothingPending();
     const { pending } = approval;
     const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
@@ -448,6 +471,9 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       refused(ctx, 'other_email');
       return askAgain(ctx, say.otherEmail());
     }
+    // I1 and I4: a turn that carried the PIN reaches here masked, and the mask can hide the words that make it
+    // a change request, as in "yes double it to 468". So it is never a yes or a no, and the line asks again.
+    if (ctx.pinShown) return askAgain(ctx, say.needYesOrNo());
     const verdict = gate.classify(call, text);
     if (verdict === 'yes') return yesTurn(ctx, text);
     if (verdict === 'no') return noTurn(ctx, text);
@@ -502,11 +528,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     }
   }
 
-  async function runTurn(call, { text, source }) {
+  async function runTurn(call, { text, source, answering }) {
     const started = performance.now();
     const clean = typeof text === 'string' ? text.trim() : '';
     call.turn += 1;
-    const ctx = { call, turn: call.turn, source: normalizeSource(source), routerMs: 0, paypalMs: 0, empathy: null, notice: null };
+    // answering is the turn of the last reply the caller's client received. A yes must answer the reply that asked (I6).
+    const ctx = { call, turn: call.turn, source: normalizeSource(source), answering: Number.isInteger(answering) ? answering : null,
+      routerMs: 0, paypalMs: 0, empathy: null, notice: null, pinShown: false };
     call.lastActiveAt = now().getTime();
     let reply;
     if (clean.length > limits.maxTextChars) {
@@ -514,15 +542,17 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       reply = say.tooLong();
     } else {
       // I4: mask while waiting for the PIN, on keypad turns, and whenever the PIN shows up later.
-      const hidePin = !call.verified || ctx.source === 'keypad' || containsPin(clean, config.pin);
-      const masked = maskPinText(clean);
-      log(call, { type: 'heard', turn: ctx.turn, text: hidePin ? masked : clean, source: ctx.source });
-      reply = await dispatch(ctx, call.verified && hidePin ? masked : clean);
+      const hidePin = !call.verified || ctx.source === 'keypad' || textHasPin(clean, config.pin);
+      const heardText = hidePin ? maskPinText(clean) : clean;
+      log(call, { type: 'heard', turn: ctx.turn, text: heardText, source: ctx.source, answering: ctx.answering });
+      ctx.pinShown = call.verified && hidePin;
+      reply = await dispatch(ctx, call.verified ? heardText : clean);
     }
     const full = say.combine(ctx.empathy, ctx.notice, reply);
     const serverMs = Math.round(performance.now() - started);
     log(call, { type: 'said', turn: ctx.turn, text: full.text, facts: full.facts, ms: serverMs });
     call.lastSaid = full;
+    call.lastSaidPending = call.pending?.id ?? null;
     return { reply: full.text, turn: ctx.turn, state: stateFor(call), timings: { serverMs, routerMs: ctx.routerMs, paypalMs: ctx.paypalMs } };
   }
 
@@ -534,17 +564,18 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return call;
   }
 
-  function start({ script = null, userAgent = '', dryRun = false, clientKey = null } = {}) {
+  function start({ script = null, userAgent = '', dryRun = false, clientKey = null, client = null } = {}) {
+    const signals = normalizeClient(client);
     const call = {
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
-      id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent), clientKey, verified: false, locked: false,
-      pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastSaid: null, ended: false, endedAt: null,
+      id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
+      pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastSaid: null, lastSaidPending: null, ended: false, endedAt: null,
       noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null }, queue: Promise.resolve(),
     };
     calls.set(call.id, call);
     log(call, {
-      type: 'call_start', script: call.script, userAgent: String(userAgent ?? '').slice(0, USER_AGENT_MAX), browser: call.browser,
-      mode: { paypal: config.paypal.mode, router: config.router.mode }, timeZone: config.timeZone, ...(dryRun ? { dryRun: true } : {}),
+      type: 'call_start', script: call.script, userAgent: String(userAgent ?? '').slice(0, USER_AGENT_MAX), client: signals, engine: engineOf(signals),
+      browser: call.browser, mode: { paypal: config.paypal.mode, router: config.router.mode }, timeZone: config.timeZone, ...(dryRun ? { dryRun: true } : {}),
     });
     const reply = say.greeting(config.orgName);
     log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, ms: 0 });
@@ -581,9 +612,10 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       const call = getCall(callId);
       return enqueue(call, () => runTurn(call, input));
     },
-    logGap: (callId, { turn, gapMs, source, muted }) => {
+    logGap: (callId, { turn, gapMs, source, muted, played }) => {
       const call = getCall(callId);
-      log(call, { type: 'gap', turn, gapMs, source, browser: call.browser, muted: Boolean(muted) });
+      // muted is the mute switch alone. played is false when the reply was cut off or failed before it began.
+      log(call, { type: 'gap', turn, gapMs, source, browser: call.browser, muted: Boolean(muted), ...(typeof played === 'boolean' ? { played } : {}) });
       return { ok: true };
     },
     end: async (callId, reason = 'client') => {

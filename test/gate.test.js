@@ -95,6 +95,19 @@ test('a bare okay, thanks or please is an acknowledgment, never a yes', () => {
   for (const text of ['Yes.', 'Okay, go ahead.', 'Okay?', 'Okay, how much is it?', 'No.']) assert.equal(isAcknowledgment(text), false, text);
 });
 
+test('a question mark or a word from another script, a look-alike letter or a masked digit never counts as a yes', () => {
+  const marks = ['﹖', '⁇', '⁈', '⁉', '؟', ';', '⸮', '︖', '❓', '❔', '‽'];
+  for (const mark of marks) assert.equal(isClearYes(`Yes${mark}`, 'cancel'), false, `Yes${mark}`);
+  // Russian "no" and "not now", Chinese and Japanese "no", and "No." in Greek and Cyrillic letters.
+  const foreign = ['Yes, нет', 'Yes, не сейчас', 'Yes 不', 'Yes, いいえ', 'Yes. Νо.'];
+  for (const text of [...foreign, 'Sure⁇', 'yes # it # ###', 'Yes, ####.']) {
+    for (const kind of ['suspend', 'activate', 'cancel', 'send_invoice']) assert.equal(isClearYes(text, kind), false, `"${text}" for ${kind}`);
+  }
+  assert.equal(isAcknowledgment('Okay⁇'), false);
+  // A curly apostrophe from a phone keyboard still reads as a plain one.
+  assert.equal(isClearYes('That’s right', 'cancel'), true);
+});
+
 test('isClearNo table', () => {
   for (const [text, expected] of NO_TABLE) assert.equal(isClearNo(text), expected, `"${text}"`);
 });
@@ -181,6 +194,15 @@ test('a yes only counts in the turn right after the line last spoke the proposal
   assert.equal(f.gate.approve(f.call, 'yes', 4), null, 'the same turn as the read-back');
   assert.equal(f.gate.approve(f.call, 'yes', 6), null, 'two turns after the read-back');
   assert.ok(f.gate.approve(f.call, 'yes', 5).token, 'right after the read-back');
+});
+
+test('a yes counts only when its client says it answers the reply that asked', () => {
+  const f = gateFixture();
+  f.gate.propose(f.call, { kind: 'suspend', targetId: 'I-1', readBack: f.readBack, origin: 'pause_offer', turn: 2 });
+  assert.equal(f.gate.approve(f.call, 'yes', 3, 1), null, 'the yes left the client before the proposal reached it');
+  assert.equal(f.gate.approve(f.call, 'yes', 3, null), null, 'a client that said nothing about it');
+  assert.ok(f.gate.approve(f.call, 'yes', 3, 2).token, 'the yes answers the reply that spoke the proposal');
+  assert.equal(f.ledger.all().filter((e) => e.type === 'yes').length, 1, 'only the counted yes is logged');
 });
 
 test('an expired pending action cannot be approved and is logged as expired', () => {

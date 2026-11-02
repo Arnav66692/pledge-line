@@ -258,17 +258,22 @@ function tooManyRequests(waitMs, local) {
   return new HttpError(429, `${wait}${hint}`, { 'Retry-After': String(Math.max(1, Math.ceil(waitMs / 1000))) });
 }
 
+const isTurnNumber = (value) => Number.isInteger(value) && value >= 0;
+
 function validTurnBody(body) {
   if (typeof body.text !== 'string' || body.text.length > TEXT_LIMIT_CHARS) throw new HttpError(400, 'text must be a short string.');
   if (body.source !== undefined && !['voice', 'typed', 'keypad'].includes(body.source)) throw new HttpError(400, 'source must be voice, typed or keypad.');
-  return { text: body.text, source: body.source ?? 'typed' };
+  // answering is the turn of the last reply the page received. Without it a yes never counts (I6).
+  if (body.answering !== undefined && !isTurnNumber(body.answering)) throw new HttpError(400, 'answering must be a turn number.');
+  return { text: body.text, source: body.source ?? 'typed', answering: body.answering ?? null };
 }
 
 function validGapBody(body) {
-  const ok = Number.isInteger(body.turn) && body.turn >= 0 && Number.isFinite(body.gapMs) && body.gapMs >= 0 && body.gapMs <= GAP_MAX_MS
-    && ['voice', 'typed', 'keypad'].includes(body.source) && (body.muted === undefined || typeof body.muted === 'boolean');
+  const ok = isTurnNumber(body.turn) && Number.isFinite(body.gapMs) && body.gapMs >= 0 && body.gapMs <= GAP_MAX_MS
+    && ['voice', 'typed', 'keypad'].includes(body.source) && (body.muted === undefined || typeof body.muted === 'boolean')
+    && (body.played === undefined || typeof body.played === 'boolean');
   if (!ok) throw new HttpError(400, 'gap needs turn, gapMs, source and muted.');
-  return { turn: body.turn, gapMs: Math.round(body.gapMs), source: body.source, muted: Boolean(body.muted) };
+  return { turn: body.turn, gapMs: Math.round(body.gapMs), source: body.source, muted: Boolean(body.muted), ...(typeof body.played === 'boolean' ? { played: body.played } : {}) };
 }
 
 function createApi(deps) {
@@ -312,7 +317,8 @@ function createApi(deps) {
       const body = await readJson(req);
       limitOr429(newCalls, ip);
       const userAgent = typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] ?? '';
-      return send(res, 200, calls.start({ script: body.script ?? null, userAgent, clientKey: ip }));
+      // The page's engine signals, which a user-agent override does not change. call.js keeps only those fields.
+      return send(res, 200, calls.start({ script: body.script ?? null, userAgent, client: body.client ?? null, clientKey: ip }));
     }
     const match = pathname.match(CALL_PATH);
     if (match) return callRoute(req, res, ip, match[1], match[2]);

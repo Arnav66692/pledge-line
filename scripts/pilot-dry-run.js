@@ -26,12 +26,15 @@ function printGrade(grade) {
 
 async function runOne(deps, script) {
   out(`  Script ${script.number}. ${script.title}`);
-  const { callId, reply } = deps.calls.start({ script: script.number, userAgent: 'pilot-dry-run', dryRun: true });
+  const { callId, reply, turn: greetingTurn } = deps.calls.start({ script: script.number, userAgent: 'pilot-dry-run', dryRun: true });
   out(`    ${'line'.padEnd(14)} ${reply}`);
+  // Each turn answers the reply before it, as the page says, so a yes counts only after its proposal was heard.
+  let answering = greetingTurn;
   for (const turn of scriptTurns(script, deps.config.pin)) {
     const shown = turn.secret ? '#'.repeat(turn.text.length) : turn.text;
     out(`    ${`you, ${turn.source}`.padEnd(14)} ${shown}`);
-    const result = await deps.calls.turn(callId, { text: turn.text, source: turn.source });
+    const result = await deps.calls.turn(callId, { text: turn.text, source: turn.source, answering });
+    answering = result.turn;
     out(`    ${'line'.padEnd(14)} ${result.reply}`);
   }
   const grade = gradeCall(deps.ledger.byCall(callId), script);

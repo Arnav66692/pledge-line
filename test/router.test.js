@@ -102,3 +102,16 @@ test('SDK errors map to their class names, most specific first', async () => {
     assert.equal(result.error, name);
   }
 });
+
+test('an amount said two ways, as a pair like twelve fifty, or in cents, is never guessed', () => {
+  const table = [
+    ['I want to give twelve fifty once.', 0], ['nineteen ninety nine', 0], ['two fifty', 0], ['Give twenty dollars, sorry, thirty dollars, once.', 0],
+    ['Give $20 or $30.', 0], ['Give fifty cents one time.', 0.5], ['Give 99 cents one time.', 0.99], ['I want to give 5 dollars and 50 cents once.', 5.5],
+    ['twenty dollars and fifty cents', 20.5], ['fifteen hundred dollars', 1500], ['one hundred fifty five dollars', 155], ['Give $50, that is fifty dollars.', 50],
+  ];
+  for (const [text, dollars] of table) assert.equal(parseAmountDollars(text), dollars, text);
+  // With needCurrency, only an amount said as money counts, so digits left from an address never do.
+  assert.equal(parseAmountDollars('send it to maria 25', { needCurrency: true }), 0);
+  assert.equal(parseAmountDollars('a twenty five dollar invoice', { needCurrency: true }), 25);
+  assert.equal(rulesRoute('Use my new email address, maria 25.').amountDollars, 0);
+});

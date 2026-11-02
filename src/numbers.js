@@ -30,6 +30,17 @@ export const isNumberWord = (word) => NUMBER_WORD_SET.has(word);
 /** Lowercase words and ASCII digit runs. NFKC turns full-width digits into ASCII ones first. */
 export const tokenize = (text) => String(text ?? '').normalize('NFKC').toLowerCase().replace(/-/g, ' ').match(/\d+|[a-z]+/g) ?? [];
 
+/**
+ * Masks everything the PIN reader can read as a digit, in the NFKC form it reads (I4). Every number
+ * character becomes #, so superscript, circled and full-width digits do too, and so does every letter run
+ * that carries a digit. Letter runs are cut exactly where tokenize cuts them, so "twoé" still hides "two".
+ */
+export function maskPinText(text) {
+  return String(text ?? '').normalize('NFKC')
+    .replace(/\p{N}/gu, '#')
+    .replace(/[A-Za-z]+/g, (word) => (DIGIT_CARRIERS.has(word.toLowerCase()) ? '#' : word));
+}
+
 /** Groups neighbouring number words, so "one hundred and fifty" is one run. */
 export function numberRuns(tokens) {
   const runs = [];
@@ -111,4 +122,31 @@ export function spokenDigits(text, { homophones = false } = {}) {
   }
   flushTens();
   return groups.join('');
+}
+
+// Digits from other scripts are masked whole rather than read.
+const OTHER_SCRIPT_DIGIT = /(?![0-9])\p{Nd}/u;
+
+/** True when the PIN shows up in any reading of the text, so the line masks the turn and the grader can look for leaks. */
+export function textHasPin(text, pin) {
+  if (typeof pin !== 'string' || pin === '') return false;
+  const raw = String(text ?? '');
+  if (OTHER_SCRIPT_DIGIT.test(raw)) return true;
+  const readings = [raw.normalize('NFKC').replace(/\D/g, ''), spokenDigits(raw), spokenDigits(raw, { homophones: true }), runDigits(raw)];
+  return readings.some((digits) => digits.includes(pin));
+}
+
+/**
+ * True when a run of number words is said the way people say one amount, such as "twenty five" or
+ * "one hundred and fifty". "twelve fifty" could be $12.50 or $1,250, so it is not.
+ */
+export function isWellFormedRun(words) {
+  let prev = null;
+  for (const word of words) {
+    const joins = prev === null || prev === 'and' || prev === 'a' || has(SCALES, prev) || has(SCALES, word) || word === 'and';
+    const tensThenOnes = has(TENS, prev) && has(ONES, word) && ONES[word] > 0;
+    if (!joins && !tensThenOnes) return false;
+    prev = word;
+  }
+  return true;
 }

@@ -131,12 +131,13 @@ export function giftStatus(sub, plan, { timeZone } = {}) {
   return combine(base, next, ANYTHING_ELSE);
 }
 
+// No "on hold" or "back on" here, since the facts check reads those as status claims (I3).
 export const pauseOffer = (sub, plan) => combine(shows(sub, plan),
-  'Before you stop it, I can pause it instead. Nothing more is taken while it is on hold, and you can restart it any time. Would you like me to pause it?', YES_OR_NO);
+  'Before you stop it, I can pause it instead. Nothing more is taken during a pause, and you can restart it any time. Would you like me to pause it?', YES_OR_NO);
 export const cancelConfirm = (sub, plan) => combine(shows(sub, plan),
   'Cancelling ends it for good, and it cannot be undone. Do you want me to cancel it?', YES_OR_NO);
 export const resumeConfirm = (sub, plan) => combine(shows(sub, plan),
-  'Restarting it turns your monthly gift back on. Do you want me to restart it?', YES_OR_NO);
+  'Restarting it means your monthly gift is taken again each month. Do you want me to restart it?', YES_OR_NO);
 export const pauseConfirm = (sub, plan) => combine(shows(sub, plan),
   'Pausing it holds your monthly gift until you restart it. Do you want me to pause it?', YES_OR_NO);
 
@@ -188,7 +189,14 @@ export const unclear = () => part("Sorry, I didn't catch that. You can ask about
 export const notVerified = () => part('I need your PIN first. Please enter it on the keypad.');
 export const noSubscription = () => part("I couldn't find a monthly gift in PayPal for this line. Staff can help during open hours.");
 export const noEmail = () => part("PayPal has no email on file for this gift, so I can't send an invoice. Staff can help during open hours.");
-export const amountOutOfRange = (min, max) => part(`I can set up a one-time gift from ${numberToWords(min)} ${min === 1 ? 'dollar' : 'dollars'} to ${numberToWords(max)} dollars. How much would you like to give?`);
+/** "from one dollar to five hundred dollars". check.js accepts the config facts only inside this phrase. */
+export const limitsPhrase = (min, max) => `from ${numberToWords(min)} ${min === 1 ? 'dollar' : 'dollars'} to ${numberToWords(max)} dollars`;
+
+/** The limits are config, not PayPal facts, so they are declared with a config source that check.js holds to the config. */
+export function amountOutOfRange(min, max) {
+  const facts = [fact('money', formatMoney(min), 'config.invoice_min_dollars'), fact('money', formatMoney(max), 'config.invoice_max_dollars')];
+  return part(`I can set up a one-time gift ${limitsPhrase(min, max)}. How much would you like to give?`, facts);
+}
 export const nothingPending = () => part("There's nothing waiting for a yes or no right now. What would you like to do?");
 export const needYesOrNo = () => part('I need a clear yes or no before I change anything.');
 export const callEnded = () => part('This call has ended. Please start a new call if you need anything else.');
@@ -254,13 +262,45 @@ const SCANS = [
   { kind: 'number', regex: /\p{Nd}+/gu, value: (m) => m[0] },
 ];
 
-/** Finds money, dates, "ending in" suffixes and status words, in digits or in words, and any other digit runs. */
-export function extractSpokenFacts(text) {
-  let rest = String(text ?? '');
-  const found = [];
-  for (const scan of SCANS) {
+// The strict scans run over what the fact scans leave, and catch facts said in forms no template uses, such as
+// "every thirty days", "on the fifteenth", "Dec first", "on Tuesday", "on hold" or "turned back on" (I3).
+// The line's own phrases that carry no fact, "one-time" and "two tries left", are set aside first.
+const ALLOWED_PHRASES = [/\bone[\s-]time\b/gi, new RegExp(`\\b${NUMBER_WORD}\\s+(?:tries|try)\\s+left\\b`, 'gi')];
+const EXTRA_NUMBER_WORDS = ['million', 'billion', 'dozen', 'half', 'couple'];
+const MONTH_ABBREVIATIONS = ['jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec'];
+const DAY_WORDS = [...WEEKDAYS, 'today', 'tonight', 'tomorrow', 'yesterday', 'weekend'];
+const STATUS_PHRASES = ['on hold', 'on pause', 'back on', 'turned on', 'turned off', 'off', 'stopped', 'inactive', 'restarted', 'resumed', 'reactivated'];
+const LATER_ORDINALS = ORDINAL_WORDS.filter((word) => word !== 'first');
+const DATE_LEAD = `(?:the|on|${longestFirst([...MONTHS, ...MONTH_ABBREVIATIONS])})`;
+const STRICT_SCANS = [
+  { kind: 'date', regex: new RegExp(`\\b(${longestFirst(LATER_ORDINALS)})\\b`, 'gi'), value: (m) => m[1].toLowerCase() },
+  // "first" is a plain word too, as in "I need your PIN first", so it counts only where a date would put it.
+  { kind: 'date', regex: new RegExp(`\\b${DATE_LEAD}\\.?\\s+first\\b|\\bfirst\\s+of\\b`, 'gi'), value: () => 'first' },
+  { kind: 'date', regex: new RegExp(`\\b(${longestFirst(DAY_WORDS)})s?\\b`, 'gi'), value: (m) => m[1].toLowerCase() },
+  { kind: 'number', regex: new RegExp(`\\b(${longestFirst([...NUMBER_WORDS, ...EXTRA_NUMBER_WORDS])})\\b`, 'gi'), value: (m) => m[1].toLowerCase() },
+  // "This call has ended" is about the call, not the gift.
+  { kind: 'status', regex: /(?<!\bcall\s+(?:has\s+)?)\bended\b/gi, value: () => 'ended' },
+  { kind: 'status', regex: new RegExp(`\\b(${longestFirst(STATUS_PHRASES).replace(/ /g, '\\s+')})\\b`, 'gi'), value: (m) => m[1].toLowerCase().replace(/\s+/g, ' ') },
+];
+
+function runScans(text, scans, found) {
+  let rest = text;
+  for (const scan of scans) {
     for (const match of rest.matchAll(scan.regex)) found.push({ kind: scan.kind, value: scan.value(match) });
     rest = rest.replace(scan.regex, ' ');
   }
+  return rest;
+}
+
+/**
+ * Finds money, dates, "ending in" suffixes and status words, in digits or in words, and any other digit runs.
+ * strict adds the scans above, which check.js and the ORG_NAME check use. skip lists spoken phrases, such as a
+ * masked email already proven against a PayPal read, that are set aside before any scan.
+ */
+export function extractSpokenFacts(text, { strict = false, skip = [] } = {}) {
+  const found = [];
+  const start = skip.filter((phrase) => typeof phrase === 'string' && phrase !== '').reduce((acc, phrase) => acc.split(phrase).join(' '), String(text ?? ''));
+  const rest = runScans(start, SCANS, found);
+  if (strict) runScans(ALLOWED_PHRASES.reduce((acc, pattern) => acc.replace(pattern, ' '), rest), STRICT_SCANS, found);
   return found;
 }
