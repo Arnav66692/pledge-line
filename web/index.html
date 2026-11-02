@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pledge Line</title>
+  <meta name="description" content="The after-hours donor line for small nonprofits. A PayPal sandbox demo with no real money.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Pledge Line</h1>
+    <p class="tagline">The after-hours donor line for small nonprofits</p>
+    <p class="note">This is a PayPal sandbox demo. No real money moves, and no real donor is called.</p>
+  </header>
+
+  <main class="layout">
+    <section class="card setup" aria-labelledby="setup-title">
+      <h2 id="setup-title">Start a call</h2>
+      <label class="field-label" for="script">Script</label>
+      <select id="script">
+        <option value="">Free call</option>
+      </select>
+      <p id="script-help" class="hint">Pick a script before you start, so the record knows which one you ran. Say each line after the line stops talking.</p>
+      <ol id="script-lines" class="lines" aria-label="Lines to say"></ol>
+      <button id="start" class="primary" type="button">Start call</button>
+      <label class="toggle"><input id="mute" type="checkbox"> Mute the line's voice</label>
+    </section>
+
+    <section class="card phone" aria-labelledby="phone-title">
+      <h2 id="phone-title">The line</h2>
+      <p id="status" class="status">No call yet. Press Start call.</p>
+      <div class="said">
+        <p class="label">The line says</p>
+        <p id="reply" class="reply" aria-live="polite"></p>
+      </div>
+      <div class="said">
+        <p class="label">You said</p>
+        <p id="transcript" class="transcript"></p>
+      </div>
+      <button id="talk" class="talk" type="button" disabled aria-describedby="talk-hint">Hold to talk</button>
+      <p id="talk-hint" class="hint">Hold the button, or the Space bar, while you speak. Let go when you finish.</p>
+      <p id="speech-error" class="error" role="alert" hidden></p>
+
+      <div class="keypad" role="group" aria-label="PIN keypad">
+        <p class="label">PIN keypad</p>
+        <output id="pin-dots" class="dots" aria-live="polite">No digits yet</output>
+        <div class="keys">
+          <button type="button" class="key" data-digit="1">1</button>
+          <button type="button" class="key" data-digit="2">2</button>
+          <button type="button" class="key" data-digit="3">3</button>
+          <button type="button" class="key" data-digit="4">4</button>
+          <button type="button" class="key" data-digit="5">5</button>
+          <button type="button" class="key" data-digit="6">6</button>
+          <button type="button" class="key" data-digit="7">7</button>
+          <button type="button" class="key" data-digit="8">8</button>
+          <button type="button" class="key" data-digit="9">9</button>
+          <button type="button" class="key" id="pin-clear" aria-label="Clear the PIN">Clear</button>
+          <button type="button" class="key" data-digit="0">0</button>
+          <button type="button" class="key send" id="pin-send" aria-label="Send the PIN">Send</button>
+        </div>
+      </div>
+
+      <details id="typed" class="typed">
+        <summary>Type instead</summary>
+        <form id="typed-form" class="typed-form">
+          <label for="typed-text" class="field-label">What you want to say</label>
+          <div class="typed-row">
+            <input id="typed-text" type="text" autocomplete="off" maxlength="500" disabled>
+            <button id="typed-send" type="submit" disabled>Send</button>
+          </div>
+        </form>
+      </details>
+
+      <p class="timing">Last gap <span id="gap-last">none yet</span>. Median of voice turns <span id="gap-median">none yet</span>.</p>
+    </section>
+
+    <section class="card record" aria-labelledby="record-title">
+      <h2 id="record-title">PayPal record</h2>
+      <div id="pending" class="pending" hidden>
+        <p class="pending-title">Waiting for your yes</p>
+        <p id="pending-label"></p>
+        <p id="pending-expiry" class="hint"></p>
+      </div>
+      <h3>Monthly gift</h3>
+      <dl class="facts">
+        <dt>Status</dt><dd id="sub-status">not read yet</dd>
+        <dt>Amount</dt><dd id="sub-amount">not read yet</dd>
+        <dt>Next date</dt><dd id="sub-next">not read yet</dd>
+        <dt>Debug id</dt><dd id="sub-debug" class="mono">none</dd>
+      </dl>
+      <h3>One-time gift invoice</h3>
+      <dl class="facts">
+        <dt>Invoice number</dt><dd id="inv-number">none</dd>
+        <dt>Status</dt><dd id="inv-status">none</dd>
+        <dt>Amount</dt><dd id="inv-amount">none</dd>
+        <dt>Debug id</dt><dd id="inv-debug" class="mono">none</dd>
+        <dt>Payer page</dt><dd id="inv-link">none</dd>
+      </dl>
+      <h3>Event log</h3>
+      <p class="hint">Newest first. Every PayPal read and change shows here.</p>
+      <ol id="events" class="events"></ol>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Pledge Line pilot, MIT license. PayPal sandbox only.</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "pledge-line",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The after-hours donor line for small nonprofits. A PayPal sandbox pilot.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "PAYPAL_MODE=mock ROUTER_MODE=rules node --env-file-if-exists=.env src/server.js",
+    "test": "node --test \"test/*.test.js\"",
+    "seed": "node --env-file-if-exists=.env scripts/seed-sandbox.js",
+    "pilot:dry": "node --env-file-if-exists=.env scripts/pilot-dry-run.js",
+    "pilot:check": "node --env-file-if-exists=.env scripts/pilot-check.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0"
+  }
+}

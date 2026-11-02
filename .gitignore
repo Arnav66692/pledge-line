@@ -1,0 +1,8 @@
+.env
+node_modules/
+.pilot/*.jsonl
+.pilot/state.json
+.pilot/dry-run-*.txt
+*.log
+.DS_Store
+.claude/
