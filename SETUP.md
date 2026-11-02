@@ -2,7 +2,7 @@
 
 These are the accounts and keys the pilot needs. Claude can't create accounts or handle keys, so you do these steps yourself. It takes about 45 minutes. Do sections 1 to 4 on Mon Nov 2, before the pilot clock starts.
 
-**Keys go in one place only.** In this folder, copy `.env.example` to a new file named `.env`, and paste every key into that file. Never paste a key into chat. `.env` is ignored by git, so it never gets pushed.
+**Keys go in one place only.** Claude already copied `.env.example` to a new file named `.env` in this folder, with every key empty. Paste every key into that file. Never paste a key into chat. `.env` is ignored by git, so it never gets pushed.
 
 A few button labels below come from guides, not from the live pages, and are marked "(check)". If a screen doesn't match, stop and tell Claude what it says.
 
@@ -47,9 +47,9 @@ The whole pilot should use well under $1 of that $10. That's computed, not measu
 
 In `.env`, set `PILOT_PIN=` to 4 to 6 digits you'll remember. Don't use 1111, 2222 or 3333, since Script 8 uses those as wrong PINs.
 
-## 5. Put the line on Render, after Claude pushes the repo
+## 5. Put the line on Render
 
-Claude creates the private repo `Arnav66692/pledge-line` and pushes the `pilot` branch once the build passes its tests.
+The private repo `Arnav66692/pledge-line` is pushed, with the tested code on the `pilot` branch.
 
 1. Open https://github.com/apps/render/installations/new and pick your account.
 2. Choose Only select repositories, never All repositories. Select `pledge-line` and click Install.
