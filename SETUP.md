@@ -30,7 +30,7 @@ The line uses Google's free Gemini tier to understand the caller, so this costs 
 1. Open https://aistudio.google.com/apikey and sign in with your Google account.
 2. If you already made a key, copy it. Otherwise click Create API key (check), and pick or create a project.
 3. Paste it into `.env` as `GEMINI_API_KEY=`. Don't add billing or a card.
-4. The pilot needs about 100 calls, well inside the free daily limit.
+4. The pilot needs about 100 to 200 requests over two days. Google doesn't publish the free limits, so Claude checks your key's real limit before the clock starts.
 
 Google may use free-tier prompts to improve its products. Every donor in the pilot is fake, so that's fine, but never use this key with real donor data.
 
