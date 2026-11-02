@@ -9,7 +9,8 @@ import { createLedger } from '../src/ledger.js';
 import { createPayPal } from '../src/paypal.js';
 import { resourceIdOf } from '../src/server.js';
 import { latestCallsByScript } from '../src/check.js';
-import { DEADLINE, GAP_BAR_MS, formatPt, selectCalls, windowCalls, startedAfter, sweep, stops, timing, pilotTests, outsideLoggedRows } from '../src/pilot-grade.js';
+import { DEADLINE, GAP_BAR_MS, formatPt, selectCalls, windowCalls, startedAfter, sweep, stops, timing, pilotTests, outsideLoggedRows,
+  templateTroubles, loggedConfig } from '../src/pilot-grade.js';
 import { parseHoursLog, effectiveDeadline, loggedHours, rowHours, inWindow, outsideWindow, EXPECTED_ROW, ACCEPTED_FORMS, LOGGED_HOURS } from '../src/hours-log.js';
 
 // A sleeping free Render service takes about a minute to wake.
@@ -19,7 +20,10 @@ const POLL_FOR_MS = 120000;
 const PAID = 'INVOICING.INVOICE.PAID';
 const RESULTS_FILE = 'PILOT-RESULTS.md';
 const PREVIOUS_FILE = 'PILOT-RESULTS.previous.md';
+// Every real grade is kept here under its own PT time, and none is ever replaced, moved or deleted (R4-3).
+const GRADES_DIR = 'pilot-results';
 const NOTICE_TITLE = '# Pilot results, no grade';
+const STAMP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
 // The Hours log is read from PILOT.md beside this script unless --hours names another file.
 const HOURS_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'PILOT.md');
 // An ISO time with its offset, so a run in any time zone reads it the same way.
@@ -315,9 +319,63 @@ function report({ refusal, selected, after, results, webhook, swept, times, note
   return out.join('\n');
 }
 
-/** Moves a real grade beside the results file, so neither a notice nor a newer grade ever loses it. */
+/** "2026-11-04-21-15-03-PT", a grade's PT time as a file name that sorts by time. */
+function ptStamp(date) {
+  const p = Object.fromEntries(STAMP.formatToParts(date).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}-${p.hour}-${p.minute}-${p.second}-PT`;
+}
+
+/** Keeps a real grade in pilot-results/ under its own PT time, never over a grade already kept there (R4-3). */
+function keepGrade(text, at = new Date()) {
+  fs.mkdirSync(GRADES_DIR, { recursive: true });
+  const stem = path.join(GRADES_DIR, ptStamp(at));
+  for (let n = 1; ; n += 1) {
+    const file = n === 1 ? `${stem}.md` : `${stem}-${n}.md`;
+    try {
+      fs.writeFileSync(file, text, { flag: 'wx' });
+      return file;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
+}
+
+// A kept grade's name is its PT time, then -2, -3 and on for a second grade in the same second.
+const KEPT_NAME = /^(.*-PT)(?:-(\d+))?\.md$/;
+const keptOrder = (name) => {
+  const [, stem = name, n = '1'] = name.match(KEPT_NAME) ?? [];
+  return [stem, Number(n)];
+};
+
+/** The kept grades, oldest first, so a second grade in the same second comes after the first. */
+function keptGrades() {
+  if (!fs.existsSync(GRADES_DIR)) return [];
+  return fs.readdirSync(GRADES_DIR).filter((name) => name.endsWith('.md')).sort((a, b) => {
+    const [stemA, nA] = keptOrder(a);
+    const [stemB, nB] = keptOrder(b);
+    return stemA === stemB ? nA - nB : stemA < stemB ? -1 : 1;
+  });
+}
+
+/**
+ * A real grade in PILOT-RESULTS.md or PILOT-RESULTS.previous.md that pilot-results/ does not hold yet, as one an older
+ * pilot-check wrote or moved aside, is kept there first, under the time its file was last written (R4-3, G2).
+ */
+function keepUnkeptGrade(file) {
+  if (!fs.existsSync(file)) return;
+  const text = fs.readFileSync(file, 'utf8');
+  if (text.startsWith(NOTICE_TITLE)) return;
+  if (keptGrades().some((name) => fs.readFileSync(path.join(GRADES_DIR, name), 'utf8') === text)) return;
+  keepGrade(text, fs.statSync(file).mtime);
+}
+
+/** Moves a real grade beside the results file, so neither a notice nor a newer grade ever loses it, and keeps both first. */
 function keepRealGrade() {
-  if (!fs.existsSync(RESULTS_FILE) || fs.readFileSync(RESULTS_FILE, 'utf8').startsWith(NOTICE_TITLE)) return;
+  keepUnkeptGrade(PREVIOUS_FILE);
+  if (!fs.existsSync(RESULTS_FILE)) return;
+  const text = fs.readFileSync(RESULTS_FILE, 'utf8');
+  if (text.startsWith(NOTICE_TITLE)) return;
+  keepUnkeptGrade(RESULTS_FILE);
   fs.renameSync(RESULTS_FILE, PREVIOUS_FILE);
 }
 
@@ -326,13 +384,17 @@ function writeNotice(reason) {
   keepRealGrade();
   const keptLine = fs.existsSync(PREVIOUS_FILE)
     ? `The last graded results are in \`${PREVIOUS_FILE}\`. They are not from this run.` : 'No graded results from an earlier run were in this folder.';
-  fs.writeFileSync(RESULTS_FILE, [NOTICE_TITLE, '', `At ${formatPt(new Date().toISOString())}, pilot-check ${reason}`, '', keptLine, ''].join('\n'));
+  const kept = keptGrades();
+  const allLine = kept.length ? [`Every real grade is kept in \`${GRADES_DIR}/\`, the latest in \`${GRADES_DIR}/${kept.at(-1)}\`.`, ''] : [];
+  fs.writeFileSync(RESULTS_FILE, [NOTICE_TITLE, '', `At ${formatPt(new Date().toISOString())}, pilot-check ${reason}`, '', keptLine, '', ...allLine].join('\n'));
 }
 
-/** A fresh grade replaces the notice. An earlier real grade, if one is still there, moves aside first (G2). */
+/** A fresh grade replaces the notice and is kept in pilot-results/. An earlier real grade, if one is still there, moves aside first (G2). */
 function writeGrade(text) {
   keepRealGrade();
+  const kept = keepGrade(text);
   fs.writeFileSync(RESULTS_FILE, text);
+  return kept;
 }
 
 /** Every exit without a fresh grade leaves the notice, so an older grade never reads as this run's (R3-9). */
@@ -388,46 +450,120 @@ function pickCalls(events, base, until) {
   return { selected, graded: gradedOf(selected), after: startedAfter(events, { since: base.since, dryRun: base.dryRun, until }) };
 }
 
-async function main() {
-  // First of all, before the flags, the config or any network step, so a run that stops for any reason, a Ctrl-C or a
-  // tool timeout included, never leaves an older grade as this run's. The fresh grade replaces this at the end (R3-9).
-  writeNotice('started grading and has not finished. A run that is still going replaces this notice when it ends. If none is, it stopped before it could grade, so run it again.');
+/**
+ * The four tests, the sweep and the timing, with the calls graded against one ORG_NAME and DEMO_SUBSCRIPTION_ID.
+ * lenientTemplates sets aside what is wrong with the calls' template lists, to see whether that is all that fails (G1).
+ */
+function gradeWith(run, values, { lenientTemplates = false } = {}) {
+  const { events, base, deadline, webhook, config, block } = run;
+  const picked = pickCalls(events, { ...base, ...values, lenientTemplates }, deadline.iso);
+  const swept = sweep(windowCalls(events, { since: base.since, dryRun: base.dryRun }), { pin: config.pin, subscriptionId: values.subscriptionId });
+  const times = timing(picked.graded, webhook.found ? webhook.event : null, deadline.iso);
+  const results = pilotTests({ main: picked.selected.main, fox: picked.selected.fox, swept, webhook, late: times.late });
+  const warnings = block.hours ? hoursWarnings(picked.graded, block.hours.rows) : [];
+  return { ...picked, swept, times, results, warnings, passed: results.tests.every((t) => t.pass) && stops(swept).length === 0 };
+}
+
+const valuesText = ({ orgName, subscriptionId }) => `ORG_NAME ${JSON.stringify(orgName)} and DEMO_SUBSCRIPTION_ID ${subscriptionId}`;
+
+/** What is wrong with each template list, a list src/template-history.js lacks or one with sentences no one reviewed. */
+const troubleText = (t) => (t.unknown ? `the template list ${t.hash}, which src/template-history.js does not have`
+  : `the template list ${t.hash}, whose sentences ${t.unreviewed.map((sentence) => JSON.stringify(sentence)).join(', ')} the review in src/vocabulary.js never passed with their claims`);
+const troublesText = (troubles) => troubles.map(troubleText).join(', and ');
+
+/** How to clear each kind of template trouble, so the calls can be graded (R4-1, R4-2). */
+function troubleFixes(troubles) {
+  return [
+    troubles.some((t) => t.unknown) && 'Grade with the code those calls were made with, after npm run vocabulary there, so its src/template-history.js has the list.',
+    troubles.some((t) => !t.unknown) && 'Read each of those sentences. If it claims nothing, add it to CLAIM_FREE in src/vocabulary.js, and if its claims cover what it says, add it to CLAIMED there. Else fix it in src/say.js and make those calls again. Then run npm run vocabulary and npm test.',
+  ].filter(Boolean);
+}
+
+/**
+ * The notice for a grade that passes only with the config the calls logged (R4-3), or only with their template lists
+ * set aside (G1). Neither is a fail, and neither is a pass.
+ */
+function refusalReason({ logged, configured, mismatch, troubles }) {
+  const why = [mismatch && `every graded call logged ${valuesText(logged)}, but the config now names ${valuesText(configured)}`,
+    troubles.length > 0 && `graded calls logged ${troublesText(troubles)}, so their replies can't be checked`].filter(Boolean);
+  const how = [mismatch && 'graded with the values the calls logged', troubles.length > 0 && 'with those calls\' template lists set aside'].filter(Boolean).join(' and ');
+  const fixes = [mismatch && 'Set ORG_NAME and DEMO_SUBSCRIPTION_ID in .env to the values the calls logged.', ...troubleFixes(troubles)].filter(Boolean);
+  return `refused to grade, because ${why.join(', and ')}. ${how.charAt(0).toUpperCase()}${how.slice(1)}, every test passes, so this is not a fail, and it is not a pass either. ${fixes.join(' ')} Then grade again.`;
+}
+
+const configNote = (logged, configured) => `Every graded call logged ${valuesText(logged)}, but the config names ${valuesText(configured)}. So the calls were graded with the values they logged, and they fail even so.`;
+
+const troublesNote = (troubles) => `Graded calls logged ${troublesText(troubles)}, so those calls fail the facts check. With their lists set aside the grade still fails, so it is written as a FAIL. ${troubleFixes(troubles).join(' ')}`;
+
+const othersNote = (troubles) => `Edge or other calls, recorded and never scored, logged ${troublesText(troubles)}.`;
+
+/** Reads the flags, the config and the ledger, and picks the calls. Returns a reason to stop when there is nothing to grade. */
+function prepare() {
   const flags = readFlags(process.argv.slice(2), process.env);
   const config = loadConfig(process.env, { partial: true });
   const ledgerPath = flags.ledger ?? config.ledgerPath;
   const since = readSince(flags.since);
   const ledger = createLedger({ path: ledgerPath });
   const events = ledger.all();
-  const realCount = latestCallsByScript(events, { since }).size;
   // With no real calls, grade the dry-run calls so the run is visible, but never as a pass.
-  const dryRun = realCount === 0 && latestCallsByScript(events, { since, dryRun: true }).size > 0;
-  const base = { since, dryRun, orgName: config.orgName, subscriptionId: config.demoSubscriptionId };
-  let picked = pickCalls(events, base, DEADLINE);
-  if (picked.graded.length === 0 && picked.after.length === 0) {
+  const dryRun = latestCallsByScript(events, { since }).size === 0 && latestCallsByScript(events, { since, dryRun: true }).size > 0;
+  const configured = { orgName: config.orgName, subscriptionId: config.demoSubscriptionId };
+  const base = { since, dryRun, ...configured };
+  const first = pickCalls(events, base, DEADLINE);
+  const run = { flags, config, ledgerPath, since, ledger, events, dryRun, configured, base };
+  if (first.graded.length === 0 && first.after.length === 0) {
     const where = `${ledgerPath}${since ? ` since ${since}` : ''}`;
-    noGrade(`found no scripted calls to grade in \`${where}\`.`, `No scripted calls found in ${where}. Nothing to grade, so ${RESULTS_FILE} now says so.`, EXIT_FAIL);
-    return;
+    return { ...run, stop: [`found no scripted calls to grade in \`${where}\`.`, `No scripted calls found in ${where}. Nothing to grade, so ${RESULTS_FILE} now says so.`, EXIT_FAIL] };
   }
-  const mock = isMockConfig(config) || picked.graded.some((c) => c.mock) || picked.after.some((c) => c.mock);
+  const mock = isMockConfig(config) || first.graded.some((c) => c.mock) || first.after.some((c) => c.mock);
   const refusal = mock ? 'MOCK' : dryRun ? 'DRY' : null;
   const block = refusal ? {} : realGradeBlock(config, flags.hours);
-  if (block.reason) {
-    noGrade(block.reason, `pilot-check ${block.reason} ${RESULTS_FILE} now says so.`, EXIT_REFUSED);
-    return;
-  }
+  if (block.reason) return { ...run, stop: [block.reason, `pilot-check ${block.reason} ${RESULTS_FILE} now says so.`, EXIT_REFUSED] };
   const deadline = block.hours ? effectiveDeadline(block.hours.rows, DEADLINE) : { iso: DEADLINE, bySixthHour: false, sixthHourEnd: null };
-  if (deadline.iso !== DEADLINE) picked = pickCalls(events, base, deadline.iso);
-  const { selected, graded, after } = picked;
+  const picked = deadline.iso === DEADLINE ? first : pickCalls(events, base, deadline.iso);
+  return { ...run, refusal, block, deadline, picked };
+}
+
+function runNotes({ dryRun, config, picked }) {
+  const { after } = picked;
   const notes = dryRun ? ['This ledger holds only dry-run calls. A dry run never counts toward the bar.'] : [];
   if (!config.pin) notes.push('PILOT_PIN is not set, so the ledger was not searched for the PIN.');
   if (after.length > 0) notes.push(`${after.length} scripted ${after.length === 1 ? 'call' : 'calls'} started after the deadline, so ${after.length === 1 ? 'it is' : 'they are'} recorded, not scored. The writes and safety checks still cover them.`);
-  const invoiceId = idOf(selected.main.get(5), 'send_invoice')?.targetId ?? null;
+  return notes;
+}
+
+async function main() {
+  // First of all, before the flags, the config or any network step, so a run that stops for any reason, a Ctrl-C or a
+  // tool timeout included, never leaves an older grade as this run's. The fresh grade replaces this at the end (R3-9).
+  writeNotice('started grading and has not finished. A run that is still going replaces this notice when it ends. If none is, it stopped before it could grade, so run it again.');
+  const run = prepare();
+  if (run.stop) {
+    noGrade(...run.stop);
+    return;
+  }
+  const { flags, config, ledgerPath, since, ledger, refusal, block, deadline, picked, configured } = run;
+  const notes = runNotes(run);
+  const invoiceId = idOf(picked.selected.main.get(5), 'send_invoice')?.targetId ?? null;
   const webhook = await webhookEvidence({ config, invoiceId, renderUrl: flags.render ?? null, resendAsked: Boolean(flags.resend), since, ledger, ledgerPath, notes, save: !refusal });
-  const swept = sweep(windowCalls(events, { since, dryRun }), { pin: config.pin, subscriptionId: config.demoSubscriptionId });
-  const times = timing(graded, webhook.found ? webhook.event : null, deadline.iso);
-  const results = pilotTests({ main: selected.main, fox: selected.fox, swept, webhook, late: times.late });
-  const warnings = block.hours ? hoursWarnings(graded, block.hours.rows) : [];
-  const text = report({ refusal, selected, after, results, webhook, swept, times, notes, ledgerPath, since, hours: block.hours ?? null, deadline, warnings });
+  // When every graded call logged one ORG_NAME and DEMO_SUBSCRIPTION_ID and the config names others, the calls are
+  // graded with what they logged. A pass then is refused, since the config is wrong, and a fail is still a fail (R4-3).
+  const logged = refusal ? null : loggedConfig(picked.graded);
+  const mismatch = Boolean(logged) && (logged.orgName !== configured.orgName || logged.subscriptionId !== configured.subscriptionId);
+  const values = mismatch ? logged : configured;
+  const graded = gradeWith({ ...run, webhook }, values);
+  // A graded call whose template list can't vouch for its replies fails the facts check. When that is all that keeps
+  // the run from a PASS, the grade is refused, and any other fail or stop is still written as one, with a note (G1).
+  const troubles = refusal ? { scored: [], others: [] } : templateTroubles(graded.selected);
+  const lenient = troubles.scored.length > 0 ? gradeWith({ ...run, webhook }, values, { lenientTemplates: true }) : graded;
+  if ((mismatch || troubles.scored.length > 0) && lenient.passed) {
+    const reason = refusalReason({ logged, configured, mismatch, troubles: troubles.scored });
+    noGrade(reason, `pilot-check ${reason} ${RESULTS_FILE} now says so.`, EXIT_REFUSED);
+    return;
+  }
+  if (mismatch) notes.push(configNote(logged, configured));
+  if (troubles.scored.length > 0) notes.push(troublesNote(troubles.scored));
+  if (troubles.others.length > 0) notes.push(othersNote(troubles.others));
+  const text = report({ refusal, selected: graded.selected, after: graded.after, results: graded.results, webhook, swept: graded.swept, times: graded.times, notes, ledgerPath, since, hours: block.hours ?? null, deadline, warnings: graded.warnings });
   if (refusal) {
     const label = `${refusal} RUN, does not count`;
     writeNotice(`graded \`${ledgerPath}\` and refused it, ${label}.`);
@@ -435,9 +571,9 @@ async function main() {
     process.exitCode = EXIT_REFUSED;
     return;
   }
-  writeGrade(text);
-  process.stdout.write(`${text}\nWrote ${RESULTS_FILE}.\n`);
-  process.exitCode = results.tests.every((t) => t.pass) && stops(swept).length === 0 ? 0 : EXIT_FAIL;
+  const kept = writeGrade(text);
+  process.stdout.write(`${text}\nWrote ${RESULTS_FILE}, and kept this grade as ${kept}.\n`);
+  process.exitCode = graded.passed ? 0 : EXIT_FAIL;
 }
 
 main().catch((error) => {

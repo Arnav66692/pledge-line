@@ -23,13 +23,23 @@ const ANYTHING_ELSE = 'What else can I help with?';
 // Not "may", which is also a month, so no month name is ever one of the line's own words (check.js holds replies to them).
 const UPDATE_LATER = 'It can take a minute to update.';
 const YES_OR_NO = 'Please say yes or no.';
+const STAFF_CHECK = 'Staff will check on it.';
+const STAFF_HOURS = 'Staff can help during open hours.';
 
 const fact = (kind, value, source) => ({ kind, value, source });
-const part = (text, facts = []) => ({ text, facts });
+
+/** The sentences of a text, each ending at a period, question mark or exclamation mark, spaces collapsed. */
+export const sentencesOf = (text) => String(text ?? '').replace(/\s+/g, ' ').trim().split(/(?<=[.?!]) /).filter(Boolean);
+
+// A claim ties a sentence to what it says PayPal or the line did, such as "Done." to an ok write in that turn.
+// A claim is not spoken as its value, so it names its sentence, and check.js proves it against the call's own
+// events up to the reply (R4-1). Each sentence of a part gets each of the part's claims.
+const part = (text, facts = [], claims = []) => ({ text, facts, claims: sentencesOf(text).flatMap((sentence) => claims.map((claim) => ({ claim, sentence }))) });
+const claim = (text, name) => part(text, [], [name]);
 
 export function combine(...parts) {
   const items = parts.filter(Boolean).map((p) => (typeof p === 'string' ? part(p) : p));
-  return { text: items.map((p) => p.text).filter(Boolean).join(' '), facts: items.flatMap((p) => p.facts) };
+  return { text: items.map((p) => p.text).filter(Boolean).join(' '), facts: items.flatMap((p) => p.facts), claims: items.flatMap((p) => p.claims ?? []) };
 }
 
 export function numberToWords(n) {
@@ -101,11 +111,15 @@ function giftPhrase(plan) {
   return money ? part(`your monthly gift of ${money.value}`, [money]) : part('your monthly gift');
 }
 
-function shows(sub, plan, lead = 'PayPal shows') {
+// A sentence with no fact to prove it still says PayPal returned the gift or the draft, so it claims that read (R4-1).
+const readClaims = (facts, name) => (facts.length > 0 ? [] : [name]);
+
+function shows(sub, plan, lead = 'PayPal shows', end = '.', extra = []) {
   const gift = giftPhrase(plan);
   const status = derived('subscription.status', sub, 'status');
   const tail = status ? ` as ${status.value}` : '';
-  return part(`${lead} ${gift.text}${tail}.`, [...gift.facts, ...(status ? [status] : [])]);
+  const facts = [...gift.facts, ...(status ? [status] : [])];
+  return part(`${lead} ${gift.text}${tail}${end}`, facts, [...readClaims(facts, 'gift_read'), ...extra]);
 }
 
 function invoicePhrase(inv) {
@@ -122,14 +136,18 @@ function invoicePhrase(inv) {
 
 export const greeting = (orgName) => part(`Thanks for calling the ${orgName} donor line. This is a PayPal sandbox demo, so no real money moves. To keep your gift safe, please enter your PIN on the keypad, or say its digits.`);
 export const askPin = () => part('Please enter your PIN on the keypad, or say its digits.');
-export const pinOk = () => part('Thanks, you are verified. I can read you your monthly gift, pause it, restart it, cancel it, or set up a one-time gift. What would you like to do?');
-export const pinBad = (triesLeft) => part(`That PIN didn't match. You have ${numberToWords(triesLeft)} ${triesLeft === 1 ? 'try' : 'tries'} left.`);
-export const pinLocked = () => part("That PIN didn't match too many times, so I've locked this call to keep your gift safe. Please call back later. Goodbye.");
+export const pinOk = () => combine(claim('Thanks, you are verified.', 'pin_ok'),
+  'I can read you your monthly gift, pause it, restart it, cancel it, or set up a one-time gift. What would you like to do?');
+export const pinBad = (triesLeft) => combine(claim("That PIN didn't match.", 'pin_bad'),
+  claim(`You have ${numberToWords(triesLeft)} ${triesLeft === 1 ? 'try' : 'tries'} left.`, `tries_left=${triesLeft}`));
+export const pinLocked = () => combine(claim("That PIN didn't match too many times, so I've locked this call to keep your gift safe.", 'pin_locked'),
+  'Please call back later. Goodbye.');
 
 export function giftStatus(sub, plan, { timeZone } = {}) {
   const base = shows(sub, plan);
   const date = sub?.status === 'ACTIVE' ? derived('subscription.next_billing_time', sub, 'date', timeZone) : null;
-  const next = date ? part(`The next gift is on ${date.value}.`, [date]) : null;
+  // A next gift is only taken while the gift is active, so the sentence claims that, beside its date (R4-1).
+  const next = date ? part(`The next gift is on ${date.value}.`, [date], ['gift_active']) : null;
   return combine(base, next, ANYTHING_ELSE);
 }
 
@@ -146,51 +164,59 @@ export const pauseConfirm = (sub, plan) => combine(shows(sub, plan),
 const VERBS = Object.freeze({ suspend: 'pause', activate: 'restart', cancel: 'cancel', send_invoice: 'send' });
 const EXPECTED = Object.freeze({ suspend: 'SUSPENDED', activate: 'ACTIVE', cancel: 'CANCELLED' });
 
+// "Nothing to pause" says the gift's status rules the change out, so it claims that, and check.js proves it against the read (R4-1).
 export function nothingTo(kind, sub, plan) {
-  const base = shows(sub, plan);
-  return combine(part(base.text.replace(/\.$/, `, so there is nothing to ${VERBS[kind]} right now.`), base.facts), ANYTHING_ELSE);
+  return combine(shows(sub, plan, 'PayPal shows', `, so there is nothing to ${VERBS[kind]} right now.`, [`nothing_to=${kind}`]), ANYTHING_ELSE);
 }
 
 export function invoiceConfirm(inv, orgName) {
   const phrase = invoicePhrase(inv);
   const email = derived('invoice.recipient_email', inv, 'email');
-  const to = email ? part(`It would go to the email on file, ${email.value}.`, [email]) : part('It would go to the email on file.');
-  return combine(part(`PayPal shows a one-time gift ${phrase.text}.`, phrase.facts), to,
+  const to = email ? part(`It would go to the email on file, ${email.value}.`, [email]) : claim('It would go to the email on file.', 'invoice_read');
+  return combine(part(`PayPal shows a one-time gift ${phrase.text}.`, phrase.facts, readClaims(phrase.facts, 'invoice_read')), to,
     `The email comes from PayPal, shows ${orgName}, and has a link to pay. It never asks you to call a number. Should I send it?`, YES_OR_NO);
 }
 
-export function afterWrite(kind, snapshotAfter, plan, { ok = true } = {}) {
-  if (kind === 'send_invoice') return afterSend(snapshotAfter, ok);
-  if (!snapshotAfter) return combine("PayPal didn't return the gift just now, so I can't confirm the change. Staff will check on it.");
+// A write PayPal answered with no clear yes or no, a timeout or a 5xx, may have gone through, so the line read PayPal
+// again and says what it shows, rather than say PayPal refused it (L2).
+const UNCLEAR_ANSWER = "PayPal didn't answer clearly, so I checked again.";
+const failedLead = (unclear, sentence, name) => (unclear ? claim(UNCLEAR_ANSWER, 'write_unclear') : claim(sentence, name));
+
+// Each sentence that says how a write went claims it, so check.js proves it against that turn's write and reads (R4-1).
+export function afterWrite(kind, snapshotAfter, plan, { ok = true, unclear = false } = {}) {
+  if (kind === 'send_invoice') return afterSend(snapshotAfter, ok, unclear);
+  if (!snapshotAfter) return combine(claim("PayPal didn't return the gift just now, so I can't confirm the change.", 'gift_unread'), STAFF_CHECK);
   const changed = snapshotAfter.status === EXPECTED[kind];
-  if (!ok) return combine("PayPal didn't accept that change.", shows(snapshotAfter, plan, 'PayPal now shows'), ANYTHING_ELSE);
-  if (!changed) return combine(`I asked PayPal to ${VERBS[kind]} it.`, shows(snapshotAfter, plan, 'PayPal now shows'), UPDATE_LATER, ANYTHING_ELSE);
-  const tail = kind === 'suspend' ? 'You can restart it any time.' : null;
-  return combine('Done.', shows(snapshotAfter, plan, 'PayPal now shows'), tail, ANYTHING_ELSE);
+  const now = shows(snapshotAfter, plan, 'PayPal now shows');
+  if (!ok) return combine(failedLead(unclear, "PayPal didn't accept that change.", 'write_failed'), now, ANYTHING_ELSE);
+  if (!changed) return combine(claim(`I asked PayPal to ${VERBS[kind]} it.`, `wrote_${kind}`), now, claim(UPDATE_LATER, 'wrote'), ANYTHING_ELSE);
+  const tail = kind === 'suspend' ? claim('You can restart it any time.', 'wrote_suspend') : null;
+  return combine(claim('Done.', 'wrote'), now, tail, ANYTHING_ELSE);
 }
 
-function afterSend(inv, ok) {
-  if (!inv) return combine("I can't find that invoice in PayPal now, so I can't confirm it went out. Staff will check on it.");
+function afterSend(inv, ok, unclear) {
+  if (!inv) return combine(claim("I can't find that invoice in PayPal now, so I can't confirm it went out.", 'invoice_unread'), STAFF_CHECK);
   const phrase = invoicePhrase(inv);
-  const now = part(`PayPal now shows ${phrase.text}.`, phrase.facts);
-  if (!ok) return combine("PayPal didn't accept the send.", now, ANYTHING_ELSE);
-  if (inv.status === 'DRAFT') return combine('I asked PayPal to send it.', now, UPDATE_LATER, ANYTHING_ELSE);
-  return combine('Done.', now, 'PayPal will email it to the address on file.', ANYTHING_ELSE);
+  const now = part(`PayPal now shows ${phrase.text}.`, phrase.facts, readClaims(phrase.facts, 'invoice_read'));
+  if (!ok) return combine(failedLead(unclear, "PayPal didn't accept the send.", 'send_failed'), now, ANYTHING_ELSE);
+  if (inv.status === 'DRAFT') return combine(claim('I asked PayPal to send it.', 'wrote_send_invoice'), now, claim(UPDATE_LATER, 'wrote'), ANYTHING_ELSE);
+  return combine(claim('Done.', 'wrote'), now, claim('PayPal will email it to the address on file.', 'wrote_send_invoice'), ANYTHING_ELSE);
 }
 
-export const noPause = () => part('OK, no pause.');
-export const declined = () => part(`OK, I won't change anything, so your monthly gift stays as it is. ${ANYTHING_ELSE}`);
+export const noPause = () => claim('OK, no pause.', 'no_pause');
+export const declined = () => combine(claim("OK, I won't change anything, so your monthly gift stays as it is.", 'unchanged'), ANYTHING_ELSE);
 export const draftDeleted = (notFound) => (notFound
-  ? part(`OK, I deleted that invoice before it went out, and PayPal no longer shows it. ${ANYTHING_ELSE}`)
-  : part('OK. I asked PayPal to delete that invoice, but PayPal still shows it. Staff will check on it.'));
-export const otherEmail = () => part("For your safety, I can only send to the email already on file with PayPal, so I won't use a new email.");
+  ? combine(claim('OK, I deleted that invoice before it went out, and PayPal no longer shows it.', 'draft_deleted'), ANYTHING_ELSE)
+  : combine('OK.', claim('I asked PayPal to delete that invoice, but PayPal still shows it.', 'draft_kept'), STAFF_CHECK));
+export const otherEmail = () => claim("For your safety, I can only send to the email already on file with PayPal, so I won't use a new email.", 'email_refused');
 export const help = () => part('I can read you your monthly gift, pause it, restart it, or cancel it. I can also set up a one-time gift as a PayPal invoice to the email on file, or ask staff to call you back.');
-export const repeat = (lastText) => (lastText && lastText.text ? { text: lastText.text, facts: lastText.facts ?? [] } : unclear());
+// A repeat keeps the claims of the reply it repeats, and call.js logs which turn that was, so check.js proves them there.
+export const repeat = (lastText) => (lastText && lastText.text ? { text: lastText.text, facts: lastText.facts ?? [], claims: lastText.claims ?? [] } : unclear());
 export const goodbye = () => part('Thanks for calling. Goodbye.');
 export const unclear = () => part("Sorry, I didn't catch that. You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift.");
-export const notVerified = () => part('I need your PIN first. Please enter it on the keypad.');
-export const noSubscription = () => part("I couldn't find a monthly gift in PayPal for this line. Staff can help during open hours.");
-export const noEmail = () => part("PayPal has no email on file for this gift, so I can't send an invoice. Staff can help during open hours.");
+export const notVerified = () => combine(claim('I need your PIN first.', 'not_verified'), 'Please enter it on the keypad.');
+export const noSubscription = () => combine(claim("I couldn't find a monthly gift in PayPal for this line.", 'no_gift'), STAFF_HOURS);
+export const noEmail = () => combine(claim("PayPal has no email on file for this gift, so I can't send an invoice.", 'no_email'), STAFF_HOURS);
 /** "from one dollar to five hundred dollars". check.js accepts the config facts only inside this phrase. */
 export const limitsPhrase = (min, max) => `from ${numberToWords(min)} ${min === 1 ? 'dollar' : 'dollars'} to ${numberToWords(max)} dollars`;
 
@@ -206,16 +232,17 @@ export function amountOutOfRange(min, max) {
 export const amountForFile = () => part(AMOUNT_FOR_FILE);
 /** True when the line's last reply asked for an amount, so a bare number in the next turn answers it. */
 export const asksForAmount = (text) => typeof text === 'string' && (text.includes(AMOUNT_QUESTION) || text.includes(AMOUNT_FOR_FILE));
-export const nothingPending = () => part("There's nothing waiting for a yes or no right now. What would you like to do?");
-export const needYesOrNo = () => part('I need a clear yes or no before I change anything.');
-export const callEnded = () => part('This call has ended. Please start a new call if you need anything else.');
-export const staffCallback = () => part("OK, I've noted that you'd like a call. Staff will call you back during open hours.");
-export const paypalProblem = () => part("Sorry, I couldn't get a clear answer from PayPal just now, so I didn't change anything. Please try again in a minute.");
+export const nothingPending = () => combine(claim("There's nothing waiting for a yes or no right now.", 'nothing_pending'), 'What would you like to do?');
+export const needYesOrNo = () => claim('I need a clear yes or no before I change anything.', 'unchanged');
+export const callEnded = () => combine(claim('This call has ended.', 'call_ended'), 'Please start a new call if you need anything else.');
+export const staffCallback = () => claim("OK, I've noted that you'd like a call. Staff will call you back during open hours.", 'callback_noted');
+export const paypalProblem = () => combine(claim("Sorry, I couldn't get a clear answer from PayPal just now, so I didn't change anything.", 'paypal_unclear'),
+  'Please try again in a minute.');
 export const tooLong = () => part('Sorry, that was a lot at once. Please say it in a shorter way.');
-export const turnLimit = () => part('This call has reached its limit. Please start a new call. Goodbye.');
-export const expiredNotice = () => part("That earlier request timed out, so I didn't change anything.");
-export const setAside = () => part("I've set that earlier request aside, so nothing changed.");
-export const pinLimit = () => part("There have been too many wrong PINs from here, so I can't check a PIN right now. Please try again later.");
+export const turnLimit = () => combine(claim('This call has reached its limit.', 'turn_limit'), 'Please start a new call. Goodbye.');
+export const expiredNotice = () => claim("That earlier request timed out, so I didn't change anything.", 'timed_out');
+export const setAside = () => claim("I've set that earlier request aside, so nothing changed.", 'set_aside');
+export const pinLimit = () => combine(claim("There have been too many wrong PINs from here, so I can't check a PIN right now.", 'pin_limit'), 'Please try again later.');
 
 /**
  * The router only picks one of these keys. The line never speaks words the model wrote (I3),
@@ -351,5 +378,3 @@ export function slotFacts(text, facts = [], orgName = null) {
   return out;
 }
 
-/** The sentences of a text, each ending at a period, question mark or exclamation mark, spaces collapsed. */
-export const sentencesOf = (text) => String(text ?? '').replace(/\s+/g, ' ').trim().split(/(?<=[.?!]) /).filter(Boolean);

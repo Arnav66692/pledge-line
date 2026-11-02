@@ -3,6 +3,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { after } from 'node:test';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadConfig } from '../src/config.js';
 import { createLedger } from '../src/ledger.js';
 import { createMockPayPal } from '../src/paypal-mock.js';
@@ -24,6 +25,29 @@ export function tempDir() {
 
 export const tempLedgerPath = () => path.join(tempDir(), 'ledger.jsonl');
 
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * A scratch copy of the line's code with some text swapped, as a later edit or a slip would make, for tests that
+ * run another version of the code. Each edit is [file, from, to], and an edit marked optional skips a file without
+ * that text. node_modules is linked, not copied, and the cleanup removes only the link.
+ */
+export function copyProject(edits = []) {
+  const dir = tempDir();
+  for (const name of ['src', 'scripts', 'package.json']) fs.cpSync(path.join(ROOT, name), path.join(dir, name), { recursive: true });
+  fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
+  for (const [file, from, to, { optional = false } = {}] of edits) {
+    const target = path.join(dir, file);
+    const text = fs.readFileSync(target, 'utf8');
+    if (!text.includes(from)) {
+      if (optional) continue;
+      throw new Error(`${file} has no ${JSON.stringify(from)}`);
+    }
+    fs.writeFileSync(target, text.split(from).join(to));
+  }
+  return dir;
+}
+
 export function makeClock(start = Date.parse('2026-11-03T18:00:00Z')) {
   const clock = { t: start };
   clock.now = () => new Date(clock.t);
@@ -31,14 +55,23 @@ export function makeClock(start = Date.parse('2026-11-03T18:00:00Z')) {
   return clock;
 }
 
-export function buildStack({ env = {}, clock = makeClock(), mockOptions = {}, router = null } = {}) {
-  const config = loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'rules', ...env });
-  const ledger = createLedger({ path: tempLedgerPath(), now: clock.now });
-  const tokens = createTokens({ now: clock.now, ttlMs: config.limits.tokenTtlMs });
-  const paypal = createMockPayPal({ tokens, now: clock.now, ...mockOptions });
-  const gate = createGate({ ledger, tokens, now: clock.now, pendingTtlMs: config.limits.pendingTtlMs });
-  const routerImpl = router ?? createRouter({ mode: 'rules' });
-  const calls = createCallService({ config, ledger, paypal, router: routerImpl, gate, now: clock.now, sleep: async () => {} });
+const OWN_CODE = Object.freeze({ loadConfig, createLedger, createMockPayPal, createTokens, createGate, createRouter, createCallService });
+
+/** The modules of a copy made by copyProject, so a test can build calls and grade them with that version of the code. */
+export async function codeOf(dir) {
+  const load = (name) => import(pathToFileURL(path.join(dir, 'src', `${name}.js`)).href);
+  const [config, ledger, mock, gate, router, call, check] = await Promise.all(['config', 'ledger', 'paypal-mock', 'gate', 'router', 'call', 'check'].map(load));
+  return { ...config, ...ledger, ...mock, ...gate, ...router, ...call, check };
+}
+
+export function buildStack({ env = {}, clock = makeClock(), mockOptions = {}, router = null, code = OWN_CODE } = {}) {
+  const config = code.loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'rules', ...env });
+  const ledger = code.createLedger({ path: tempLedgerPath(), now: clock.now });
+  const tokens = code.createTokens({ now: clock.now, ttlMs: config.limits.tokenTtlMs });
+  const paypal = code.createMockPayPal({ tokens, now: clock.now, ...mockOptions });
+  const gate = code.createGate({ ledger, tokens, now: clock.now, pendingTtlMs: config.limits.pendingTtlMs });
+  const routerImpl = router ?? code.createRouter({ mode: 'rules' });
+  const calls = code.createCallService({ config, ledger, paypal, router: routerImpl, gate, now: clock.now, sleep: async () => {} });
   // The turn of the last reply each call received, sent with the next turn as the page does.
   return { config, ledger, tokens, paypal, gate, router: routerImpl, calls, clock, answered: new Map() };
 }

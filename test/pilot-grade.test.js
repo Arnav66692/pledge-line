@@ -6,10 +6,12 @@ import path from 'node:path';
 import { once } from 'node:events';
 import { spawn, spawnSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { scriptByNumber, scriptTurns } from '../src/pilot-scripts.js';
 import { DEADLINE, formatPt, selectCalls, windowCalls, startedAfter, sweep, stops, timing, pilotTests, pinLeaks } from '../src/pilot-grade.js';
-import { buildStack, tempDir } from './helpers.js';
+// Read through the module object, so on older code each new test fails by itself.
+import * as words from '../src/template-words.js';
+import { buildStack, tempDir, copyProject, codeOf } from './helpers.js';
 
 const CHECK_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'pilot-check.js');
 const AGENTS = {
@@ -46,9 +48,9 @@ const asSandbox = (events) => events.map((e) => {
   return copy;
 });
 
-/** Scripts 1 to 10, Script 1 in Safari and the rest in Chrome, then Scripts 2 and 3 typed in Firefox. */
-async function honestPilot({ before = async () => {}, after = async () => {}, safariScript1 = true } = {}) {
-  const stack = buildStack();
+/** Scripts 1 to 10, Script 1 in Safari and the rest in Chrome, then Scripts 2 and 3 typed in Firefox. code is another version of the line. */
+async function honestPilot({ before = async () => {}, after = async () => {}, safariScript1 = true, code = null } = {}) {
+  const stack = buildStack(code ? { code } : {});
   await before(stack);
   for (let n = 1; n <= 10; n += 1) if (n !== 1 || safariScript1) await runAs(stack, n, n === 1 ? 'safari' : 'chrome');
   for (const n of [2, 3]) await runAs(stack, n, 'firefox');
@@ -260,14 +262,21 @@ test('the line\'s own housekeeping after the last heard turn never makes a run l
   }
 });
 
+/** The verified paid event an earlier run saved beside the ledger, so a run of the CLI can pass Test 2 with no Render. */
+function savePaidEvent(ledgerPath, events) {
+  const invoice = events.find((e) => e.type === 'write' && e.kind === 'send_invoice').targetId;
+  const saved = { eventId: 'WH-1', eventType: 'INVOICING.INVOICE.PAID', resourceId: invoice, verified: true, ts: '2026-11-03T18:30:00.000Z', source: 'render', savedAt: '2026-11-03T18:31:00.000Z' };
+  fs.writeFileSync(ledgerPath.replace(/\.jsonl$/, '.paid-webhook.json'), JSON.stringify(saved));
+}
+
 /** The real pilot-check CLI over a sandbox-labelled copy of the events, in a scratch folder, with a scratch Hours log. */
-function cliRun(events, { hours = '| Tue Nov 3 | 9:00 am | 11:00 am | 2 | scripted calls |', env = { DEMO_SUBSCRIPTION_ID: 'I-MOCK0000001' }, args = [] } = {}) {
-  const dir = tempDir();
+function cliRun(events, { hours = '| Tue Nov 3 | 9:00 am | 11:00 am | 2 | scripted calls |', env = { DEMO_SUBSCRIPTION_ID: 'I-MOCK0000001' }, args = [], paid = false, dir = tempDir(), script = CHECK_SCRIPT } = {}) {
   const ledgerPath = path.join(dir, 'ledger.jsonl');
   fs.writeFileSync(ledgerPath, `${events.map((e) => JSON.stringify(e)).join('\n')}\n`);
+  if (paid) savePaidEvent(ledgerPath, events);
   const hoursPath = path.join(dir, 'hours.md');
   fs.writeFileSync(hoursPath, ['## Hours log', '', '| Date | Start | End | Hours | What |', '|---|---|---|---|---|', hours, '| | | | | |', ''].join('\n'));
-  const result = spawnSync(process.execPath, [CHECK_SCRIPT, '--ledger', ledgerPath, '--hours', hoursPath, ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+  const result = spawnSync(process.execPath, [script, '--ledger', ledgerPath, '--hours', hoursPath, ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
   return { ...result, results: fs.readFileSync(path.join(dir, 'PILOT-RESULTS.md'), 'utf8') };
 }
 
@@ -278,9 +287,15 @@ test('pilot-check refuses a real grade without DEMO_SUBSCRIPTION_ID, and holds e
   assert.match(refused.results, /no grade[\s\S]*DEMO_SUBSCRIPTION_ID is not configured/);
   const graded = cliRun(events);
   assert.match(graded.results, /Test 3, read-back truth in 10 of 10 calls\.\*\* PASS/);
-  const other = cliRun(events, { env: { DEMO_SUBSCRIPTION_ID: 'I-OTHER00001' } });
+  // Calls that logged no subscription, as an older line's did, are held to the configured one as before.
+  const unlogged = events.map((e) => (e.type === 'call_start' ? { ...e, subscriptionId: undefined } : e));
+  const other = cliRun(unlogged, { env: { DEMO_SUBSCRIPTION_ID: 'I-OTHER00001' } });
   assert.match(other.results, /Test 3, read-back truth in 10 of 10 calls\.\*\* FAIL/);
-  assert.match(other.results, /a read of I-MOCK0000001, not of the pilot's subscription, I-OTHER00001/);
+  assert.match(other.results, /a read of I-MOCK0000001, not of I-OTHER00001, the subscription this call is held to/);
+  // Calls that all logged I-MOCK0000001 and pass with it are refused under another one, never failed (R4-3).
+  const regrade = cliRun(events, { env: { DEMO_SUBSCRIPTION_ID: 'I-OTHER00001' }, paid: true });
+  assert.equal(regrade.status, 2, regrade.stdout);
+  assert.match(regrade.results, /^# Pilot results, no grade[\s\S]*DEMO_SUBSCRIPTION_ID I-MOCK0000001, but the config now names [^\n]*DEMO_SUBSCRIPTION_ID I-OTHER00001/);
 });
 
 test('pilot-check reads the Hours log, refuses an empty or unreadable one, and fails anything after the 6th logged hour', async () => {
@@ -494,4 +509,210 @@ test('every test lists its clauses with the call each used, so a FAIL always say
   // With every voice reply muted, the gap clause says so.
   const muted = grade(rerun.events.map((e) => (e.type === 'gap' ? { ...e, muted: true } : e))).tests[3];
   assert.ok(muted.clauses.some((c) => !c.pass && /^No unmuted voice turn was timed, and \d+ muted turns don't count$/.test(c.text)), JSON.stringify(muted.clauses));
+});
+
+const passes = (text) => (text.match(/\*\* PASS/g) ?? []).length;
+
+test('a regrade after a later template change holds each call to the list it was spoken with, and an unknown list is refused, never failed (R4-2)', async () => {
+  const { events } = await honestPilot();
+  assert.ok(events.filter((e) => e.type === 'call_start').every((e) => e.templates === words.TEMPLATE_HASH && e.subscriptionId === 'I-MOCK0000001'),
+    'call_start logs the template list and the configured subscription');
+  // After the pilot, one template is reworded, its claim-free entry with it, and npm run vocabulary is run, as its comment says.
+  const dir = copyProject([
+    ['src/say.js', "const ANYTHING_ELSE = 'What else can I help with?';", "const ANYTHING_ELSE = 'Is there anything else I can help with?';"],
+    ['src/vocabulary.js', "  'What else can I help with?',\n", "  'Is there anything else I can help with?',\n", { optional: true }],
+  ]);
+  const built = spawnSync(process.execPath, [path.join(dir, 'src', 'vocabulary.js')], { cwd: dir, encoding: 'utf8' });
+  assert.equal(built.status, 0, built.stderr);
+  const regrade = cliRun(events, { script: path.join(dir, 'scripts', 'pilot-check.js'), env: REAL_ENV, paid: true });
+  assert.equal(regrade.status, 0, regrade.stdout);
+  assert.equal(passes(regrade.results), 4, 'every call is held to the list it was spoken with, not to the reworded one');
+  const { TEMPLATE_HISTORY } = await import('../src/template-history.js');
+  const later = (await import(pathToFileURL(path.join(dir, 'src', 'template-history.js')).href)).TEMPLATE_HISTORY;
+  assert.deepEqual(Object.keys(later), [...Object.keys(TEMPLATE_HISTORY), Object.keys(later).at(-1)], 'npm run vocabulary added one list and kept every earlier one');
+  // A ledger whose calls logged a list this history lacks is refused with the hash named, and nothing fails.
+  const unknown = events.map((e) => (e.type === 'call_start' ? { ...e, templates: 'feedfacecafe' } : e));
+  const refused = cliRun(unknown, { env: REAL_ENV, paid: true });
+  assert.equal(refused.status, 2, refused.stdout);
+  assert.match(refused.results, /^# Pilot results, no grade[\s\S]*logged the template list feedfacecafe, which src\/template-history\.js does not have/);
+  assert.doesNotMatch(`${refused.results}${refused.stdout}`, /\*\* FAIL/);
+});
+
+test('every real grade is kept under its own PT time, and a regrade with another ORG_NAME or DEMO_SUBSCRIPTION_ID is refused naming both values (R4-3)', async () => {
+  const { events } = await honestPilot();
+  const dir = tempDir();
+  const kept = () => (fs.existsSync(path.join(dir, 'pilot-results')) ? fs.readdirSync(path.join(dir, 'pilot-results')) : []);
+  // A grade the older pilot-check wrote, which no folder holds yet, is kept before anything replaces it.
+  const older = '# Pilot results\n\n- **Test 1, gift care end to end.** PASS\n';
+  fs.writeFileSync(path.join(dir, 'PILOT-RESULTS.md'), older);
+  // Wednesday night the pilot is graded, and graded again to check. Each grade says where it was kept.
+  const graded = [1, 2].map(() => cliRun(events, { dir, env: REAL_ENV, paid: true }));
+  for (const run of graded) assert.equal(run.status, 0, run.stdout);
+  const keptAs = graded.map((run) => run.stdout.match(/kept this grade as (pilot-results\/\S+\.md)\.\n/)?.[1]);
+  // Later, ORG_NAME changes for a demo video, then npm run seed makes a new subscription, and the ledger is regraded each time.
+  const demo = cliRun(events, { dir, env: { ...REAL_ENV, ORG_NAME: 'Hope Valley Pantry' }, paid: true });
+  assert.equal(demo.status, 2, demo.stdout);
+  assert.match(demo.results, /^# Pilot results, no grade[\s\S]*every graded call logged ORG_NAME "Sunny Hollow Pantry" and DEMO_SUBSCRIPTION_ID I-MOCK0000001, but the config now names ORG_NAME "Hope Valley Pantry" and DEMO_SUBSCRIPTION_ID I-MOCK0000001/);
+  const reseeded = cliRun(events, { dir, env: { ...REAL_ENV, DEMO_SUBSCRIPTION_ID: 'I-SBXNEW0000001' }, paid: true });
+  assert.equal(reseeded.status, 2, reseeded.stdout);
+  assert.match(reseeded.results, /but the config now names ORG_NAME "Sunny Hollow Pantry" and DEMO_SUBSCRIPTION_ID I-SBXNEW0000001/);
+  for (const run of [demo, reseeded]) assert.doesNotMatch(`${run.results}${run.stdout}`, /\*\* (FAIL|PASS)/, 'a refusal is never a fail and never a pass');
+  // The older grade and both real grades are still on disk, each under its own PT time, and the notice points to the newest.
+  const texts = kept().map((name) => fs.readFileSync(path.join(dir, 'pilot-results', name), 'utf8'));
+  assert.equal(kept().length, 3);
+  assert.ok(kept().every((name) => /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-PT(-\d+)?\.md$/.test(name)), kept().join(', '));
+  assert.equal(texts.filter((text) => text === older).length, 1);
+  for (const file of keptAs) assert.equal(passes(fs.readFileSync(path.join(dir, file), 'utf8')), 4, file);
+  assert.ok(reseeded.results.includes(`Every real grade is kept in \`pilot-results/\`, the latest in \`${keptAs[1]}\`.`), reseeded.results);
+});
+
+test('calls that disagree with each other still fail as before, and a refusal never hides a fail of calls graded with their own values (R4-3)', async () => {
+  const { events } = await honestPilot();
+  // One graded call logged another org name, so the calls disagree, and that call fails as it always has.
+  const one = callOf(events, 1, 'safari');
+  const mixed = events.map((e) => (e.callId === one && e.type === 'call_start' ? { ...e, orgName: 'Maple Street Pantry' } : e));
+  const disagree = cliRun(mixed, { env: REAL_ENV, paid: true });
+  assert.equal(disagree.status, 1, disagree.stdout);
+  assert.match(disagree.results, /logged the org name "Maple Street Pantry", but ORG_NAME is "Sunny Hollow Pantry"/);
+  // Every call logged the same values and the config names another org, but Script 6 never deleted its draft.
+  const six = callOf(events, 6, 'chrome');
+  const broken = events.filter((e) => !(e.callId === six && e.type === 'staging_write' && e.kind === 'delete_draft'));
+  const dir = tempDir();
+  const failed = cliRun(broken, { dir, env: { ...REAL_ENV, ORG_NAME: 'Hope Valley Pantry' }, paid: true });
+  assert.equal(failed.status, 1, failed.stdout);
+  assert.match(failed.results, /^# Pilot results\n/);
+  assert.match(failed.results, /Test 2, one-time gift with the trust step\.\*\* FAIL/);
+  assert.match(failed.results, /So the calls were graded with the values they logged, and they fail even so/);
+  assert.doesNotMatch(failed.results, /but ORG_NAME is "Hope Valley Pantry"/, 'graded with the org name the calls logged');
+  assert.equal(fs.readdirSync(path.join(dir, 'pilot-results')).length, 1, 'that fail is a real grade, so it is kept');
+});
+
+test('a result sentence built into say.js by npm run vocabulary alone is refused by pilot-check, never a pass, with a fact slot or a borrowed claim (R4-1)', async () => {
+  const edits = [
+    // cancelConfirm says the gift will stop on its next billing date, a fact proven against PayPal, in a sentence that lies.
+    ['a fact slot', "export const cancelConfirm = (sub, plan) => combine(shows(sub, plan),",
+      "export const cancelConfirm = (sub, plan) => combine(shows(sub, plan), (() => { const d = derived('subscription.next_billing_time', sub, 'date'); return d ? part(`It will stop on ${d.value}.`, [d]) : null; })(),",
+      'It will stop on {subscription.next_billing_time}.'],
+    // A sentence added inside a claimed part takes that part's claim, which says nothing about it.
+    ['a borrowed claim', 'The next gift is on ${date.value}.`', 'The next gift is on ${date.value}. It will stop next month.`', 'It will stop next month.'],
+  ];
+  for (const [label, from, to, sentence] of edits) {
+    const dir = copyProject([['src/say.js', from, to]]);
+    const built = spawnSync(process.execPath, [path.join(dir, 'src', 'vocabulary.js')], { cwd: dir, encoding: 'utf8' });
+    assert.equal(built.status, 0, built.stderr);
+    const { events } = await honestPilot({ code: await codeOf(dir) });
+    assert.ok(events.some((e) => e.type === 'said' && e.text.includes(sentence.replace('{subscription.next_billing_time}', 'December 1'))), `${label}: the line said it`);
+    const run = cliRun(events, { script: path.join(dir, 'scripts', 'pilot-check.js'), env: REAL_ENV, paid: true });
+    assert.equal(run.status, 2, `${label}: ${run.stdout}`);
+    assert.ok(run.results.startsWith('# Pilot results, no grade'), label);
+    assert.ok(run.results.includes(`whose sentences ${JSON.stringify(sentence)} the review in src/vocabulary.js never passed with their claims`), `${label}: ${run.results}`);
+    assert.doesNotMatch(`${run.results}${run.stdout}`, /\*\* (PASS|FAIL)/, label);
+  }
+});
+
+test('a call made before npm run vocabulary names the list say.js really spoke, is refused until npm run vocabulary adds it, then grades (R4-2)', async () => {
+  // Mid-pilot a template is reworded, its review with it, and npm run vocabulary is forgotten.
+  const dir = copyProject([
+    ['src/say.js', "const ANYTHING_ELSE = 'What else can I help with?';", "const ANYTHING_ELSE = 'Is there anything else I can help with?';"],
+    ['src/vocabulary.js', "  'What else can I help with?',\n", "  'Is there anything else I can help with?',\n"],
+  ]);
+  const code = await codeOf(dir);
+  const checkedIn = await import(pathToFileURL(path.join(dir, 'src', 'template-words.js')).href);
+  assert.notEqual(code.LIVE_TEMPLATE_HASH, checkedIn.TEMPLATE_HASH);
+  // The line starts anyway, so Render keeps taking webhooks, and warns that its calls can't be graded yet.
+  const server = spawn(process.execPath, [path.join(dir, 'src', 'server.js')], { cwd: tempDir(), stdio: ['ignore', 'pipe', 'pipe'],
+    env: { PATH: process.env.PATH, PAYPAL_MODE: 'mock', ROUTER_MODE: 'rules', PORT: '0', LEDGER_PATH: path.join(tempDir(), 'mock-ledger.jsonl') } });
+  let log = '';
+  const listening = new Promise((resolve, reject) => {
+    server.stdout.on('data', (chunk) => {
+      log += chunk;
+      if (/listening on/.test(log)) resolve();
+    });
+    server.on('exit', (status) => reject(new Error(`the line stopped with ${status} before it listened. ${log}`)));
+  });
+  try {
+    await listening;
+  } finally {
+    server.kill();
+  }
+  assert.ok(log.includes(`WARNING. say.js speaks the template list ${code.LIVE_TEMPLATE_HASH}, but src/template-words.js holds ${checkedIn.TEMPLATE_HASH}`), log);
+  // The calls log the hash of what they said, not the stale checked-in one.
+  const { events } = await honestPilot({ code });
+  assert.ok(events.filter((e) => e.type === 'call_start').every((e) => e.templates === code.LIVE_TEMPLATE_HASH));
+  const graded = tempDir();
+  const pilotCheck = path.join(dir, 'scripts', 'pilot-check.js');
+  const before = cliRun(events, { dir: graded, script: pilotCheck, env: REAL_ENV, paid: true });
+  assert.equal(before.status, 2, before.stdout);
+  assert.ok(before.results.includes(`the template list ${code.LIVE_TEMPLATE_HASH}, which src/template-history.js does not have`), before.results);
+  assert.doesNotMatch(`${before.results}${before.stdout}`, /\*\* (PASS|FAIL)/);
+  const built = spawnSync(process.execPath, [path.join(dir, 'src', 'vocabulary.js')], { cwd: dir, encoding: 'utf8' });
+  assert.equal(built.status, 0, built.stderr);
+  assert.ok(built.stdout.includes(`The template list is ${code.LIVE_TEMPLATE_HASH}`), built.stdout);
+  const after = cliRun(events, { dir: graded, script: pilotCheck, env: REAL_ENV, paid: true });
+  assert.equal(after.status, 0, after.stdout);
+  assert.equal(passes(after.results), 4);
+});
+
+test('a later free call and a later Script 5 on a new seed are held to their own subscription, so the pilot still passes, and the new id is refused (R4-3)', async () => {
+  const NEW = 'I-SBXNEW0000001';
+  let demos = [];
+  const { events } = await honestPilot({ after: async (stack) => {
+    // Thu Nov 5, after the deadline, npm run seed made a new subscription for a demo video, and two calls used it.
+    stack.clock.t = Date.parse('2026-11-05T18:00:00Z');
+    const pin = { text: stack.config.pin, source: 'keypad' };
+    demos = [await runAs(stack, null, 'chrome', { turns: [pin, { text: 'How much is my monthly gift?', source: 'voice' }, { text: 'Thanks, goodbye.', source: 'voice' }] }),
+      await runAs(stack, 5, 'chrome')];
+  } });
+  const seeded = events.map((e) => (demos.includes(e.callId) ? JSON.parse(JSON.stringify(e).replaceAll('I-MOCK0000001', NEW)) : e));
+  assert.ok(seeded.filter((e) => e.type === 'call_start' && demos.includes(e.callId)).every((e) => e.subscriptionId === NEW));
+  const pilot = cliRun(seeded, { env: REAL_ENV, paid: true });
+  assert.equal(pilot.status, 0, pilot.stdout);
+  assert.equal(passes(pilot.results), 4);
+  assert.match(pilot.results, /Safety checks, over every call in the window\. No problems found\./);
+  assert.match(pilot.results, /## Recorded after the deadline, not scored\n\n- Script 5, chrome/);
+  const reseeded = cliRun(seeded, { env: { ...REAL_ENV, DEMO_SUBSCRIPTION_ID: NEW }, paid: true });
+  assert.equal(reseeded.status, 2, reseeded.stdout);
+  assert.match(reseeded.results, /^# Pilot results, no grade[\s\S]*DEMO_SUBSCRIPTION_ID I-MOCK0000001, but the config now names [^\n]*DEMO_SUBSCRIPTION_ID I-SBXNEW0000001/);
+  assert.doesNotMatch(`${reseeded.results}${reseeded.stdout}`, /\*\* (PASS|FAIL)|This is a stop/);
+});
+
+test('a call with a template list the history lacks fails, and a real fail or stop beside it is written as one, never refused (G1)', async () => {
+  const { events } = await honestPilot({ after: (stack) => runAs(stack, 4, 'edge') });
+  const startOf = (list, number, browser) => list.find((e) => e.type === 'call_start' && e.callId === callOf(list, number, browser));
+  const unknownOn = (list, number, browser) => { startOf(list, number, browser).templates = 'feedfacecafe'; return list; };
+  const noYes = (list) => list.filter((e) => !(e.type === 'yes' && e.callId === callOf(list, 3, 'chrome')));
+  const otherEmail = (list) => list.map((e) => (e.callId === callOf(list, 6, 'chrome') && e.type === 'read' && e.what === 'invoice' && e.snapshot
+    ? { ...e, snapshot: { ...e.snapshot, recipient_email: 'bob@gmail.com' } } : e));
+  const cases = [
+    ['B1, a write without a yes', unknownOn(noYes(structuredClone(events)), 1, 'safari'), /Test 1, gift care end to end\.\*\* FAIL/],
+    ['B2, a safety stop', unknownOn(otherEmail(structuredClone(events)), 1, 'safari'), /\d+ problems\. This is a stop\./],
+    ['B3, an Edge call beside a stop', unknownOn(otherEmail(structuredClone(events)), 4, 'edge'), /\d+ problems\. This is a stop\./],
+  ];
+  for (const [label, list, why] of cases) {
+    const run = cliRun(list, { env: REAL_ENV, paid: true });
+    assert.equal(run.status, 1, `${label}: ${run.stdout}`);
+    assert.match(run.results, /^# Pilot results\n/, label);
+    assert.match(run.results, why, label);
+    assert.match(run.results, /logged the template list feedfacecafe, which src\/template-history\.js does not have/, label);
+  }
+  // The Edge call is never scored, so its list is only noted, and the Chrome and Safari calls are graded as they are.
+  const edge = cliRun(cases[2][1], { env: REAL_ENV, paid: true });
+  assert.match(edge.results, /- Edge or other calls, recorded and never scored, logged the template list feedfacecafe/);
+  assert.match(edge.results, /Test 1, gift care end to end\.\*\* PASS/);
+});
+
+test('a real grade an older pilot-check moved to PILOT-RESULTS.previous.md is kept before anything replaces it (G2)', async () => {
+  const { events } = await honestPilot();
+  const dir = tempDir();
+  const older = '# Pilot results\n\n- **Test 1, gift care end to end.** PASS\n\nGraded by an older pilot-check, which then moved it aside.\n';
+  fs.writeFileSync(path.join(dir, 'PILOT-RESULTS.previous.md'), older);
+  fs.writeFileSync(path.join(dir, 'PILOT-RESULTS.md'), '# Pilot results, no grade\n\nAn older pilot-check stopped on an error before it could grade.\n');
+  const graded = cliRun(events, { dir, env: REAL_ENV, paid: true });
+  assert.equal(graded.status, 0, graded.stdout);
+  // A bad flag next moves the fresh grade over PILOT-RESULTS.previous.md, so the older grade must be kept by then.
+  const stopped = spawnSync(process.execPath, [CHECK_SCRIPT, '--bogus'], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(stopped.status, 1, stopped.stderr);
+  const kept = fs.readdirSync(path.join(dir, 'pilot-results')).map((name) => fs.readFileSync(path.join(dir, 'pilot-results', name), 'utf8'));
+  assert.equal(kept.filter((text) => text === older).length, 1, 'the older grade is kept in pilot-results/');
+  assert.equal(kept.filter((text) => passes(text) === 4).length, 1, 'and so is the fresh one');
 });

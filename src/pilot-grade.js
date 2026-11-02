@@ -1,6 +1,6 @@
 // Grades a whole pilot ledger against PILOT.md: which calls count, Tests 1 to 4, and the safety stops.
 // Pure functions, so scripts/pilot-check.js only does the file and network work around them.
-import { gradeCall, checkSafety, checkWrites, medianGap, countedGaps, gapProblems, latestCallsByScript, isCallBy, groupByCall } from './check.js';
+import { gradeCall, checkSafety, checkWrites, medianGap, countedGaps, gapProblems, latestCallsByScript, isCallBy, groupByCall, templateTrouble } from './check.js';
 import { detectBrowser } from './call.js';
 import { textHasPin } from './numbers.js';
 import { scriptByNumber } from './pilot-scripts.js';
@@ -80,10 +80,11 @@ function gradeEntry(number, entry, options) {
  * The graded calls. Scripts 1 to 10 come from the latest Chrome or Safari call of each, the Firefox clause from
  * the latest Firefox calls, and Edge and other browsers are recorded apart, never scored. With until, the deadline,
  * only calls that started by then are graded (G2). orgName and subscriptionId are the configured ones, which the
- * facts and writes checks hold every call to.
+ * facts and writes checks hold every call to. lenientTemplates sets aside what templateTrouble finds, which pilot-check
+ * uses only to tell a refusal from a fail (G1).
  */
-export function selectCalls(events, { since = null, until = null, dryRun = false, orgName = null, subscriptionId = null } = {}) {
-  const options = { orgName, subscriptionId };
+export function selectCalls(events, { since = null, until = null, dryRun = false, orgName = null, subscriptionId = null, lenientTemplates = false } = {}) {
+  const options = { orgName, subscriptionId, lenientTemplates };
   const pick = (wanted) => {
     const filter = (start, list) => wanted(creditedBrowser(start)) && ranPastPin(list);
     return new Map([...latestCallsByScript(events, { since, until, dryRun, filter })].map(([n, entry]) => [n, gradeEntry(n, entry, options)]));
@@ -93,6 +94,38 @@ export function selectCalls(events, { since = null, until = null, dryRun = false
     fox: pick((browser) => browser === 'firefox'),
     others: pick((browser) => !SCORED_BROWSERS.has(browser) && browser !== 'firefox'),
   };
+}
+
+/**
+ * The template lists that can't vouch for their calls' replies, one per hash, as templateTrouble finds them: a list
+ * the history lacks, or one with a sentence the review never passed. scored holds those of Chrome, Safari and Firefox
+ * calls, which fail and can make pilot-check refuse the grade, and others those of Edge and other browsers, which are
+ * never scored and only noted (R4-1, R4-2, G1).
+ */
+export function templateTroubles(selected) {
+  const troubles = (calls) => {
+    const byHash = new Map();
+    for (const c of calls) {
+      const trouble = templateTrouble(c.start);
+      if (trouble && !byHash.has(trouble.hash)) byHash.set(trouble.hash, { ...trouble, calls: [] });
+      if (trouble) byHash.get(trouble.hash).calls.push(c);
+    }
+    return [...byHash.values()];
+  };
+  return { scored: troubles([...selected.main.values(), ...selected.fox.values()]), others: troubles([...selected.others.values()]) };
+}
+
+const loggedValue = (value) => (typeof value === 'string' && value !== '' ? value : null);
+
+/**
+ * The ORG_NAME and DEMO_SUBSCRIPTION_ID every graded call logged on call_start, when all of them logged the same two,
+ * else null. A regrade whose config names others can then be told apart from a pilot that failed (R4-3).
+ */
+export function loggedConfig(entries) {
+  const pairs = entries.map((c) => ({ orgName: loggedValue(c.start.orgName), subscriptionId: loggedValue(c.start.subscriptionId) }));
+  if (pairs.length === 0 || pairs.some((p) => !p.orgName || !p.subscriptionId)) return null;
+  const [first] = pairs;
+  return pairs.every((p) => p.orgName === first.orgName && p.subscriptionId === first.subscriptionId) ? first : null;
 }
 
 /** Every call in the --since window, real or dry run as asked, whatever its script or browser. */
@@ -146,11 +179,19 @@ export function pinLeaks(calls, pin) {
 
 /**
  * Writes, safety and the PIN over every call in the window, scored or not, so a clean retry never hides an earlier
- * failure. With subscriptionId, every subscription step in every call must target it (R3-7).
+ * failure. Every subscription step in a call must target the DEMO_SUBSCRIPTION_ID it logged on call_start, or
+ * subscriptionId when it logged none, so a later call on a new seed is held to its own subscription and its own email
+ * on file (R3-7, R4-3). The graded calls are also held to subscriptionId in their own grade.
  */
 export function sweep(calls, { pin = null, subscriptionId = null } = {}) {
-  const events = [...calls.values()].flat();
-  return { writes: checkWrites(events, { subscriptionId }), safety: checkSafety(events, { subscriptionId }), pin: pinLeaks(calls, pin) };
+  const writes = [];
+  const safety = [];
+  for (const list of calls.values()) {
+    const own = loggedValue(list.find((e) => e.type === 'call_start')?.subscriptionId) ?? subscriptionId;
+    writes.push(...checkWrites(list, { subscriptionId: own }));
+    safety.push(...checkSafety(list, { subscriptionId: own }));
+  }
+  return { writes, safety, pin: pinLeaks(calls, pin) };
 }
 
 /** Any safety problem or PIN leak in the window is a stop (PILOT.md, safety checks). */

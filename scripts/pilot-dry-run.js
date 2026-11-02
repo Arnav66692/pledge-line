@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, assertReady, isMockConfig } from '../src/config.js';
-import { buildDeps } from '../src/server.js';
+import { buildDeps, templateWarnings } from '../src/server.js';
 import { PILOT_SCRIPTS, scriptTurns } from '../src/pilot-scripts.js';
 import { gradeCall } from '../src/check.js';
 
@@ -71,6 +71,7 @@ async function main() {
   const ledgerPath = flagValue('--ledger') ?? `.pilot/dry-run-${label}-ledger.jsonl`;
   const deps = buildDeps(config, { ledgerPath, log: { info: (l) => out(`    server ${l}`), error: (l) => out(`    server error ${l}`) } });
   if (isMock) out('MOCK RUN, does not count');
+  for (const warning of templateWarnings()) out(warning);
   out(`Pledge Line dry run, does not count. PayPal ${config.paypal.mode}, router ${config.router.mode}. Ledger ${ledgerPath}`);
   out('');
   const results = [];

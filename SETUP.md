@@ -65,16 +65,26 @@ Claude creates the private repo `Arnav66692/pledge-line` and pushes the `pilot` 
 
 ## 6. Pilot day, Tue Nov 3. The clock starts here
 
-Start a row in the hours log in PILOT.md. Then, in this folder:
+Start a row in the Hours log in PILOT.md with today's date and your start time, such as 6:00 pm. Write every time with am or pm, or pilot-check won't grade. Then, in this folder:
 
 1. Run `npm run seed`. It prints an approve link. Open it, sign in as the sandbox Personal account, and approve the subscription.
 2. Run `npm run seed -- --check` and confirm it says ACTIVE.
 3. Run `npm run seed -- --webhook https://YOUR-RENDER-URL/webhooks/paypal`. Put the webhook id it prints into `.env` and into Render as `PAYPAL_WEBHOOK_ID`.
-4. Put the subscription id from `.pilot/state.json` into Render as `DEMO_SUBSCRIPTION_ID`, then Save and deploy.
+4. Put the subscription id from `.pilot/state.json` into Render as `DEMO_SUBSCRIPTION_ID`, then Save and deploy. pilot-check reads it from `.pilot/state.json`, so grade in this folder. Don't run `npm run seed` again after your first graded call. A new subscription means redoing every call.
 5. Tell Claude to run the dry run. It runs all 10 scripts as typed text against the real sandbox and Haiku. This catches problems before you spend time on the voice runs, and it doesn't count for the bar.
-6. Run `npm start` and open http://localhost:3000. Make the 10 scripted calls in PILOT.md, mostly in Chrome and at least one in Safari (turn Siri on first). Then do Scripts 2 and 3 in Firefox with the typed box.
+6. Run `npm start` and open http://localhost:3000. If it prints a WARNING when it starts, stop and tell Claude before any call. Make the 10 scripted calls in PILOT.md, mostly in Chrome and at least one in Safari (turn Siri on first). Then do Scripts 2 and 3 in Firefox with the typed box.
+   - In Safari, finish at least one script other than Script 8 by voice, since Script 8 never counts for a browser.
+   - Answer each proposal after you hear it. Say a one-time amount once, as money.
+   - If Script 1 says PayPal gave no clear answer, run it again.
+   - If the line says "PayPal didn't answer clearly, so I checked again.", that call fails. Listen to the status it reads back. If the gift changed, put it back in a free call before you rerun the script.
+   - Don't start a scripted call in the last minutes before the deadline, and use Free call for demos.
+   - Don't change the code, `ORG_NAME` or `.env` during the pilot. If something needs a change, tell Claude first, and restart `npm start` and reload every page after it.
 7. After Script 5, open the invoice's payer link, which the line's record card shows. Sign in as the sandbox Personal account and pay it. The same invoice email also appears under Sandbox Notifications, but no real email is ever sent.
-8. Run `npm run pilot:check -- --render https://YOUR-RENDER-URL`. It writes `PILOT-RESULTS.md` with PASS or FAIL for each test.
-9. Log your hours in PILOT.md. The gate is Wed Nov 4 at 9:00 pm PT.
+8. Fill in End for today's row in the Hours log.
+9. Run `npm run pilot:check -- --render https://YOUR-RENDER-URL`, always with the `--` before the flags, soon after paying Script 5's invoice while Render still lists the event. It writes `PILOT-RESULTS.md` with PASS or FAIL for each test, and keeps every real grade in `pilot-results/`. Never delete files there.
+
+If `PILOT-RESULTS.md` says no grade, it says why. Fix that and run it again.
+
+The gate is the earlier of Wed Nov 4 at 9:00 pm PT and the end of your 6th logged hour. Finish every call and the payment before then, and grade before then too. If you run `npm run seed` again later for a demo, set `.env` back to the pilot's values before any regrade.
 
 If a sandbox call returns 403 NOT_AUTHORIZED right after you tick a PayPal feature, restart the line so it gets a fresh PayPal token.

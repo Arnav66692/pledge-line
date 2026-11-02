@@ -4,8 +4,24 @@ import { parseAmountDollars, amountConflict } from './router.js';
 import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
 import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } from './gate.js';
 import { toSnapshot, PayPalError } from './paypal.js';
+import { liveTemplates } from './vocabulary.js';
 
 export { maskPinText };
+
+// What say.js speaks right now, built when the line loads (about 30 ms). call_start logs its hash, not the checked-in
+// one, so a call made before npm run vocabulary names the list it was really spoken with (R4-2). A template that
+// can't be built still lets the line start, so Render keeps taking webhooks, and its calls log a hash no history has.
+function spokenTemplates() {
+  try {
+    return liveTemplates();
+  } catch (error) {
+    return Object.freeze({ hash: 'unbuilt', unreviewed: Object.freeze([]), error: error.message });
+  }
+}
+const LIVE_TEMPLATES = spokenTemplates();
+export const LIVE_TEMPLATE_HASH = LIVE_TEMPLATES.hash;
+export const LIVE_UNREVIEWED = LIVE_TEMPLATES.unreviewed;
+export const LIVE_TEMPLATE_ERROR = LIVE_TEMPLATES.error ?? null;
 
 const RE_READ_TRIES = 3;
 const RE_READ_GAP_MS = 600;
@@ -19,17 +35,26 @@ const WRITER_METHODS = Object.freeze({ suspend: 'suspendSubscription', activate:
 const PENDING_LABELS = Object.freeze({ suspend: 'Pause the monthly gift', activate: 'Restart the monthly gift', cancel: 'Cancel the monthly gift', send_invoice: 'Send the one-time gift invoice' });
 const BARE_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'correct', 'ok', 'okay', 'please', 'do', 'go', 'ahead', 'it', 'that', "that's", 'is',
   'right', 'confirm', 'no', 'nope', 'nah', 'thanks', 'thank', 'you', 'not', 'now', 'never', 'mind', 'nevermind', 'keep', 'leave', "don't", 'dont']);
-// Endings an address can have when said as "dotcom", "gmail .com" or "gmail period com". A short list, so "at once. Thanks"
-// and "until the period ends" stay plain words.
+// Endings an address can have when said as "dotcom", "gmail .com" or "gmail. com". A short list, so "at once. Thanks" stays plain.
 const EMAIL_ENDINGS = 'com|net|org|edu|gov|io|co|us|me|info|biz|uk|ca';
-// The endings that are never plain words, for "point com" and "gmail. com", so "at this point me" and "at once. Me too" stay plain.
+// The endings that are never plain words, for "point com" and "period com", so "at this point me" and "until the period ends" stay plain.
 const PLAIN_ENDINGS = 'com|net|org|edu|gov|io';
-// "x@y" and "x @ y", "x at y dot z", also with commas, and "x at y.z". NFKC first, so a full-width or small @ counts as @.
+// Mail domains a short ending can follow, as in "gmail. co. uk" or "outlook. us".
+const MAIL_DOMAINS = 'gmail|yahoo|outlook|hotmail|icloud|aol|proton|protonmail|mail';
+// The endings that are plain words too, as in "at work. Me and my wife", "at work. Me, I'll email you" or "at work. Co-workers",
+// so ". me" joins only right after a mail domain or another short ending, as in "gmail. co. uk" (L1).
+const WORD_ENDINGS = 'co|us|me|info|biz|uk|ca';
+// One word of an address, such as gmail or mail.acme, never a lone mark.
+const ADDRESS_WORD = '[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)*';
+// The strict forms, "x@y" and "x @ y", "x at y dot z" with spaces only, and "x at y.z". NFKC first, so a full-width or
+// small @ counts as @. These count in any turn.
 const EMAIL_PATTERNS = [
   /[^\s@]+\s*@\s*[^\s@]+/g,
-  new RegExp(`\\bat[\\s,]+[a-z0-9.-]+(?:[\\s,]+[a-z0-9.-]+){0,3}[\\s,]+(?:dot[\\s,]+[a-z]{2,}|period[\\s,]+(?:${EMAIL_ENDINGS}))\\b`, 'gi'),
+  new RegExp(`\\bat\\s+${ADDRESS_WORD}(?:\\s+${ADDRESS_WORD}){0,3}\\s+dot\\s+[a-z]{2,}\\b`, 'gi'),
   /\bat\s+[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/gi,
 ];
+// A word that says the turn is about an email, so the loose forms below are read as one (R4-4).
+const EMAIL_WORDS = /\b(?:e-?mails?|e mails?|address(?:es)?|gmail|yahoo|outlook|hotmail|icloud|aol)\b/i;
 
 export class CallNotFound extends Error {
   constructor() {
@@ -49,25 +74,58 @@ export class GapRefused extends Error {
 
 const defaultSleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
+/** A failed write PayPal gave no clear answer to: a timeout, a lost connection or a 5xx, never a 4xx (L2). */
+const unanswered = (result) => !result.ok && result.error instanceof PayPalError && !(result.error.status >= 400 && result.error.status < 500);
+
 /** The digits of a PIN typed or said, including "twenty four sixty eight" and "thirteen fourteen". */
 export function parsePinDigits(text) {
   return spokenDigits(text);
 }
 
-// "bob (at) gmail [dot] com", "gmail dotcom", "gmail point com", "gmail .com" and "gmail. com" read like "bob at gmail dot com".
-const emailText = (text) => String(text ?? '').normalize('NFKC')
+// "bob (at) gmail [dot] com", "gmail dotcom", "gmail point com" and "gmail .com" read like "bob at gmail dot com" in any turn.
+const strictText = (text) => String(text ?? '').normalize('NFKC')
   .replace(/[([{<]\s*(at|dot)\s*[)\]}>]/gi, ' $1 ')
   .replace(new RegExp(`\\bdot(${EMAIL_ENDINGS})\\b`, 'gi'), ' dot $1')
   .replace(new RegExp(`\\bpoint\\s*(${PLAIN_ENDINGS})\\b`, 'gi'), ' dot $1')
-  .replace(new RegExp(`\\s+\\.\\s*(${EMAIL_ENDINGS})\\b`, 'gi'), '.$1')
-  .replace(new RegExp(`\\.\\s+(${PLAIN_ENDINGS})\\b`, 'gi'), '.$1');
+  .replace(new RegExp(`\\s+\\.\\s*(${EMAIL_ENDINGS})\\b`, 'gi'), '.$1');
+
+// The loose forms, read only in a turn that also says an email word or a mail domain, since plain speech has them too,
+// as in "at the end of the period, me and my wife" or "at work. Net is down" (R4-4). Marks touching at, dot or period,
+// as in "-at-", "dot." or "dot-com", "period com", "gmail. com" and "gmail,com", and commas or other marks between the words.
+const looseText = (text) => strictText(text)
+  .replace(/[-,.;:!?]*\b(at|dot|period)\b[-,.;:!?]*/gi, ' $1 ')
+  .replace(new RegExp(`\\bperiod\\s+(${PLAIN_ENDINGS})\\b`, 'gi'), ' dot $1')
+  .replace(new RegExp(`(?<=[a-z0-9])(?:,(${EMAIL_ENDINGS})|,\\s+(${PLAIN_ENDINGS}))\\b`, 'gi'), (_, joined, spaced) => `.${joined ?? spaced}`)
+  .replace(new RegExp(`\\.\\s+(${PLAIN_ENDINGS})\\b`, 'gi'), '.$1')
+  .replace(new RegExp(`\\b(${MAIL_DOMAINS}|${WORD_ENDINGS})\\.\\s+(${WORD_ENDINGS})\\b`, 'gi'), '$1.$2')
+  .replace(new RegExp(`\\b(${WORD_ENDINGS})\\.\\s+(${WORD_ENDINGS})\\b`, 'gi'), '$1.$2')
+  .replace(/(?<!\d),(?!\d)|[;:!?]+|\.{2,}|\.(?=\s|$)|(?<=\s)\.|(?<![a-z0-9])-+|-+(?![a-z0-9])/gi, ' ');
+
+/** The text the email check reads: the loose form when the turn says an email word, else the strict form only. */
+const emailReading = (text) => (EMAIL_WORDS.test(String(text ?? '').normalize('NFKC')) ? looseText(text) : strictText(text));
+const matchesEmail = (prepared) => EMAIL_PATTERNS.some((pattern) => new RegExp(pattern.source, pattern.flags.replace('g', '')).test(prepared));
 
 export function looksLikeEmail(text) {
-  const prepared = emailText(text);
-  return EMAIL_PATTERNS.some((pattern) => new RegExp(pattern.source, pattern.flags.replace('g', '')).test(prepared));
+  return matchesEmail(strictText(text)) || matchesEmail(emailReading(text));
 }
 
-const stripEmails = (text) => EMAIL_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, ' '), emailText(text));
+const stripEmails = (text) => EMAIL_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, ' '), emailReading(text));
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The text with the email on file set aside, in the masked form invoiceConfirm reads aloud, as in "s b at personal dot
+ * example dot com". That phrase names the email on file, never a new one, so a caller who checks it back is not refused.
+ * The draft still goes to the email from a fresh GET either way (I5, L3).
+ */
+function withoutEmailOnFile(call, text) {
+  const masked = say.maskEmail(call.record.subscription?.snapshot?.subscriber_email);
+  if (!masked) return String(text ?? '');
+  const phrase = masked.split(' ').map(escapeRegex).join('\\s+');
+  return String(text ?? '').replace(new RegExp(`(?<![\\p{L}\\p{N}])${phrase}(?![\\p{L}\\p{N}])`, 'giu'), ' ');
+}
+
+const looksLikeNewEmail = (call, text) => looksLikeEmail(withoutEmailOnFile(call, text));
 
 function pinMatches(candidate, pin) {
   if (typeof pin !== 'string' || pin === '') return false;
@@ -378,8 +436,14 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return routed;
   }
 
-  // A proposal that expired or was set aside is never read out again as if it still waited for a yes.
-  const repeatLast = (call) => (call.lastSaidPending && call.lastSaidPending !== call.pending?.id ? say.nothingPending() : say.repeat(call.lastSaid));
+  // A proposal that expired or was set aside is never read out again as if it still waited for a yes. A repeat notes the
+  // turn whose reply it repeats, so check.js proves that reply's claims where they were first made (R4-1).
+  function repeatLast(ctx) {
+    const { call } = ctx;
+    if (call.lastSaidPending && call.lastSaidPending !== call.pending?.id) return say.nothingPending();
+    if (call.lastSaid?.text) ctx.repeats = call.lastSaidTurn;
+    return say.repeat(call.lastSaid);
+  }
 
   // The router's amount, unless the caller's own words correct it or name another number, as in "fifty dollars, I mean
   // sixty". Then the line asks, whatever the router heard, so a model that picks the first number never drafts it (R3-1).
@@ -397,7 +461,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       case 'one_time_gift': return oneTimeTurn(ctx, routedAmount(routed, text));
       case 'other_email': return otherEmailTurn(ctx, text, routedAmount(routed, stripEmails(text)));
       case 'help': return say.help();
-      case 'repeat': return repeatLast(call);
+      case 'repeat': return repeatLast(ctx);
       case 'staff_callback':
         log(call, { type: 'staff_callback', turn: ctx.turn });
         return say.staffCallback();
@@ -446,19 +510,26 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const { pending } = approval;
     const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
     const result = await timed(ctx, () => gate.execute(call, approval, writer, ctx.turn));
+    // A 4xx is PayPal saying no. A timeout or a 5xx leaves it open, since PayPal may have made the change and lost its
+    // answer, so the line reads PayPal again as for an ok write and says what it shows (L2).
+    const unclear = unanswered(result);
+    const settled = (changed) => (s) => (!result.ok && !unclear) || changed(s);
+    const outcome = { ok: result.ok, unclear };
     try {
       if (pending.kind === 'send_invoice') {
         if (result.ok) call.openDraftId = null;
-        const inv = await rereadUntil(ctx, () => readSnapshot(ctx, 'invoice', pending.targetId), (s) => !result.ok || (s !== null && s.status !== 'DRAFT'));
-        return say.afterWrite('send_invoice', inv, null, { ok: result.ok });
+        const inv = await rereadUntil(ctx, () => readSnapshot(ctx, 'invoice', pending.targetId), settled((s) => s !== null && s.status !== 'DRAFT'));
+        // A send PayPal made though its answer was lost is no longer a draft, so the end of the call must not delete it.
+        if (inv && inv.status !== 'DRAFT') call.openDraftId = null;
+        return say.afterWrite('send_invoice', inv, null, outcome);
       }
       const expected = EXPECTED_STATUS[pending.kind];
-      const sub = await rereadUntil(ctx, () => readSnapshot(ctx, 'subscription', pending.targetId), (s) => !result.ok || s?.status === expected);
-      return say.afterWrite(pending.kind, sub, call.plan, { ok: result.ok });
+      const sub = await rereadUntil(ctx, () => readSnapshot(ctx, 'subscription', pending.targetId), settled((s) => s?.status === expected));
+      return say.afterWrite(pending.kind, sub, call.plan, outcome);
     } catch (error) {
       if (!(error instanceof PayPalError)) throw error;
       // I8: never claim a status PayPal did not return.
-      return say.afterWrite(pending.kind, null, call.plan, { ok: result.ok });
+      return say.afterWrite(pending.kind, null, call.plan, outcome);
     }
   }
 
@@ -490,7 +561,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
   async function pendingTurn(ctx, text) {
     const { call } = ctx;
     // I5: an email anywhere in the turn is refused before a yes can count, as in "yes, send it to bob@x.com".
-    if (looksLikeEmail(text)) {
+    if (looksLikeNewEmail(call, text)) {
       refused(ctx, 'other_email');
       return askAgain(ctx, say.otherEmail());
     }
@@ -515,7 +586,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   async function freeTurn(ctx, text) {
     if (isBareYesOrNo(text) || isAcknowledgment(text)) return say.nothingPending();
-    if (looksLikeEmail(text)) return otherEmailTurn(ctx, text);
+    if (looksLikeNewEmail(ctx.call, text)) return otherEmailTurn(ctx, text);
     const routed = await routeTurn(ctx, text);
     return handleIntent(ctx, routed, text);
   }
@@ -558,7 +629,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     // answering is the turn of the last reply the caller's client received. A yes must answer the reply that asked (I6).
     // arrival holds the server's own facts about when the turn arrived, which the client can't forge (I1).
     const ctx = { call, turn: call.turn, source: normalizeSource(source), answering: Number.isInteger(answering) ? answering : null,
-      arrival, routerMs: 0, paypalMs: 0, empathy: null, notice: null, pinShown: false };
+      arrival, routerMs: 0, paypalMs: 0, empathy: null, notice: null, pinShown: false, repeats: null };
     call.lastActiveAt = now().getTime();
     let reply;
     if (clean.length > limits.maxTextChars) {
@@ -574,8 +645,10 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     }
     const full = say.combine(ctx.empathy, ctx.notice, reply);
     const serverMs = Math.round(performance.now() - started);
-    log(call, { type: 'said', turn: ctx.turn, text: full.text, facts: full.facts, ms: serverMs });
+    const repeats = Number.isInteger(ctx.repeats) ? { repeats: ctx.repeats } : {};
+    log(call, { type: 'said', turn: ctx.turn, text: full.text, facts: full.facts, claims: full.claims, ms: serverMs, ...repeats });
     call.lastSaid = full;
+    call.lastSaidTurn = Number.isInteger(ctx.repeats) ? ctx.repeats : ctx.turn;
     call.lastSaidPending = call.pending?.id ?? null;
     call.lastFinishedTurn = ctx.turn;
     call.lastFinishedAt = performance.now();
@@ -595,7 +668,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const call = {
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
       id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
-      pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastSaid: null, lastSaidPending: null, ended: false, endedAt: null,
+      pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
       noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null }, queue: Promise.resolve(),
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
       lastFinishedTurn: 0, lastFinishedAt: performance.now(), gapTurns: new Set(),
@@ -604,10 +677,12 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     log(call, {
       type: 'call_start', script: call.script, userAgent: String(userAgent ?? '').slice(0, USER_AGENT_MAX), client: signals, engine: engineOf(signals),
       browser: call.browser, mode: { paypal: config.paypal.mode, router: config.router.mode }, timeZone: config.timeZone, orgName: config.orgName,
+      // The configured subscription and the template list, so pilot-check can grade the call with what it ran on (R4-2, R4-3).
+      subscriptionId: config.demoSubscriptionId ?? null, templates: LIVE_TEMPLATE_HASH,
       ...(dryRun ? { dryRun: true } : {}),
     });
     const reply = say.greeting(config.orgName);
-    log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, ms: 0 });
+    log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, claims: reply.claims, ms: 0 });
     call.lastSaid = reply;
     return { callId: call.id, reply: reply.text, turn: 0, state: stateFor(call) };
   }

@@ -8,7 +8,8 @@ import { createPayPal } from './paypal.js';
 import { createMockPayPal } from './paypal-mock.js';
 import { createTokens, createGate } from './gate.js';
 import { createRouter } from './router.js';
-import { createCallService, CallNotFound, GapRefused } from './call.js';
+import { createCallService, CallNotFound, GapRefused, LIVE_TEMPLATE_HASH, LIVE_UNREVIEWED, LIVE_TEMPLATE_ERROR } from './call.js';
+import { TEMPLATE_HASH } from './template-words.js';
 import { PILOT_SCRIPTS, displayLines } from './pilot-scripts.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
@@ -361,6 +362,23 @@ export function createServer(deps) {
   });
 }
 
+/**
+ * Loud warnings when say.js speaks a template list pilot-check can't grade yet. The line still starts, since Render
+ * must keep taking webhooks, and pilot-check refuses those calls, never fails them, until the list is fixed (R4-1, R4-2).
+ */
+export function templateWarnings({ live = LIVE_TEMPLATE_HASH, checkedIn = TEMPLATE_HASH, unreviewed = LIVE_UNREVIEWED, error = LIVE_TEMPLATE_ERROR } = {}) {
+  const warnings = [];
+  if (error) {
+    warnings.push(`WARNING. The template list could not be built from say.js, ${error} pilot-check refuses every call made now. Fix say.js, run npm run vocabulary and npm test, then start the line again.`);
+  } else if (live !== checkedIn) {
+    warnings.push(`WARNING. say.js speaks the template list ${live}, but src/template-words.js holds ${checkedIn}, so npm run vocabulary has not run since say.js changed. pilot-check refuses calls made now until it has. Stop the line, run npm run vocabulary and npm test, then start it again.`);
+  }
+  if (unreviewed.length > 0) {
+    warnings.push(`WARNING. say.js says sentences the review in src/vocabulary.js never passed with their claims, ${unreviewed.map((sentence) => JSON.stringify(sentence)).join(', ')}. pilot-check refuses every call made with them. Read each one, and list it on CLAIM_FREE when it claims nothing, or on CLAIMED with claims that cover what it says, else fix it in src/say.js. Then run npm run vocabulary and npm test.`);
+  }
+  return warnings;
+}
+
 function main() {
   let config;
   try {
@@ -371,6 +389,7 @@ function main() {
   }
   const deps = buildDeps(config);
   const server = createServer(deps);
+  for (const warning of templateWarnings()) deps.log.error(warning);
   server.listen(config.port, config.host, () => {
     deps.log.info(`Pledge Line listening on http://${config.host}:${server.address().port}, PayPal ${config.paypal.mode}, router ${config.router.mode}`);
   });

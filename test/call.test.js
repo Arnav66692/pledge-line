@@ -6,7 +6,7 @@ import { gradeCall, checkFacts, checkWrites } from '../src/check.js';
 import { createRouter } from '../src/router.js';
 import { PayPalError } from '../src/paypal.js';
 import { looksLikeEmail, detectBrowser } from '../src/call.js';
-import { buildStack, runScript, say, verifiedCall, eventsOf } from './helpers.js';
+import { buildStack, runScript, say, verifiedCall, eventsOf, copyProject, codeOf } from './helpers.js';
 
 const SUB_ID = 'I-MOCK0000001';
 const subStatus = async (stack) => (await stack.paypal.getSubscription(SUB_ID)).data.status;
@@ -635,4 +635,137 @@ test('Script 1 fails when no reply reads the amount and status aloud, as when Pa
   const rerun = await runScript(stack, scriptByNumber(1));
   const passed = gradeCall(stack.ledger.byCall(rerun.callId), scriptByNumber(1));
   assert.equal(passed.passed, true, JSON.stringify(passed));
+});
+
+test('after a delete and a 404 GET of the draft the line says it is gone, and after a GET that still finds it the line says so (R4-1)', async () => {
+  const gone = buildStack();
+  const deleted = await runScript(gone, scriptByNumber(6));
+  assert.equal(eventsOf(gone, deleted.callId, 'read').filter((e) => e.what === 'invoice').at(-1).notFound, true);
+  assert.match(deleted.replies[2], /^OK, I deleted that invoice before it went out, and PayPal no longer shows it\./);
+  assert.deepEqual(eventsOf(gone, deleted.callId, 'said').find((e) => e.turn === 3).claims,
+    [{ claim: 'draft_deleted', sentence: 'OK, I deleted that invoice before it went out, and PayPal no longer shows it.' }]);
+  assert.equal(gradeCall(gone.ledger.byCall(deleted.callId), scriptByNumber(6)).passed, true);
+  // PayPal answers the delete, but its next GET still finds the draft, as a slow sandbox could.
+  const kept = buildStack();
+  kept.paypal.deleteDraftInvoice = async () => ({ debugId: 'mock-kept', ms: 0 });
+  const stillThere = await runScript(kept, scriptByNumber(6));
+  assert.ok(eventsOf(kept, stillThere.callId, 'read').filter((e) => e.what === 'invoice').at(-1).snapshot);
+  assert.match(stillThere.replies[2], /^OK\. I asked PayPal to delete that invoice, but PayPal still shows it\./);
+  assert.deepEqual(eventsOf(kept, stillThere.callId, 'said').find((e) => e.turn === 3).claims,
+    [{ claim: 'draft_kept', sentence: 'I asked PayPal to delete that invoice, but PayPal still shows it.' }]);
+  assert.deepEqual(checkFacts(kept.ledger.byCall(stillThere.callId)), [], 'the line says what PayPal still shows, so its claim is backed');
+});
+
+test('call.js swapped to say.draftDeleted(Boolean(inv)) fails gradeCall for Scripts 6 and 7 (R4-1)', async () => {
+  const dir = copyProject([['src/call.js', 'return say.draftDeleted(inv === null);', 'return say.draftDeleted(Boolean(inv));']]);
+  const code = await codeOf(dir);
+  const stack = buildStack({ code });
+  for (const number of [6, 7]) {
+    const { callId, replies } = await runScript(stack, scriptByNumber(number));
+    assert.equal(eventsOf(stack, callId, 'read').filter((e) => e.what === 'invoice').at(-1).notFound, true, `Script ${number}`);
+    assert.match(replies[2], /PayPal still shows it/, `Script ${number}`);
+    const grade = code.check.gradeCall(stack.ledger.byCall(callId), scriptByNumber(number));
+    assert.equal(grade.passed, false, `Script ${number}`);
+    assert.match(grade.facts.map((v) => v.message).join('\n'), /said "I asked PayPal to delete that invoice, but PayPal still shows it\.", which claims/, `Script ${number}`);
+  }
+});
+
+test('a pause that names the billing period stays plain words, and loose email forms count only beside an email word or a mail domain (R4-4)', async () => {
+  const plain = ['Can you pause it at the end of the period, me and my wife are away.', 'I want to pause at the end of this period, me and my husband are moving.',
+    'Pause it at least for the period, us donors are tired.', "I'll be at work. Net is down, so pause it.", 'Pause it at the end of the period, co-signed by my husband.',
+    'Yes, at once.', 'at 5.30 pm', 'point taken', 'until the period ends', 'At this point me and my husband want to stop the gift.',
+    // Beside an email word, a short ending after a period is a plain word too, unless it ends the turn or a mark follows it (L1).
+    'Pause it at once. Me too, my wife will email you.', 'I got an email at work. Co-workers said to pause my gift.'];
+  for (const line of plain) assert.equal(looksLikeEmail(line), false, line);
+  for (const form of ['Bob at Gmail dot. Com.', 'Bob at Gmail. Dot. Com.', 'Bob at Gmail? Dot com.', 'bob at gmail dot-com', 'bob at gmail,com', 'bob at gmail. co. uk', 'bob -at- gmail -dot- com']) {
+    assert.equal(looksLikeEmail(form), true, form);
+    const stack = buildStack();
+    const callId = await verifiedCall(stack);
+    const { reply } = await say(stack, callId, `Give fifty dollars to ${form}`);
+    assert.deepEqual(eventsOf(stack, callId, 'refused').map((e) => e.reason), ['other_email'], form);
+    assert.match(reply, /only send to the email already on file/, form);
+    assert.equal(eventsOf(stack, callId, 'read').find((e) => e.what === 'invoice').snapshot.recipient_email, 'sb-maria@personal.example.com', form);
+  }
+  // The strict forms count in any turn, the loose ones only beside an email word, and "period" only before com, net, org, edu, gov or io.
+  assert.equal(looksLikeEmail('Send it to bob at acme dot org.'), true);
+  assert.equal(looksLikeEmail('Send it to bob at acme, dot, org.'), false);
+  assert.equal(looksLikeEmail('Send it to my email, bob at acme, dot, org.'), true);
+  assert.equal(looksLikeEmail('Send it to my email, bob at acme period co period uk.'), false);
+  // Script 10 opened with a pause that names the period hears the pause, not a refusal, and passes.
+  const stack = buildStack();
+  const lines = [{ pin: true }, 'Can I pause my gift at the end of this period, me and my husband are moving?', 'Yes.', 'Actually, please restart it.', 'Yes.', 'Goodbye.'];
+  const { callId } = await runScript(stack, { ...scriptByNumber(10), lines });
+  assert.deepEqual(eventsOf(stack, callId, 'refused'), []);
+  const grade = gradeCall(stack.ledger.byCall(callId), scriptByNumber(10));
+  assert.equal(grade.passed, true, JSON.stringify(grade));
+});
+
+test('a stop or pause request that names email is heard as one, since a short ending joins only right after a mail domain or another short ending (L1)', async () => {
+  const plain = ['Pause it at once. Me too, my wife will email you.', "I want to stop my monthly gift. I'm at work. Me and my wife will email you later.",
+    'My address is changing. I am at work. Me and my wife are moving, so pause it.', 'The outlook is grim at work. Me and my wife need a pause.',
+    'I got an email at work. Co-workers said to pause my gift.',
+    // A mark after the short word doesn't make it an ending either (L1 recheck).
+    "My wife will email you, I'm at work. Me, I want a pause.", "Pause my gift. I got your email at work. Me? I'm fine.",
+    'I read the email at home. Us? We want to stop it.', "Please email me at home. Me, I'd like a pause.", 'Email me back at once. Me.',
+    'Use my email at home. Us.', "I want to stop my monthly gift. I'm at work. Me, I'll email you later."];
+  for (const line of plain) assert.equal(looksLikeEmail(line), false, line);
+  for (const form of ['email bob at outlook. us', 'my email is bob at yahoo. co. uk', 'My new email is bob at hotmail. Co. Uk.', 'My new email is bob at gmail. Me.', 'bob at gmail. co. uk', 'my email is bob at gmail. net']) {
+    assert.equal(looksLikeEmail(form), true, form);
+  }
+  const stack = buildStack();
+  const lines = [{ pin: true }, "I want to stop my monthly gift. I'm at work. Me and my wife will email you later.", 'Yes.', 'Goodbye.'];
+  const { callId } = await runScript(stack, { ...scriptByNumber(2), lines });
+  assert.deepEqual(eventsOf(stack, callId, 'refused'), []);
+  const grade = gradeCall(stack.ledger.byCall(callId), scriptByNumber(2));
+  assert.equal(grade.passed, true, JSON.stringify(grade));
+});
+
+test('a caller who checks back the masked email the line read is asked again, not refused, and a new email said the same way still is (L3)', async () => {
+  for (const [number, check] of [[5, 'Is it going to s b at personal dot example dot com?'], [6, 'So that goes to s b at personal dot example dot com?']]) {
+    const script = scriptByNumber(number);
+    const stack = buildStack();
+    const lines = [script.lines[0], script.lines[1], check, ...script.lines.slice(2)];
+    const { callId, replies } = await runScript(stack, { ...script, lines });
+    assert.deepEqual(eventsOf(stack, callId, 'refused'), [], `Script ${number}`);
+    assert.match(replies[2], /It would go to the email on file, s b at personal dot example dot com\. .*Should I send it\?/, `Script ${number} asks again`);
+    const grade = gradeCall(stack.ledger.byCall(callId), script);
+    assert.equal(grade.passed, true, `Script ${number}: ${JSON.stringify(grade)}`);
+  }
+  const stack = buildStack();
+  const callId = await verifiedCall(stack);
+  await say(stack, callId, "I'd like to give fifty dollars, just once.");
+  const { reply } = await say(stack, callId, 'Is it going to bob at gmail dot com?');
+  assert.deepEqual(eventsOf(stack, callId, 'refused').map((e) => e.reason), ['other_email']);
+  assert.match(reply, /only send to the email already on file/);
+});
+
+test('a write PayPal makes but whose answer is lost is read again and said as unclear, never as refused, and its sent invoice is never deleted (L2)', async () => {
+  // PayPal makes the change, then its answer is lost, as a 5xx or the line's 10 s timeout would lose it.
+  const lostAnswer = (stack, method, error) => {
+    const made = stack.paypal[method];
+    stack.paypal[method] = async (...args) => {
+      await made(...args);
+      throw error;
+    };
+  };
+  const stack = buildStack();
+  lostAnswer(stack, 'suspendSubscription', new PayPalError({ status: 500, name: 'INTERNAL_SERVER_ERROR', message: 'lost' }));
+  const pause = await runScript(stack, scriptByNumber(2));
+  assert.match(pause.replies[2], /^PayPal didn't answer clearly, so I checked again\. PayPal now shows your monthly gift of \$25\.00 as suspended\. /);
+  const write = eventsOf(stack, pause.callId, 'write')[0];
+  assert.deepEqual([write.ok, write.httpStatus], [false, 500]);
+  const list = stack.ledger.byCall(pause.callId);
+  assert.deepEqual(checkFacts(list), []);
+  // The line's old words, that PayPal didn't accept it, fail once the read after the write shows the change.
+  const said = list.find((e) => e.type === 'said' && e.turn === 3);
+  const refusedWords = list.map((e) => (e === said ? { ...e, text: e.text.replace("PayPal didn't answer clearly, so I checked again.", "PayPal didn't accept that change."),
+    claims: [{ claim: 'write_failed', sentence: "PayPal didn't accept that change." }] } : e));
+  assert.match(checkFacts(refusedWords).map((v) => v.message).join('\n'), /said "PayPal didn't accept that change\.", which claims a subscription write PayPal refused in that turn/);
+  // A send PayPal made though the answer timed out is no longer a draft, so the goodbye never tries to delete it.
+  const send = buildStack();
+  lostAnswer(send, 'sendInvoice', new PayPalError({ status: 0, name: 'TIMEOUT', message: 'PayPal did not answer in time' }));
+  const gift = await runScript(send, scriptByNumber(5));
+  assert.match(gift.replies[2], /^PayPal didn't answer clearly, so I checked again\. PayPal now shows invoice ending in 0001, for \$50\.00, with the status sent\. /);
+  assert.deepEqual(eventsOf(send, gift.callId, 'staging_write').map((e) => e.kind), ['create_draft']);
+  assert.deepEqual(checkFacts(send.ledger.byCall(gift.callId)), []);
 });

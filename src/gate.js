@@ -180,7 +180,9 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
       outcome = { ok: false, error, debugId: error?.debugId ?? null };
     }
     const ms = Math.round(performance.now() - started);
-    const errorText = outcome.ok ? {} : { error: describeError(outcome.error) };
+    // PayPal's own answer code, 0 for a timeout or a lost connection, so check.js tells a refusal from a lost answer (L2).
+    const status = outcome.error?.status;
+    const errorText = outcome.ok ? {} : { error: describeError(outcome.error), ...(Number.isInteger(status) ? { httpStatus: status } : {}) };
     ledger.append({ type: 'write', callId: call.id, turn, kind: pending.kind, targetId: pending.targetId, tokenId: token, ok: outcome.ok, debugId: outcome.debugId, ms, ...errorText });
     if (call.pending?.id === pending.id) call.pending = null;
     return { ...outcome, ms, kind: pending.kind, targetId: pending.targetId };

@@ -2,7 +2,9 @@
 import { scanSpoken, extractSpokenFacts, saysPhrase, spokenForm, wordsOf, slotFacts, sentencesOf, SLOT_MARKS, FACT_SOURCES, formatMoney, limitsPhrase } from './say.js';
 import { isClearYes } from './gate.js';
 import { LIMITS } from './config.js';
-import { TEMPLATE_WORDS, TEMPLATE_SENTENCES } from './template-words.js';
+import { TEMPLATE_WORDS, TEMPLATE_SENTENCES, TEMPLATE_CLAIMS, TEMPLATE_HASH } from './template-words.js';
+import { TEMPLATE_HISTORY } from './template-history.js';
+import { unreviewedSentences } from './vocabulary.js';
 
 const DEFAULT_TIME_ZONE = 'America/Los_Angeles';
 const SOURCE_WHAT = Object.freeze({
@@ -36,8 +38,10 @@ const GATED_TYPES = new Set(['read', 'write', 'staging_write']);
 const SUBSCRIPTION_KINDS = new Set(['suspend', 'activate', 'cancel']);
 // Whose read a fact may come from (R3-7).
 const OWN = Object.freeze({ subscription: "this call's own subscription", plan: "that subscription's plan", invoice: "this call's own draft" });
-const TEMPLATE_WORD_SET = new Set(TEMPLATE_WORDS);
-const TEMPLATE_SENTENCE_SET = new Set(TEMPLATE_SENTENCES);
+// A template list as the facts check reads it, words and sentences as sets.
+const asTemplates = (hash, list) => Object.freeze({ hash, words: new Set(list.words), sentences: new Set(list.sentences), claims: list.claims });
+const CURRENT_TEMPLATES = asTemplates(TEMPLATE_HASH, { words: TEMPLATE_WORDS, sentences: TEMPLATE_SENTENCES, claims: TEMPLATE_CLAIMS });
+const historyLists = new WeakMap();
 
 const bySeq = (a, b) => (a.seq ?? 0) - (b.seq ?? 0);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -96,7 +100,8 @@ function unspokenProblem(f, text, heard) {
   return `declared ${f.kind} "${f.value}" (${f.source}), but the reply never says it`;
 }
 
-function checkSaid(said, latest, { timeZone, orgName }) {
+function checkSaid(said, latest, ctx) {
+  const { timeZone, orgName, templates } = ctx;
   const problems = [];
   const text = String(said.text ?? '');
   const facts = Array.isArray(said.facts) ? said.facts : [];
@@ -115,32 +120,250 @@ function checkSaid(said, latest, { timeZone, orgName }) {
   }
   // What is left must be the line's own template words, so a fact said in a form no scan knows still fails.
   for (const word of new Set(wordsOf(rest))) {
-    if (!TEMPLATE_WORD_SET.has(word)) problems.push(violation(said, 'facts', `said "${word}", a word the line's own templates never use`));
+    if (!templates.words.has(word)) problems.push(violation(said, 'facts', `said "${word}", a word the line's own templates never use`));
   }
-  return [...problems, ...sentenceProblems(said, text, proven, orgName)];
+  return [...problems, ...sentenceProblems(said, text, proven, ctx), ...claimProblems(said, text, proven, ctx)];
 }
 
 /**
  * Each sentence, with the org name and the proven facts as slots, must be a sentence the templates say, so template
  * words recombined into a new claim, such as "The next gift is this month" or "PayPal no longer shows ...", fail (R3-6).
  */
-function sentenceProblems(said, text, proven, orgName) {
+function sentenceProblems(said, text, proven, { orgName, templates }) {
   if (SLOT_MARKS.test(text)) return [violation(said, 'facts', 'said a brace, which no template says')];
-  const unknown = sentencesOf(slotFacts(text, proven, orgName)).filter((sentence) => !TEMPLATE_SENTENCE_SET.has(sentence));
+  const unknown = sentencesOf(slotFacts(text, proven, orgName)).filter((sentence) => !templates.sentences.has(sentence));
   return [...new Set(unknown)].map((sentence) => violation(said, 'facts', `said "${sentence}", a sentence the line's own templates never say`));
+}
+
+// ---- Claims: what a sentence says PayPal or the line did, proved against the call's own events up to the reply (R4-1) ----
+
+const inTurn = (scope, pred) => scope.turn.some(pred);
+const okWrite = (scope, kind = null) => inTurn(scope, (e) => e.type === 'write' && e.ok && (kind === null || e.kind === kind));
+const refusedFor = (scope, reason) => inTurn(scope, (e) => e.type === 'refused' && e.reason === reason);
+const SEND_KINDS = new Set(['send_invoice']);
+const CLOSES_PROPOSAL = new Set(['no', 'expired', 'withdrawn', 'yes']);
+// What PayPal shows once each write has gone through, and the statuses each gift change can act on, as call.js has them.
+const CHANGED = Object.freeze({ suspend: (s) => s.status === 'SUSPENDED', activate: (s) => s.status === 'ACTIVE', cancel: (s) => s.status === 'CANCELLED',
+  send_invoice: (s) => s.status !== 'DRAFT' });
+const ACTS_ON = Object.freeze({ suspend: ['ACTIVE'], activate: ['SUSPENDED'], cancel: ['ACTIVE', 'SUSPENDED'] });
+const isClientError = (status) => Number.isInteger(status) && status >= 400 && status < 500;
+
+/** The latest read of a write's target after the write, in the turn. */
+const readAfter = (scope, write) => scope.turn.filter((e) => e.seq > write.seq && e.type === 'read' && e.what === WRITE_READS[write.kind] && e.id === write.targetId).at(-1) ?? null;
+
+/**
+ * The turn's failed write that PayPal refused: answered with a 4xx, or followed by a read that does not show the
+ * change. A timeout or a 5xx after which PayPal shows the change was applied, its answer lost, never a refusal (L2).
+ */
+function refusedWrite(scope, kinds) {
+  const write = scope.turn.filter((e) => e.type === 'write' && !e.ok && kinds.has(e.kind)).at(-1);
+  if (!write) return false;
+  if (isClientError(write.httpStatus)) return true;
+  const read = readAfter(scope, write);
+  return Boolean(read?.snapshot) && !CHANGED[write.kind](read.snapshot);
+}
+
+/** A write in the turn that PayPal gave no clear answer to, a timeout or a 5xx, and a read of its target after it (L2). */
+function unansweredWrite(scope) {
+  const write = scope.turn.filter((e) => e.type === 'write' && !e.ok && !isClientError(e.httpStatus)).at(-1);
+  return Boolean(write) && Boolean(readAfter(scope, write));
+}
+
+/** The latest read of the call's own gift shows a status that the change can't act on, so there is nothing to change (R4-1). */
+const nothingToDo = (scope, kind) => Boolean(scope.gift?.snapshot) && Object.hasOwn(ACTS_ON, kind) && !ACTS_ON[kind].includes(scope.gift.snapshot.status);
+
+/** The latest read of a write's target after the write, in the turn, has no snapshot, as when PayPal returned nothing. */
+function unreadAfterWrite(scope, what, kinds) {
+  const write = scope.turn.filter((e) => e.type === 'write' && kinds.has(e.kind)).at(-1);
+  if (!write) return false;
+  const read = scope.turn.filter((e) => e.seq > write.seq && e.type === 'read' && e.what === what && e.id === write.targetId).at(-1);
+  return Boolean(read) && !read.snapshot;
+}
+
+/** The turn's delete of a draft this call made, and the latest read of that draft after it. */
+function deletedDraft(scope) {
+  const del = scope.turn.filter((e) => e.type === 'staging_write' && e.kind === 'delete_draft' && scope.made.has(e.id)).at(-1);
+  if (!del) return null;
+  return { del, read: scope.turn.filter((e) => e.seq > del.seq && e.type === 'read' && e.what === 'invoice' && e.id === del.id).at(-1) ?? null };
+}
+
+/** A PayPal step in the turn that gave the line no clear answer: a read with no snapshot, a failed draft step, or a draft it made and deleted. */
+function unclearStep(scope) {
+  const deleted = new Set(scope.turn.filter((e) => e.type === 'staging_write' && e.kind === 'delete_draft').map((e) => e.id));
+  return inTurn(scope, (e) => (e.type === 'read' && !e.snapshot) || (e.type === 'staging_write' && !e.ok)
+    || (e.type === 'staging_write' && e.kind === 'create_draft' && e.ok && deleted.has(e.id)));
+}
+
+/** A proposal no no, expiry, set-aside or yes closed before the reply. */
+function openProposal(scope) {
+  const closed = new Set(scope.before.filter((e) => CLOSES_PROPOSAL.has(e.type)).map((e) => e.pendingId));
+  return scope.before.some((e) => e.type === 'proposed' && !closed.has(e.pendingId));
+}
+
+/** An expiry since the line last said it timed out, or since the call began. */
+function newExpiry(scope) {
+  const told = scope.before.filter((e) => e.type === 'said' && (Array.isArray(e.claims) ? e.claims : []).some((c) => c?.claim === 'timed_out')).at(-1);
+  return scope.before.some((e) => e.type === 'expired' && (!told || e.seq > told.seq));
+}
+
+const pinBads = (scope) => scope.before.filter((e) => e.type === 'pin_bad').length;
+const giftInTurn = (scope) => Boolean(scope.gift) && scope.gift.turn === scope.said.turn;
+
+/** Each claim, the events that back it, and what to call those events in a problem. */
+const CLAIMS = Object.freeze({
+  pin_ok: ['a PIN that passed in that turn', (s) => inTurn(s, (e) => e.type === 'pin_ok')],
+  pin_bad: ['a wrong PIN in that turn', (s) => inTurn(s, (e) => e.type === 'pin_bad')],
+  tries_left: ['a wrong PIN in that turn that left that many tries', (s, n) => inTurn(s, (e) => e.type === 'pin_bad') && LIMITS.pinTries - pinBads(s) === Number(n)],
+  pin_locked: ['a lock in that turn', (s) => inTurn(s, (e) => e.type === 'pin_locked')],
+  pin_limit: ['a pin_limit refusal in that turn', (s) => refusedFor(s, 'pin_limit')],
+  not_verified: ['no PIN that passed before it', (s) => !s.before.some((e) => e.type === 'pin_ok')],
+  wrote: ['an ok write in that turn', (s) => okWrite(s)],
+  wrote_suspend: ['an ok suspend in that turn', (s) => okWrite(s, 'suspend')],
+  wrote_activate: ['an ok activate in that turn', (s) => okWrite(s, 'activate')],
+  wrote_cancel: ['an ok cancel in that turn', (s) => okWrite(s, 'cancel')],
+  wrote_send_invoice: ['an ok send in that turn', (s) => okWrite(s, 'send_invoice')],
+  write_failed: ['a subscription write PayPal refused in that turn, with a 4xx or a read after it that does not show the change', (s) => refusedWrite(s, SUBSCRIPTION_KINDS)],
+  send_failed: ['a send PayPal refused in that turn, with a 4xx or a read after it that does not show the change', (s) => refusedWrite(s, SEND_KINDS)],
+  write_unclear: ['a write in that turn that PayPal gave no clear answer to, and a read of its target after it', (s) => unansweredWrite(s)],
+  gift_unread: ['a subscription write in that turn whose latest read after it found nothing', (s) => unreadAfterWrite(s, 'subscription', SUBSCRIPTION_KINDS)],
+  invoice_unread: ['a send in that turn whose latest read after it found nothing', (s) => unreadAfterWrite(s, 'invoice', SEND_KINDS)],
+  draft_deleted: ["a delete of this call's own draft in that turn, a read after it that PayPal answered with 404, and no send of it",
+    (s) => { const d = deletedDraft(s); return Boolean(d?.read?.notFound) && !s.before.some((e) => e.type === 'write' && e.ok && e.kind === 'send_invoice' && e.targetId === d.del.id); }],
+  draft_kept: ["a delete of this call's own draft in that turn, and a read after it that still finds the draft", (s) => Boolean(deletedDraft(s)?.read?.snapshot)],
+  no_gift: ["a read of the call's own subscription in that turn that found nothing", (s) => giftInTurn(s) && !s.gift.snapshot],
+  no_email: ["a read of the call's own subscription in that turn with no email on file", (s) => giftInTurn(s) && Boolean(s.gift.snapshot) && !s.gift.snapshot.subscriber_email],
+  paypal_unclear: ['a PayPal step in that turn that failed, found nothing, or made a draft it deleted, and no ok write', (s) => unclearStep(s) && !okWrite(s)],
+  unchanged: ['no ok write in that turn', (s) => !okWrite(s)],
+  no_pause: ['a no to a pause in that turn, and no ok write',
+    (s) => !okWrite(s) && inTurn(s, (e) => e.type === 'no' && s.before.some((p) => p.type === 'proposed' && p.pendingId === e.pendingId && p.kind === 'suspend'))],
+  email_refused: ['an other_email refusal in that turn', (s) => refusedFor(s, 'other_email')],
+  set_aside: ['a proposal set aside in that turn, and no ok write', (s) => inTurn(s, (e) => e.type === 'withdrawn') && !okWrite(s)],
+  callback_noted: ['a staff callback logged in that turn', (s) => inTurn(s, (e) => e.type === 'staff_callback')],
+  turn_limit: ['a turn_limit refusal in that turn', (s) => refusedFor(s, 'turn_limit')],
+  timed_out: ['a proposal that timed out since the line last said so, and no ok write in that turn', (s) => newExpiry(s) && !okWrite(s)],
+  nothing_pending: ['no proposal still open', (s) => !openProposal(s)],
+  call_ended: ['a call_end before it', (s) => s.before.some((e) => e.type === 'call_end')],
+  gift_read: ["a read of the call's own subscription that returned it", (s) => Boolean(s.gift?.snapshot)],
+  gift_active: ["a read of the call's own subscription that shows it active", (s) => s.gift?.snapshot?.status === 'ACTIVE'],
+  nothing_to: ["a read of the call's own subscription whose status that change can't act on", (s, kind) => nothingToDo(s, kind)],
+  invoice_read: ["a read of this call's own draft that returned it", (s) => Boolean(s.draft?.snapshot)],
+});
+
+/** The claims the grader can prove. A template claim the grader does not know fails the vocabulary test (R4-1). */
+export const CLAIM_NAMES = Object.freeze(Object.keys(CLAIMS));
+
+/** The call's events before a reply, those of its turn, the drafts it made, and its latest reads of its own subscription and draft. */
+function claimScope(list, said, subId) {
+  const before = list.filter((e) => e.seq < said.seq);
+  const drafts = before.filter((e) => e.type === 'staging_write' && e.kind === 'create_draft' && e.ok).map((e) => e.id);
+  const latest = (what, id) => (id ? before.filter((e) => e.type === 'read' && e.what === what && e.id === id).at(-1) ?? null : null);
+  return { said, before, turn: before.filter((e) => e.turn === said.turn), made: new Set(drafts), gift: latest('subscription', subId), draft: latest('invoice', drafts.at(-1)) };
+}
+
+/** The reply a repeat repeats: the latest earlier reply of the turn it names, whose words it ends with. */
+function repeatedReply(said, list) {
+  const original = list.filter((e) => e.type === 'said' && e.turn === said.repeats && e.seq < said.seq).at(-1);
+  const words = typeof original?.text === 'string' ? original.text : '';
+  return words !== '' && String(said.text ?? '').endsWith(words) ? original : null;
+}
+
+const sameClaim = (a, b) => a?.claim === b.claim && a?.sentence === b.sentence;
+// Own keys only, so a reply that says "toString" never reads a claim off Object.prototype.
+const claimsOf = (templates, sentence) => (Object.hasOwn(templates.claims, sentence) ? templates.claims[sentence] : []);
+
+/** Why a declared claim is not backed, or null. A repeat proves a claim the repeated reply made at that reply. */
+function unbackedClaim(c, said, original, ctx) {
+  const [name, value] = c.claim.split('=');
+  const check = Object.hasOwn(CLAIMS, name) ? CLAIMS[name] : null;
+  if (!check) return `claimed ${c.claim} for "${c.sentence}", a claim the grader does not know`;
+  const at = original && (original.claims ?? []).some((o) => sameClaim(o, c)) ? original : said;
+  if (check[1](claimScope(ctx.list, at, ctx.subId), value)) return null;
+  return `said "${c.sentence}", which claims ${check[0]}, but the call's events up to ${at === said ? 'that reply' : `the reply of turn ${at.turn} it repeats`} don't show it`;
+}
+
+/**
+ * A sentence the templates tie to a claim must declare it, and each declared claim must be its sentence's own, in
+ * the reply, and backed by the call's events up to the reply. A claim is not spoken as its value, so it is tied to
+ * its sentence rather than to the whole-word rule for facts (R4-1).
+ */
+function claimProblems(said, text, proven, ctx) {
+  const slot = (sentence) => slotFacts(sentence, proven, ctx.orgName);
+  const sentences = new Set(sentencesOf(slot(text)));
+  const declared = (Array.isArray(said.claims) ? said.claims : []).filter((c) => typeof c?.claim === 'string' && typeof c?.sentence === 'string');
+  const problems = [];
+  for (const sentence of sentences) {
+    for (const name of claimsOf(ctx.templates, sentence)) {
+      if (!declared.some((c) => c.claim === name && slot(c.sentence) === sentence)) problems.push(violation(said, 'facts', `said "${sentence}" without its claim ${name}`));
+    }
+  }
+  const original = Number.isInteger(said.repeats) ? repeatedReply(said, ctx.list) : null;
+  if (Number.isInteger(said.repeats) && !original) problems.push(violation(said, 'facts', `the reply says it repeats turn ${said.repeats}, but it does not end with that turn's reply`));
+  for (const c of declared) {
+    const sentence = slot(c.sentence);
+    const why = !sentences.has(sentence) ? `claimed ${c.claim} for "${c.sentence}", a sentence the reply never says`
+      : !claimsOf(ctx.templates, sentence).includes(c.claim) ? `claimed ${c.claim} for "${sentence}", which the line's own templates never tie to it`
+        : unbackedClaim(c, said, original, ctx);
+    if (why) problems.push(violation(said, 'facts', why));
+  }
+  return problems;
+}
+
+/**
+ * Why a call's template list can't vouch for its replies, or null when it can: the history has no list under the hash
+ * its call_start names (R4-2), or the list has a sentence the review never passed with its claims, as when say.js
+ * gained one and npm run vocabulary ran with no npm test (R4-1). A call that names no hash is held to the current list
+ * and its review. pilot-check fails such a call, and refuses the grade when this is all that keeps it from a PASS (G1).
+ */
+export function templateTrouble(start, history = TEMPLATE_HISTORY) {
+  const named = Boolean(start) && Object.hasOwn(start, 'templates');
+  const hash = named ? start.templates : TEMPLATE_HASH;
+  if (typeof hash !== 'string' || !Object.hasOwn(history, hash)) return named ? { hash: String(hash), unknown: true, unreviewed: [] } : null;
+  const entry = history[hash];
+  const unreviewed = unreviewedSentences(entry, Array.isArray(entry.reviewed) ? entry.reviewed : []);
+  return unreviewed.length > 0 ? { hash, unknown: false, unreviewed } : null;
+}
+
+/** The violation for a call whose template list can't vouch for its replies, naming the hash and what is wrong. */
+function troubleViolation(start, trouble) {
+  const why = trouble.unknown ? 'which the template history does not have'
+    : `whose sentences ${trouble.unreviewed.map((sentence) => JSON.stringify(sentence)).join(', ')} the review in src/vocabulary.js never passed with their claims`;
+  return violation(start, 'facts', `the call logged the template list ${trouble.hash}, ${why}, so its replies can't be checked`);
+}
+
+/**
+ * The template list a call was spoken with: the one its call_start names by hash, or the current one when it names
+ * none. null when the history has no list under that hash, so pilot-check refuses the grade rather than fail the call (R4-2).
+ */
+export function templatesFor(start, history = TEMPLATE_HISTORY) {
+  if (!start || !Object.hasOwn(start, 'templates')) return CURRENT_TEMPLATES;
+  const hash = start.templates;
+  if (typeof hash !== 'string' || !Object.hasOwn(history, hash)) return null;
+  if (history === TEMPLATE_HISTORY && hash === TEMPLATE_HASH) return CURRENT_TEMPLATES;
+  if (!historyLists.has(history)) historyLists.set(history, new Map());
+  const cache = historyLists.get(history);
+  if (!cache.has(hash)) cache.set(hash, asTemplates(hash, history[hash]));
+  return cache.get(hash);
 }
 
 /**
  * I3: every spoken amount, date, suffix and status word matches the latest earlier PayPal read of the call's own
- * subscription, its plan or the call's own draft, every declared fact is said, and every other word is a template word.
- * orgName and subscriptionId come from the config in pilot-check, else from the call's own call_start and reads.
+ * subscription, its plan or the call's own draft, every declared fact is said, every other word is a template word,
+ * and every claim is backed, all held to the template list the call was spoken with. orgName and subscriptionId
+ * come from the config in pilot-check, else from the call's own call_start and reads. A call whose list can't vouch
+ * for its replies has that one violation (R4-1, R4-2).
  */
-export function checkFacts(events, { orgName = null, subscriptionId = null } = {}) {
+export function checkFacts(events, { orgName = null, subscriptionId = null, history = TEMPLATE_HISTORY, lenientTemplates = false } = {}) {
   const problems = [];
   for (const list of groupByCall(events).values()) {
     const start = list.find((e) => e.type === 'call_start');
-    const ctx = { timeZone: start?.timeZone ?? DEFAULT_TIME_ZONE, orgName: orgName ?? start?.orgName ?? null };
+    // lenientTemplates sets the trouble aside, so pilot-check can tell a refusal from a fail (G1). A list the history
+    // lacks can't be checked at all, and a list with unreviewed sentences is still checked as far as it goes.
+    const trouble = templateTrouble(start, history);
+    if (trouble && !lenientTemplates) problems.push(troubleViolation(start, trouble));
+    const templates = templatesFor(start, history);
+    if (!templates) continue;
     const subId = callSubscription(list, subscriptionId);
+    const ctx = { timeZone: start?.timeZone ?? DEFAULT_TIME_ZONE, orgName: orgName ?? start?.orgName ?? null, templates, list, subId };
     const reads = new Map();
     let draftId = null;
     for (const event of list) {
@@ -229,7 +452,8 @@ function checkOneSubscription(list, subscriptionId) {
     if (e.type === 'read' && e.what === 'subscription') return e.id;
     return (e.type === 'proposed' || e.type === 'write') && SUBSCRIPTION_KINDS.has(e.kind) ? e.targetId : undefined;
   };
-  const own = subscriptionId ? `the pilot's subscription, ${subId}` : `${subId}, the subscription this call works on`;
+  // sweep holds a later call to the id it logged, which may not be the pilot's, so the message names the id only (C1).
+  const own = subscriptionId ? `${subId}, the subscription this call is held to` : `${subId}, the subscription this call works on`;
   const step = (e) => (e.type === 'read' ? 'a read' : `a ${e.kind} ${e.type === 'write' ? 'write' : 'proposal'}`);
   return list.filter((e) => targetOf(e) !== undefined && targetOf(e) !== subId)
     .map((e) => violation(e, 'writes', `${step(e)} of ${targetOf(e)}, not of ${own}`));
