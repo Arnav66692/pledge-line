@@ -228,7 +228,9 @@ test('a yes that reaches the line sooner after the asking reply than a person ca
 test('ROUTER_MODE gemini needs GEMINI_API_KEY, takes GEMINI_MODEL, and counts as a real router', () => {
   assert.throws(() => loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini' }), /GEMINI_API_KEY is required when ROUTER_MODE is gemini/);
   const config = loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini', GEMINI_API_KEY: 'k' });
-  assert.deepEqual({ ...config.router }, { mode: 'gemini', apiKey: 'k', model: 'gemini-flash-lite-latest' });
+  assert.deepEqual({ ...config.router }, { mode: 'gemini', apiKey: 'k', model: 'gemini-3.5-flash-lite' });
   assert.equal(loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini', GEMINI_API_KEY: 'k', GEMINI_MODEL: 'gemini-2.5-flash-lite' }).router.model, 'gemini-2.5-flash-lite');
   assert.throws(() => loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'openai' }), /ROUTER_MODE must be haiku, gemini or rules/);
+  assert.equal(loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini', GEMINI_API_KEY: 'k', GEMINI_MODEL: 'models/gemini-3.1-flash-lite' }).router.model, 'gemini-3.1-flash-lite');
+  assert.throws(() => loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini', GEMINI_API_KEY: 'k', GEMINI_MODEL: 'Gemini 3.5 Flash Lite' }), /GEMINI_MODEL must be a model id/);
 });

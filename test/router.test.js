@@ -184,18 +184,20 @@ function fakeFetch(answers) {
 const geminiReply = (args, extra = {}) => ({ status: 200, body: { candidates: [{ finishReason: 'STOP', content: { parts: [{ functionCall: { name: 'route', args } }] }, ...extra }] } });
 const gemini = (answers) => {
   const fake = fakeFetch(answers);
-  return { fake, router: createRouter({ mode: 'gemini', apiKey: 'test-key', model: 'gemini-flash-lite-latest', fetchImpl: fake.fetchImpl }) };
+  return { fake, router: createRouter({ mode: 'gemini', apiKey: 'test-key', model: 'gemini-3.5-flash-lite', fetchImpl: fake.fetchImpl }) };
 };
 
 test('the Gemini call forces the route tool, keeps the key out of the URL and strips numbers the line said', async () => {
   const { fake, router } = gemini([geminiReply({ intent: 'pause_gift', amount_dollars: 0, empathy: 'sorry' })]);
   const result = await router.route({ text: 'Pause it please.', state: { verified: true, pendingKind: null, pauseOffered: false, lastSaid: 'Your gift of $25.00 is due December 1.' } });
-  assert.deepEqual({ intent: result.intent, amountDollars: result.amountDollars, empathy: result.empathy, model: result.model }, { intent: 'pause_gift', amountDollars: 0, empathy: 'sorry', model: 'gemini-flash-lite-latest' });
+  assert.deepEqual({ intent: result.intent, amountDollars: result.amountDollars, empathy: result.empathy, model: result.model }, { intent: 'pause_gift', amountDollars: 0, empathy: 'sorry', model: 'gemini-3.5-flash-lite' });
   const { url, init, body } = fake.calls[0];
-  assert.equal(url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent');
+  assert.equal(url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
   assert.doesNotMatch(url, /key=|test-key/);
   assert.equal(init.headers['x-goog-api-key'], 'test-key');
   assert.deepEqual(body.toolConfig, { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['route'] } });
+  assert.deepEqual(body.generationConfig, { maxOutputTokens: 400, thinkingConfig: { thinkingLevel: 'MINIMAL' } });
+  for (const key of ['temperature', 'topP', 'topK']) assert.equal(key in body.generationConfig, false, key);
   const declared = body.tools[0].functionDeclarations[0];
   assert.equal(declared.name, 'route');
   assert.deepEqual(declared.parameters.required, ['intent', 'amount_dollars', 'empathy']);
@@ -207,14 +209,22 @@ test('the Gemini call forces the route tool, keeps the key out of the URL and st
   assert.doesNotMatch(content, /25|December 1\b/);
 });
 
-test('Gemini answers the line can not trust all route as unclear, with a named error and no free text passed on', async () => {
-  const odd = await gemini([geminiReply({ intent: 'wire_money', amount_dollars: 9e9, empathy: 'All done, it is off now.' })]).router.route({ text: 'hi', state: {} });
-  assert.deepEqual([odd.intent, odd.amountDollars, odd.empathy], ['unclear', 100000, 'none']);
+test('Gemini answers the line can not trust all route as unclear, with a named error, and no free text is passed on', async () => {
+  const wild = await gemini([geminiReply({ intent: 'pause_gift', amount_dollars: 9e9, empathy: 'All done, it is off now.' })]).router.route({ text: 'hi', state: {} });
+  assert.deepEqual([wild.intent, wild.amountDollars, wild.empathy], ['pause_gift', 100000, 'none'], 'free text from the model is never passed on');
   const cases = [
     [[{ status: 200, body: { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'Sure, I paused it.' }] } }] } }], 'NoToolUse'],
     [[{ status: 200, body: { candidates: [] } }], 'NoToolUse'],
     [[{ status: 200, body: { promptFeedback: { blockReason: 'SAFETY' } } }], 'Refusal'],
     [[geminiReply({ intent: 'pause_gift', amount_dollars: 0, empathy: 'none' }, { finishReason: 'SAFETY' })], 'Refusal'],
+    [[geminiReply({ intent: 'wire_money', amount_dollars: 0, empathy: 'none' })], 'BadToolInput'],
+    [[geminiReply('{"intent":"cancel_now"}')], 'BadToolInput'],
+    [[geminiReply(null)], 'BadToolInput'],
+    [[geminiReply({ intent: '__proto__' })], 'BadToolInput'],
+    [[geminiReply({ intent: 'pause_gift', amount_dollars: 0, empathy: 'none' }, { finishReason: 'SPII' })], 'Refusal'],
+    [[{ status: 200, body: { candidates: [{ finishReason: 'MALFORMED_FUNCTION_CALL', content: { parts: [] } }] } }], 'MalformedFunctionCall'],
+    [[{ status: 200, body: { candidates: ['oops'] } }], 'NoToolUse'],
+    [[{ status: 200, body: null }], 'NoToolUse'],
     [[{ status: 400, body: {} }], 'APIError400'],
     [[{ status: 403, body: {} }], 'APIError403'],
     [[{ status: 429, body: {} }], 'RateLimitError'],
@@ -229,14 +239,34 @@ test('Gemini answers the line can not trust all route as unclear, with a named e
   }
 });
 
-test('Gemini retries once on a 429, a 5xx or a dropped connection, and never on a 4xx', async () => {
+test('Gemini retries once on a 5xx, a dropped connection or a body cut off mid-read, and never on a 429 or another 4xx', async () => {
   const busy = gemini([{ status: 429, body: {} }, geminiReply({ intent: 'gift_status', amount_dollars: 0, empathy: 'none' })]);
-  assert.equal((await busy.router.route({ text: 'How much is my gift?', state: {} })).intent, 'gift_status');
-  assert.equal(busy.fake.calls.length, 2);
+  assert.equal((await busy.router.route({ text: 'How much is my gift?', state: {} })).error, 'RateLimitError');
+  assert.equal(busy.fake.calls.length, 1);
+  const flaky = gemini([new TypeError('fetch failed'), geminiReply({ intent: 'gift_status', amount_dollars: 0, empathy: 'none' })]);
+  assert.equal((await flaky.router.route({ text: 'How much is my gift?', state: {} })).intent, 'gift_status');
+  assert.equal(flaky.fake.calls.length, 2);
+  // A body that times out mid-read is tried again, and a body that isn't JSON is not.
+  const reads = [];
+  const bodyOf = (fail) => ({ ok: true, status: 200, json: async () => { throw fail; } });
+  const cutOff = createRouter({ mode: 'gemini', apiKey: 'k', model: 'gemini-3.5-flash-lite', fetchImpl: async () => { reads.push(1); return reads.length === 1 ? bodyOf(Object.assign(new Error('t'), { name: 'TimeoutError' })) : { ok: true, status: 200, json: async () => geminiReply({ intent: 'goodbye', amount_dollars: 0, empathy: 'none' }).body }; } });
+  assert.equal((await cutOff.route({ text: 'bye', state: {} })).intent, 'goodbye');
+  assert.equal(reads.length, 2);
+  let junkReads = 0;
+  const junk = createRouter({ mode: 'gemini', apiKey: 'k', model: 'gemini-3.5-flash-lite', fetchImpl: async () => { junkReads += 1; return bodyOf(new SyntaxError('bad json')); } });
+  assert.equal((await junk.route({ text: 'hi', state: {} })).error, 'BadResponse');
+  assert.equal(junkReads, 1);
   const down = gemini([{ status: 500, body: {} }]);
   assert.equal((await down.router.route({ text: 'hi', state: {} })).error, 'APIError500');
   assert.equal(down.fake.calls.length, 2);
   const badKey = gemini([{ status: 400, body: {} }]);
   await badKey.router.route({ text: 'hi', state: {} });
   assert.equal(badKey.fake.calls.length, 1);
+});
+
+test('a Gemini model before Gemini 3 gets no thinking level, which it would reject', async () => {
+  const fake = fakeFetch([geminiReply({ intent: 'help', amount_dollars: 0, empathy: 'none' })]);
+  const router = createRouter({ mode: 'gemini', apiKey: 'k', model: 'gemini-2.5-flash-lite', fetchImpl: fake.fetchImpl });
+  assert.equal((await router.route({ text: 'What can you do?', state: {} })).intent, 'help');
+  assert.deepEqual(fake.calls[0].body.generationConfig, { maxOutputTokens: 400 });
 });

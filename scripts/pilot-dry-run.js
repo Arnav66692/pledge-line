@@ -7,6 +7,9 @@ import { buildDeps, templateWarnings } from '../src/server.js';
 import { PILOT_SCRIPTS, scriptTurns } from '../src/pilot-scripts.js';
 import { gradeCall } from '../src/check.js';
 
+// Gemini's free tier caps requests per minute, so a Gemini dry run spaces its turns as a caller would.
+const GEMINI_TURN_GAP_MS = 4500;
+
 const args = process.argv.slice(2);
 const flagValue = (name) => {
   const i = args.indexOf(name);
@@ -33,11 +36,14 @@ async function runOne(deps, script) {
   for (const turn of scriptTurns(script, deps.config.pin)) {
     const shown = turn.secret ? '#'.repeat(turn.text.length) : turn.text;
     out(`    ${`you, ${turn.source}`.padEnd(14)} ${shown}`);
+    if (deps.config.router.mode === 'gemini') await new Promise((resolve) => setTimeout(resolve, GEMINI_TURN_GAP_MS));
     const result = await deps.calls.turn(callId, { text: turn.text, source: turn.source, answering });
     answering = result.turn;
     out(`    ${'line'.padEnd(14)} ${result.reply}`);
   }
-  const grade = gradeCall(deps.ledger.byCall(callId), script);
+  const events = deps.ledger.byCall(callId);
+  for (const e of events.filter((ev) => ev.type === 'route' && ev.error)) out(`    router error ${e.error}, turn ${e.turn}`);
+  const grade = gradeCall(events, script);
   printGrade(grade);
   out('');
   return { script, callId, grade };

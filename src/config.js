@@ -5,7 +5,8 @@ import { extractSpokenFacts } from './say.js';
 export const SANDBOX_BASE_URL = 'https://api-m.sandbox.paypal.com';
 export const ROUTER_MODEL = 'claude-haiku-5-5';
 // Gemini's free tier, which needs no card. GEMINI_MODEL can name another model the key can use.
-export const GEMINI_MODEL = 'gemini-flash-lite-latest';
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const GEMINI_MODEL_ID = /^[a-z0-9][a-z0-9.-]*$/;
 export const MOCK_SUBSCRIPTION_ID = 'I-MOCK0000001';
 export const MOCK_PLAN_ID = 'P-MOCK0000001';
 export const MOCK_WEBHOOK_ID = 'WH-MOCK-WEBHOOK';
@@ -143,7 +144,10 @@ function parseRouter(env, mode, partial, errors) {
   if (mode === 'gemini') {
     const apiKey = clean(env.GEMINI_API_KEY);
     if (!apiKey && !partial) errors.push('GEMINI_API_KEY is required when ROUTER_MODE is gemini');
-    return Object.freeze({ mode, apiKey, model: clean(env.GEMINI_MODEL) ?? GEMINI_MODEL });
+    // AI Studio shows ids as models/gemini-..., and the router adds models/ itself.
+    const model = (clean(env.GEMINI_MODEL) ?? GEMINI_MODEL).replace(/^models\//, '');
+    if (!GEMINI_MODEL_ID.test(model)) errors.push(`GEMINI_MODEL must be a model id such as ${GEMINI_MODEL}`);
+    return Object.freeze({ mode, apiKey, model });
   }
   const apiKey = clean(env.ANTHROPIC_API_KEY);
   if (mode === 'haiku' && !apiKey && !partial) errors.push('ANTHROPIC_API_KEY is required when ROUTER_MODE is haiku');

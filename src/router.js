@@ -252,6 +252,8 @@ function fromToolInput(input) {
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const GEMINI_RETRIES = 1;
+// Content stops a candidate can end on. A route call that comes with one of these is not trusted (SPEC).
+const GEMINI_STOPS = new Set(['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'RECITATION']);
 // Gemini takes an OpenAPI subset, so the route tool goes in without strict or additionalProperties.
 const GEMINI_ROUTE = Object.freeze({
   name: ROUTE_TOOL.name,
@@ -271,7 +273,11 @@ function geminiErrorName(error, status) {
   return 'APIConnectionError';
 }
 
-const retryable = (status) => status === 429 || status >= 500;
+// A 429 is not retried: the free tier's per-minute quota is still spent a moment later, and a retry spends more of the day's.
+const retryable = (status) => status >= 500;
+// Gemini 3 models think at a level, and MINIMAL is the one Google gives for routing. Earlier models reject the field.
+const thinkingFor = (model) => (/^gemini-3\./.test(model) ? { thinkingConfig: { thinkingLevel: 'MINIMAL' } } : {});
+const isRouteArgs = (args) => Boolean(args) && typeof args === 'object' && !Array.isArray(args) && INTENTS.includes(args.intent);
 
 /**
  * The route tool on Gemini's free tier, forced with function calling mode ANY. The key goes in a header, never
@@ -284,29 +290,39 @@ function createGeminiRouter({ apiKey, model, timeoutMs, fetchImpl }) {
     contents: [{ role: 'user', parts: [{ text: buildRouterContent({ text, state }) }] }],
     tools: [{ functionDeclarations: [GEMINI_ROUTE] }],
     toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [GEMINI_ROUTE.name] } },
-    generationConfig: { temperature: 0, maxOutputTokens: MAX_TOKENS },
+    // No temperature, topP or topK: Gemini 3 ignores them, and Google says later models return 400 for them.
+    generationConfig: { maxOutputTokens: MAX_TOKENS, ...thinkingFor(model) },
   });
 
-  async function call(text, state) {
-    let last = { error: 'APIConnectionError' };
-    for (let attempt = 0; attempt <= GEMINI_RETRIES; attempt += 1) {
-      let status = 0;
-      try {
-        const response = await fetchImpl(url, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-          body: body(text, state),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        status = response.status;
-        if (!response.ok) throw new Error(`Gemini ${status}`);
-        return { data: await response.json() };
-      } catch (error) {
-        last = { error: geminiErrorName(error, status) };
-        if (status && !retryable(status)) return last;
-      }
+  /** One request: its JSON, or the error name and whether a second try could help. */
+  async function attempt(text, state) {
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+        body: body(text, state),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      return { error: geminiErrorName(error, 0), retry: true };
     }
-    return last;
+    if (!response.ok) {
+      response.body?.cancel?.().catch(() => {});
+      return { error: geminiErrorName(null, response.status), retry: retryable(response.status) };
+    }
+    try {
+      return { data: await response.json() };
+    } catch (error) {
+      // A body cut off or timed out mid-read can succeed on a second try. A body that isn't JSON won't.
+      return error instanceof SyntaxError ? { error: 'BadResponse', retry: false } : { error: geminiErrorName(error, 0), retry: true };
+    }
+  }
+
+  async function call(text, state) {
+    let result = await attempt(text, state);
+    for (let tries = 0; tries < GEMINI_RETRIES && result.retry; tries += 1) result = await attempt(text, state);
+    return result;
   }
 
   async function route({ text, state }) {
@@ -317,11 +333,13 @@ function createGeminiRouter({ apiKey, model, timeoutMs, fetchImpl }) {
     if (error) return fail(error);
     if (data?.promptFeedback?.blockReason) return fail('Refusal');
     const candidate = data?.candidates?.[0];
-    if (!candidate) return fail('NoToolUse');
-    if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'PROHIBITED_CONTENT') return fail('Refusal');
+    if (!candidate || typeof candidate !== 'object') return fail('NoToolUse');
+    if (GEMINI_STOPS.has(candidate.finishReason)) return fail('Refusal');
+    if (candidate.finishReason === 'MALFORMED_FUNCTION_CALL') return fail('MalformedFunctionCall');
     const parts = Array.isArray(candidate.content?.parts) ? candidate.content.parts : [];
     const part = parts.find((p) => p?.functionCall?.name === GEMINI_ROUTE.name);
     if (!part) return fail('NoToolUse');
+    if (!isRouteArgs(part.functionCall.args)) return fail('BadToolInput');
     return { ...fromToolInput(part.functionCall.args), latencyMs: elapsed(), model };
   }
 
