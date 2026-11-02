@@ -1,7 +1,8 @@
 // Pure grading over ledger events, shared by the dry run, pilot-check and the tests.
-import { extractSpokenFacts, FACT_SOURCES, formatMoney, limitsPhrase } from './say.js';
+import { scanSpoken, extractSpokenFacts, saysPhrase, spokenForm, wordsOf, slotFacts, sentencesOf, SLOT_MARKS, FACT_SOURCES, formatMoney, limitsPhrase } from './say.js';
 import { isClearYes } from './gate.js';
 import { LIMITS } from './config.js';
+import { TEMPLATE_WORDS, TEMPLATE_SENTENCES } from './template-words.js';
 
 const DEFAULT_TIME_ZONE = 'America/Los_Angeles';
 const SOURCE_WHAT = Object.freeze({
@@ -32,6 +33,11 @@ const WRITE_STATUS = Object.freeze({
 const CLOSED_BY = Object.freeze({ expired: 'already timed out', withdrawn: 'already been set aside', no: 'already been declined' });
 const SAFETY_REASONS = ['other_email', 'locked'];
 const GATED_TYPES = new Set(['read', 'write', 'staging_write']);
+const SUBSCRIPTION_KINDS = new Set(['suspend', 'activate', 'cancel']);
+// Whose read a fact may come from (R3-7).
+const OWN = Object.freeze({ subscription: "this call's own subscription", plan: "that subscription's plan", invoice: "this call's own draft" });
+const TEMPLATE_WORD_SET = new Set(TEMPLATE_WORDS);
+const TEMPLATE_SENTENCE_SET = new Set(TEMPLATE_SENTENCES);
 
 const bySeq = (a, b) => (a.seq ?? 0) - (b.seq ?? 0);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -55,6 +61,21 @@ function isCovered(found, facts) {
 
 const LIMITS_PHRASE = limitsPhrase(LIMITS.invoiceMinDollars, LIMITS.invoiceMaxDollars);
 
+/** The one subscription a call works on: the configured one when given, else the first one it read or proposed a change to. */
+export function callSubscription(list, subscriptionId = null) {
+  if (subscriptionId) return subscriptionId;
+  const first = list.find((e) => (e.type === 'read' && e.what === 'subscription') || ((e.type === 'proposed' || e.type === 'write') && SUBSCRIPTION_KINDS.has(e.kind)));
+  if (!first) return null;
+  return first.type === 'read' ? first.id : first.targetId;
+}
+
+/** The reads a fact may come from: the latest of the call's own subscription, of that subscription's plan, and of the call's latest draft. */
+function ownReads(reads, subId, draftId) {
+  const subscription = reads.get(`subscription ${subId}`) ?? null;
+  const planId = subscription?.snapshot?.plan_id ?? null;
+  return { subscription, plan: planId ? reads.get(`plan ${planId}`) ?? null : null, invoice: draftId ? reads.get(`invoice ${draftId}`) ?? null : null };
+}
+
 /** Why a declared fact is wrong, or null when it matches its PayPal read or, inside the line's amount question, the config. */
 function declaredProblem(f, said, latest, timeZone) {
   const config = CONFIG_FACTS[f.source];
@@ -62,38 +83,70 @@ function declaredProblem(f, said, latest, timeZone) {
   if (config) return config() === f.value ? null : `said "${f.value}" for ${f.source}, the config gives "${config()}"`;
   const derive = FACT_SOURCES[f.source];
   if (!derive) return `fact "${f.value}" names an unknown source ${f.source}`;
-  const read = latest[SOURCE_WHAT[f.source]];
-  if (!read?.snapshot) return `fact "${f.value}" (${f.source}) has no earlier PayPal read in this call`;
+  const what = SOURCE_WHAT[f.source];
+  const read = latest[what];
+  if (!read?.snapshot) return `fact "${f.value}" (${f.source}) has no earlier PayPal read of ${OWN[what]} in this call`;
   const expected = derive(read.snapshot, timeZone);
   return expected === f.value ? null : `said "${f.value}" for ${f.source}, PayPal's latest read gives "${expected}"`;
 }
 
-function checkSaid(said, latest, timeZone) {
+/** A declared fact must be said, as whole words or in words the scans read, such as "twenty five dollars" for $25.00. */
+function unspokenProblem(f, text, heard) {
+  if (heard.some((x) => x.kind === f.kind && x.value === f.value) || saysPhrase(text, spokenForm(f))) return null;
+  return `declared ${f.kind} "${f.value}" (${f.source}), but the reply never says it`;
+}
+
+function checkSaid(said, latest, { timeZone, orgName }) {
   const problems = [];
+  const text = String(said.text ?? '');
   const facts = Array.isArray(said.facts) ? said.facts : [];
+  const org = orgName ? [orgName] : [];
+  const heard = extractSpokenFacts(text, { strict: true, skip: org });
   const proven = [];
   for (const f of facts) {
-    const problem = declaredProblem(f, said, latest, timeZone);
+    const problem = declaredProblem(f, said, latest, timeZone) ?? unspokenProblem(f, text, heard);
     if (problem) problems.push(violation(said, 'facts', problem));
     else proven.push(f);
   }
-  // A masked email proven against a read may spell digits as words, so it is set aside before the scan.
-  const skip = proven.filter((f) => f.kind === 'email').map((f) => f.value);
-  for (const found of extractSpokenFacts(said.text, { strict: true, skip })) {
-    if (!isCovered(found, facts)) problems.push(violation(said, 'facts', `spoke ${found.kind} "${found.value}" that no PayPal read covers`));
+  // Proven facts and the org name are set aside as whole words, then everything the scans find must be declared.
+  const { found, rest } = scanSpoken(text, { strict: true, skip: [...org, ...proven.map(spokenForm)] });
+  for (const x of found) {
+    if (!isCovered(x, facts)) problems.push(violation(said, 'facts', `spoke ${x.kind} "${x.value}" that no PayPal read covers`));
   }
-  return problems;
+  // What is left must be the line's own template words, so a fact said in a form no scan knows still fails.
+  for (const word of new Set(wordsOf(rest))) {
+    if (!TEMPLATE_WORD_SET.has(word)) problems.push(violation(said, 'facts', `said "${word}", a word the line's own templates never use`));
+  }
+  return [...problems, ...sentenceProblems(said, text, proven, orgName)];
 }
 
-/** I3: every spoken amount, date, suffix and status word matches the latest earlier PayPal read. */
-export function checkFacts(events) {
+/**
+ * Each sentence, with the org name and the proven facts as slots, must be a sentence the templates say, so template
+ * words recombined into a new claim, such as "The next gift is this month" or "PayPal no longer shows ...", fail (R3-6).
+ */
+function sentenceProblems(said, text, proven, orgName) {
+  if (SLOT_MARKS.test(text)) return [violation(said, 'facts', 'said a brace, which no template says')];
+  const unknown = sentencesOf(slotFacts(text, proven, orgName)).filter((sentence) => !TEMPLATE_SENTENCE_SET.has(sentence));
+  return [...new Set(unknown)].map((sentence) => violation(said, 'facts', `said "${sentence}", a sentence the line's own templates never say`));
+}
+
+/**
+ * I3: every spoken amount, date, suffix and status word matches the latest earlier PayPal read of the call's own
+ * subscription, its plan or the call's own draft, every declared fact is said, and every other word is a template word.
+ * orgName and subscriptionId come from the config in pilot-check, else from the call's own call_start and reads.
+ */
+export function checkFacts(events, { orgName = null, subscriptionId = null } = {}) {
   const problems = [];
   for (const list of groupByCall(events).values()) {
-    const timeZone = list.find((e) => e.type === 'call_start')?.timeZone ?? DEFAULT_TIME_ZONE;
-    const latest = {};
+    const start = list.find((e) => e.type === 'call_start');
+    const ctx = { timeZone: start?.timeZone ?? DEFAULT_TIME_ZONE, orgName: orgName ?? start?.orgName ?? null };
+    const subId = callSubscription(list, subscriptionId);
+    const reads = new Map();
+    let draftId = null;
     for (const event of list) {
-      if (event.type === 'read') latest[event.what] = event;
-      if (event.type === 'said') problems.push(...checkSaid(event, latest, timeZone));
+      if (event.type === 'read') reads.set(`${event.what} ${event.id}`, event);
+      if (event.type === 'staging_write' && event.kind === 'create_draft' && event.ok) draftId = event.id;
+      if (event.type === 'said') problems.push(...checkSaid(event, ownReads(reads, subId, draftId), ctx));
     }
   }
   return problems;
@@ -112,6 +165,14 @@ function checkYesTurn(write, yes, proposed, list) {
   // The line logs the reply each turn's client says it was answering (I6). A yes must answer the reply that asked.
   if (Object.hasOwn(heard, 'answering') && heard.answering !== yes.turn - 1) {
     problems.push(violation(write, 'writes', `the yes for ${write.kind} left its client before the proposal reached it`));
+  }
+  // The line also logs the last reply it had finished when the turn arrived, which no client can forge (I1).
+  if (Object.hasOwn(heard, 'arrivedAfter') && heard.arrivedAfter !== yes.turn - 1) {
+    problems.push(violation(write, 'writes', `the yes for ${write.kind} arrived before the line had finished the reply that asked`));
+  }
+  // Over HTTP it logs how long after that reply the turn reached it, too soon for a person to have heard it.
+  if (Number.isFinite(heard.afterReplyMs) && !(heard.afterReplyMs >= LIMITS.minAnswerMs)) {
+    problems.push(violation(write, 'writes', `the yes for ${write.kind} reached the line ${heard.afterReplyMs} ms after the reply that asked, sooner than a person can answer`));
   }
   const asked = list.some((e) => e.type === 'said' && e.turn === yes.turn - 1 && e.seq < yes.seq
     && typeof e.text === 'string' && typeof proposed.readBack === 'string' && e.text.includes(proposed.readBack));
@@ -161,10 +222,27 @@ function checkOneWrite(write, list) {
   return problems;
 }
 
-/** I1, I4 and I6: writes need a same-turn yes after a spoken proposal, and nothing happens before pin_ok or after the call ends. */
-export function checkWrites(events) {
+/** Every subscription read, proposal and write in a call targets one subscription, the configured one when given (R3-7). */
+function checkOneSubscription(list, subscriptionId) {
+  const subId = callSubscription(list, subscriptionId);
+  const targetOf = (e) => {
+    if (e.type === 'read' && e.what === 'subscription') return e.id;
+    return (e.type === 'proposed' || e.type === 'write') && SUBSCRIPTION_KINDS.has(e.kind) ? e.targetId : undefined;
+  };
+  const own = subscriptionId ? `the pilot's subscription, ${subId}` : `${subId}, the subscription this call works on`;
+  const step = (e) => (e.type === 'read' ? 'a read' : `a ${e.kind} ${e.type === 'write' ? 'write' : 'proposal'}`);
+  return list.filter((e) => targetOf(e) !== undefined && targetOf(e) !== subId)
+    .map((e) => violation(e, 'writes', `${step(e)} of ${targetOf(e)}, not of ${own}`));
+}
+
+/**
+ * I1, I4 and I6: writes need a same-turn yes after a spoken proposal, nothing happens before pin_ok or after the
+ * call ends, and every subscription step targets one subscription, subscriptionId when the config gives it.
+ */
+export function checkWrites(events, { subscriptionId = null } = {}) {
   const problems = [];
   for (const list of groupByCall(events).values()) {
+    problems.push(...checkOneSubscription(list, subscriptionId));
     const pinOk = list.find((e) => e.type === 'pin_ok');
     const ended = list.find((e) => e.type === 'call_end');
     for (const event of list) {
@@ -182,10 +260,14 @@ export function checkWrites(events) {
   return problems;
 }
 
-/** Safety stops: no invoice to another email, an offered or sent invoice shows its recipient, and a locked call reads and writes nothing. */
-export function checkSafety(events) {
+/**
+ * Safety stops: no invoice to an email other than the one on file with the call's own subscription, an offered or
+ * sent invoice shows its recipient, and a locked call reads and writes nothing.
+ */
+export function checkSafety(events, { subscriptionId = null } = {}) {
   const problems = [];
   for (const list of groupByCall(events).values()) {
+    const subId = callSubscription(list, subscriptionId);
     const locked = list.find((e) => e.type === 'pin_locked');
     const offered = new Set(list.filter((e) => (e.type === 'proposed' || e.type === 'write') && e.kind === 'send_invoice').map((e) => e.targetId));
     let emailOnFile = null;
@@ -194,7 +276,7 @@ export function checkSafety(events) {
         problems.push(violation(event, 'safety', `${event.type} happened after the call was locked`));
       }
       if (event.type !== 'read' || !event.snapshot) continue;
-      if (event.what === 'subscription') emailOnFile = event.snapshot.subscriber_email;
+      if (event.what === 'subscription' && event.id === subId) emailOnFile = event.snapshot.subscriber_email;
       const to = event.what === 'invoice' ? event.snapshot.recipient_email : null;
       if (to && (!emailOnFile || to.toLowerCase() !== String(emailOnFile).toLowerCase())) {
         problems.push(violation(event, 'safety', 'an invoice was addressed to an email other than the one on file'));
@@ -231,9 +313,15 @@ function checkStatuses(list, expect, start) {
 
 const factsSaidIn = (list, turn) => list.filter((e) => e.type === 'said' && e.turn === turn).flatMap((e) => (Array.isArray(e.facts) ? e.facts : []));
 
-/** Each proposal reads its amount and status, or the invoice's amount and number, aloud, and each write's reply reads the new status back. */
-function checkReadBacks(list) {
+/**
+ * Each proposal reads its amount and status, or the invoice's amount and number, aloud, each write's reply reads the
+ * new status back, and a script whose purpose is a read-back, Script 1, has a reply that reads its facts aloud (G1).
+ */
+function checkReadBacks(list, expect, start) {
   const problems = [];
+  const aloud = expect.readsAloud ?? [];
+  const readAloud = list.some((e) => e.type === 'said' && aloud.every((source) => (Array.isArray(e.facts) ? e.facts : []).some((f) => f.source === source)));
+  if (aloud.length > 0 && !readAloud) problems.push(violation(start, 'behavior', `no reply read ${aloud.join(' and ')} aloud from PayPal`));
   for (const p of list.filter((e) => e.type === 'proposed')) {
     const facts = factsSaidIn(list, p.turn);
     for (const source of PROPOSAL_FACTS[p.kind] ?? []) {
@@ -282,7 +370,7 @@ export function checkScript(events, script) {
   for (const reason of SAFETY_REASONS) {
     if (reasons.includes(reason) && !(expect.refusals ?? []).includes(reason)) problems.push(violation(start, 'behavior', `unexpected ${reason} refusal`));
   }
-  return [...problems, ...checkStatuses(list, expect, start), ...checkReadBacks(list), ...checkDrafts(list, expect, start)];
+  return [...problems, ...checkStatuses(list, expect, start), ...checkReadBacks(list, expect, start), ...checkDrafts(list, expect, start)];
 }
 
 /**
@@ -299,16 +387,36 @@ export function medianGap(events, { sources = ['voice'] } = {}) {
   return gaps.length % 2 ? gaps[mid] : Math.round((gaps[mid - 1] + gaps[mid]) / 2);
 }
 
-/** The gaps Test 4 counts. One per call and turn, the first logged, and only for a turn the line heard from that same source. */
+const turnKey = (e) => `${e.callId} ${e.turn}`;
+
+function gapsByTurn(events) {
+  const byTurn = new Map();
+  for (const e of [...events].sort(bySeq)) {
+    if (e.type === 'gap') byTurn.set(turnKey(e), [...(byTurn.get(turnKey(e)) ?? []), e]);
+  }
+  return byTurn;
+}
+
+/** The gaps Test 4 counts: the one gap of a turn the line heard from that same source. A turn with two gaps counts neither. */
 export function countedGaps(events) {
-  const heardFrom = new Map(events.filter((e) => e.type === 'heard').map((e) => [`${e.callId} ${e.turn}`, e.source]));
-  const seen = new Set();
-  return [...events].sort(bySeq).filter((e) => {
-    const key = `${e.callId} ${e.turn}`;
-    if (e.type !== 'gap' || seen.has(key) || heardFrom.get(key) !== e.source) return false;
-    seen.add(key);
-    return true;
-  });
+  const heardFrom = new Map(events.filter((e) => e.type === 'heard').map((e) => [turnKey(e), e.source]));
+  return [...gapsByTurn(events).values()].filter((gaps) => gaps.length === 1 && heardFrom.get(turnKey(gaps[0])) === gaps[0].source)
+    .map(([gap]) => gap).sort(bySeq);
+}
+
+/** Gaps no honest page posts: two for one heard turn, or one shorter than the line's own time to make that reply (R3-8). */
+export function gapProblems(events) {
+  const heard = new Set(events.filter((e) => e.type === 'heard').map(turnKey));
+  const serverMs = new Map(events.filter((e) => e.type === 'said').map((e) => [turnKey(e), e.ms]));
+  const problems = [];
+  for (const gaps of gapsByTurn(events).values()) {
+    if (gaps.length > 1 && heard.has(turnKey(gaps[0]))) problems.push(violation(gaps[0], 'gap', `${gaps.length} gaps were logged for one turn, so none of them counts`));
+  }
+  for (const gap of countedGaps(events)) {
+    const ms = serverMs.get(turnKey(gap));
+    if (Number.isFinite(ms) && gap.gapMs < ms) problems.push(violation(gap, 'gap', `the gap of ${gap.gapMs} ms is shorter than the ${ms} ms the line took to make that reply`));
+  }
+  return problems;
 }
 
 /** The turns after the PIN step. A call is voice when all of them came from the talk button. */
@@ -323,11 +431,12 @@ export const isCallBy = (list, source) => {
   return turns.length > 0 && turns.every((e) => e.source === source);
 };
 
-export function gradeCall(list, script) {
+/** The four call checks. options holds the configured orgName and subscriptionId in pilot-check. */
+export function gradeCall(list, script, options = {}) {
   const grade = {
-    facts: checkFacts(list),
-    writes: checkWrites(list),
-    safety: checkSafety(list),
+    facts: checkFacts(list, options),
+    writes: checkWrites(list, options),
+    safety: checkSafety(list, options),
     behavior: script ? checkScript(list, script) : [],
   };
   return { ...grade, passed: Object.values(grade).every((items) => items.length === 0) };
@@ -335,17 +444,20 @@ export function gradeCall(list, script) {
 
 /**
  * Latest call per script number, optionally filtered. Dry-run calls are kept apart and never count.
- * A call with no turns at all is a mis-click, so it never replaces a real run.
+ * A call with no turns at all is a mis-click, so it never replaces a real run. With until, only calls that started
+ * by then count, so a demo after the deadline never replaces the call that met the bar on time (G2).
  */
-export function latestCallsByScript(events, { since = null, filter = () => true, dryRun = false } = {}) {
+export function latestCallsByScript(events, { since = null, until = null, filter = () => true, dryRun = false } = {}) {
   const groups = groupByCall(events);
   const latest = new Map();
   const sinceMs = since ? Date.parse(since) : null;
+  const untilMs = until ? Date.parse(until) : null;
   for (const [callId, list] of groups) {
     const start = list.find((e) => e.type === 'call_start');
     if (!start || !start.script || Boolean(start.dryRun) !== dryRun) continue;
     // Compared as times, so a --since with a PT offset works like its UTC twin.
     if (sinceMs !== null && !(Date.parse(start.ts) >= sinceMs)) continue;
+    if (untilMs !== null && !(Date.parse(start.ts) <= untilMs)) continue;
     if (!list.some((e) => e.type === 'heard')) continue;
     if (!filter(start, list)) continue;
     const current = latest.get(start.script);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Anthropic from '@anthropic-ai/sdk';
-import { createRouter, rulesRoute, parseAmountDollars, ROUTE_TOOL, INTENTS, EMPATHY } from '../src/router.js';
+import { createRouter, rulesRoute, parseAmountDollars, amountConflict, ROUTE_TOOL, INTENTS, EMPATHY } from '../src/router.js';
 
 test('rules routing covers the pilot script lines', () => {
   const table = [
@@ -114,4 +114,57 @@ test('an amount said two ways, as a pair like twelve fifty, or in cents, is neve
   assert.equal(parseAmountDollars('send it to maria 25', { needCurrency: true }), 0);
   assert.equal(parseAmountDollars('a twenty five dollar invoice', { needCurrency: true }), 25);
   assert.equal(rulesRoute('Use my new email address, maria 25.').amountDollars, 0);
+});
+
+test('a corrected amount, or two different numbers, is no clear amount, and the scripted lines still parse', () => {
+  const table = [
+    ["I'd like to give fifty dollars, I mean sixty, just once.", 0], ['Give 50 dollars, no wait, 60, one time.', 0],
+    ['Give fifty dollars, actually sixty dollars.', 0], ['Give fifty dollars, make that sixty.', 0], ['Give twenty, scratch that, thirty dollars.', 0],
+    ['Give fifty dollars, or rather sixty, once.', 0], ['Give 50, no, 60 one time.', 0], ['Give fifty dollars for my 2 grandkids.', 0],
+    // A correction with no number before it corrects nothing, and the line's fixed phrases are set aside.
+    ['Actually, give thirty dollars once.', 30], ["I'd like to give fifty dollars, just once.", 50], ['Can I give twenty dollars one time?', 20],
+    ['Give 5 dollars and 50 cents once.', 5.5],
+  ];
+  for (const [text, dollars] of table) assert.equal(parseAmountDollars(text), dollars, text);
+  assert.equal(parseAmountDollars('Send a twenty five dollar invoice to my new email, bob at gmail dot com.', { needCurrency: true }), 25);
+  assert.equal(parseAmountDollars('Send fifty dollars, I mean sixty, to bob.', { needCurrency: true }), 0);
+});
+
+test('in rules mode a bare number is an amount only after give or donate, or as the answer to the amount question', () => {
+  for (const line of ["I'm 75 and I want to make a one-time gift.", 'My grandson turned twelve, so I want to make a one-time gift.']) {
+    assert.deepEqual(rulesRoute(line), { intent: 'one_time_gift', amountDollars: 0 }, line);
+  }
+  assert.equal(rulesRoute('Give 75 once.').amountDollars, 75);
+  assert.equal(rulesRoute('I want to donate fifty once.').amountDollars, 50);
+  assert.equal(rulesRoute("I'd like to give fifty dollars, just once.").amountDollars, 50);
+  const asked = { lastSaid: 'I can set up a one-time gift from one dollar to five hundred dollars. How much would you like to give?' };
+  assert.deepEqual(rulesRoute('Seventy five.', asked), { intent: 'one_time_gift', amountDollars: 75 });
+  assert.equal(rulesRoute('Seventy five.').intent, 'unclear');
+});
+
+test('a corrected amount said right before one time, or two numbers joined by and, is no clear amount (R3-1)', () => {
+  const unclear = ["I'd like to give fifty dollars, I mean sixty, one time.", 'Can I give twenty dollars, I mean thirty, one time?',
+    'Can I give twenty dollars, no wait, thirty, one time?', 'Give fifty dollars, sorry, sixty, one-time.', 'Give fifty dollars, er, sixty, one time.',
+    'Give fifty dollars I mean sixty one time', 'Give fifty, uh, sixty one time', 'Give $50 / sixty, one time', 'Give fifty dollars, I mean sixty, two tries left.',
+    'Give fifty and sixty dollars, once.', 'Give twenty and thirty dollars one time.', 'Give fifty and sixty, once.'];
+  for (const line of unclear) assert.equal(parseAmountDollars(line), 0, line);
+  for (const line of ['Send fifty dollars, I mean sixty, one time, to me.', 'Send twenty and thirty dollars to me.']) {
+    assert.equal(parseAmountDollars(line, { needCurrency: true }), 0, line);
+  }
+  // "and" still joins after hundred or thousand, a fixed phrase still sets aside its own number, and the scripted lines still parse.
+  const clear = [['one hundred and fifty dollars', 150], ['a thousand and five dollars', 1005], ['Give twenty one dollars one time.', 21],
+    ["I'd like to give fifty dollars, just once.", 50], ['Can I give twenty dollars one time?', 20], ['Give 5 dollars and 50 cents once.', 5.5]];
+  for (const [line, dollars] of clear) assert.equal(parseAmountDollars(line), dollars, line);
+  assert.equal(parseAmountDollars('Send a twenty five dollar invoice to my new email, bob at gmail dot com.', { needCurrency: true }), 25);
+  // In rules mode a count of gifts or of times is never an amount.
+  for (const line of ['Can I give one more time?', 'I want to give one more gift.', 'I would like to give 2 gifts.']) assert.equal(rulesRoute(line).amountDollars, 0, line);
+});
+
+test('amountConflict fires on a correction or two different numbers, and never on one amount or on no number (L2)', () => {
+  const conflicts = ["I'd like to give fifty dollars, I mean sixty, just once.", 'Give fifty dollars, I mean sixty, one time.', 'Give fifty and sixty dollars.',
+    'Give fifty dollars for my 2 grandkids.', 'Give $20 or $30.', 'I want to give twelve fifty once.'];
+  for (const line of conflicts) assert.equal(amountConflict(line), true, line);
+  const clear = ["I'd like to give fifty dollars, just once.", 'Can I give twenty dollars one time?', 'I want to give a gift, just once.', 'Fifty quid, please.',
+    'Give 5 dollars and 50 cents once.', "I'm 75 and I want to make a one-time gift."];
+  for (const line of clear) assert.equal(amountConflict(line), false, line);
 });

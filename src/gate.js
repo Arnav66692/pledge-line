@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { WriteNotAuthorized } from './paypal.js';
+import { LIMITS } from './config.js';
 
 const MAX_YES_WORDS = 8;
 // A clear yes starts like one of these, the wording SPEC.md gives. A bare "okay" or "please" is only an
@@ -108,7 +109,7 @@ export function describeError(error) {
   return `${error.name ?? 'Error'}${status}${reason}`;
 }
 
-export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlMs = 120000 }) {
+export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlMs = 120000, minAnswerMs = LIMITS.minAnswerMs }) {
   function propose(call, { kind, targetId, readBack, origin, turn }) {
     const createdAt = now().getTime();
     // askedTurn is the last turn whose reply spoke this proposal, the only turn a yes may answer.
@@ -135,13 +136,19 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
   /**
    * answering is the turn of the last reply the caller's client says it received. call.js always passes it,
    * null when the client sent none, so a yes that left the client before the proposal reached it never counts.
+   * arrival holds the server's own facts, which a client can't forge. arrivedAfter is the last reply the line had
+   * finished when the yes arrived, so a yes sent before the asking reply existed never counts. afterReplyMs, which
+   * only the HTTP server knows, is how long after that reply the yes reached it, so a yes no person could have
+   * answered that fast never counts either. call.js always passes arrivedAfter.
    */
-  function approve(call, text, turn, answering) {
+  function approve(call, text, turn, answering, arrival = {}) {
     const pending = call.pending;
     if (!pending || !call.verified || call.locked || call.ended) return null;
     // I6: the yes has to be its own turn, right after the turn whose reply spoke the proposal or its read-back.
     if (turn !== pending.askedTurn + 1) return null;
     if (answering !== undefined && answering !== pending.askedTurn) return null;
+    if (arrival.arrivedAfter !== undefined && arrival.arrivedAfter !== pending.askedTurn) return null;
+    if (Number.isFinite(arrival.afterReplyMs) && !(arrival.afterReplyMs >= minAnswerMs)) return null;
     if (now().getTime() >= pending.expiresAt) return null;
     if (!isClearYes(text, pending.kind)) return null;
     const token = tokens.mint({ callId: call.id, pendingId: pending.id, kind: pending.kind, targetId: pending.targetId });

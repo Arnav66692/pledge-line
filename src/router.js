@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { tokenize, numberRuns, runValue, isNumberWord, isWellFormedRun } from './numbers.js';
-import { EMPATHY_PHRASES } from './say.js';
+import { EMPATHY_PHRASES, asksForAmount } from './say.js';
 
 export const INTENTS = Object.freeze(['gift_status', 'stop_gift', 'cancel_now', 'pause_gift', 'resume_gift', 'one_time_gift',
   'other_email', 'repeat', 'help', 'staff_callback', 'goodbye', 'unclear']);
@@ -11,10 +11,22 @@ const MAX_AMOUNT_DOLLARS = 100000;
 const DOLLAR_WORDS = new Set(['dollar', 'dollars', 'bucks', 'usd']);
 const CENT_WORDS = new Set(['cent', 'cents']);
 const CENTS_PER_DOLLAR = 100;
-// Not an amount: "one time", "three times", "fifty off".
-const NOT_AMOUNT_NEXT = new Set(['time', 'times', 'off']);
+// Numbers in fixed phrases that are never amounts, "one time", "two times" and "two tries left", are set aside.
+const FIXED_NEXT = new Set(['time', 'times']);
+const TRY_WORDS = new Set(['try', 'tries']);
+// "fifty off", "one more time" and "2 gifts" are not amounts.
+const NOT_AMOUNT_NEXT = new Set(['off', 'more', 'gift', 'gifts', 'donation', 'donations']);
+// A run cut short by a fixed phrase never ends on these, so "a hundred and one time" keeps "a hundred".
+const LOOSE_ENDS = new Set(['and', 'a']);
+// A caller correcting a number mid-sentence, as in "fifty dollars, I mean sixty". The line asks rather than pick one.
+const CORRECTIONS = [['i', 'mean'], ['no', 'wait'], ['wait'], ['actually'], ['sorry'], ['make', 'that'], ['or', 'rather'], ['scratch', 'that']];
+// In rules mode a bare number is an amount only right after one of these, unless it answers the line's amount question.
+const GIVE_WORDS = new Set(['give', 'donate']);
 // Returned when the caller's words hold no single clear amount, so the line asks for one.
 const NO_CLEAR_AMOUNT = 0;
+// Words that name more than one amount, or correct one, so no amount is clear, whoever reads them (R3-1).
+const CONFLICT = Object.freeze({ amount: NO_CLEAR_AMOUNT, conflict: true });
+const amountOf = (amount) => ({ amount, conflict: false });
 
 const toDollars = (raw) => Math.round(Number(String(raw).replace(/,/g, '')) * 100) / 100;
 const distinct = (values) => [...new Set(values)];
@@ -23,7 +35,6 @@ const distinct = (values) => [...new Set(values)];
 const DIGIT_AMOUNT = String.raw`(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)(?![\d.,]*\d)`;
 const SIGN_AMOUNT = new RegExp(String.raw`\$\s?${DIGIT_AMOUNT}`, 'g');
 const NAMED_AMOUNT = new RegExp(String.raw`(?<![\w.,])${DIGIT_AMOUNT}\s*(dollars?|bucks|usd|cents?)\b`, 'g');
-const BARE_AMOUNT = new RegExp(String.raw`(?<![\w.,])${DIGIT_AMOUNT}`);
 
 /** Amounts the caller marked as money, as {dollars, cents} lists. "fifty cents" and "50 cents" are cents. */
 function markedAmounts(lower, tokens, runs) {
@@ -42,22 +53,56 @@ function markedAmounts(lower, tokens, runs) {
 
 /** "5 dollars and 50 cents" is 5.50, "fifty cents" is 0.50. Two different amounts are not one clear amount. */
 function combineMarked({ dollars, cents, unclear }) {
-  if (unclear || dollars.length > 1 || cents.length > 1) return NO_CLEAR_AMOUNT;
-  if (cents.length === 0) return dollars[0];
+  if (unclear || dollars.length > 1 || cents.length > 1) return CONFLICT;
+  if (cents.length === 0) return amountOf(dollars[0]);
   const [c] = cents;
-  if (dollars.length === 0) return toDollars(c / CENTS_PER_DOLLAR);
-  return Number.isInteger(c) && c < CENTS_PER_DOLLAR ? toDollars(dollars[0] + c / CENTS_PER_DOLLAR) : NO_CLEAR_AMOUNT;
+  if (dollars.length === 0) return amountOf(toDollars(c / CENTS_PER_DOLLAR));
+  return Number.isInteger(c) && c < CENTS_PER_DOLLAR ? amountOf(toDollars(dollars[0] + c / CENTS_PER_DOLLAR)) : CONFLICT;
 }
 
-/** A number said with no currency, such as "twenty five" or "75". Two of them, or "twelve fifty", is unclear. */
-function plainAmount(lower, tokens, runs) {
-  const said = runs.filter((run) => !NOT_AMOUNT_NEXT.has(tokens[run.end + 1] ?? ''));
-  if (said.length > 0) {
-    const values = distinct(said.map((run) => runValue(run.words)));
-    return values.length === 1 && said.every((run) => isWellFormedRun(run.words)) ? values[0] : NO_CLEAR_AMOUNT;
-  }
-  const bare = lower.match(BARE_AMOUNT);
-  return bare ? toDollars(bare[1]) : NO_CLEAR_AMOUNT;
+// One token per figure such as "1,500" or "12.50", per other digit run, and per word, in the order said.
+const SAID_TOKEN = new RegExp(String.raw`(?<![\w.,])${DIGIT_AMOUNT}|(\d+)|([a-z]+)`, 'g');
+
+function saidTokens(lower) {
+  return [...lower.matchAll(SAID_TOKEN)].map((m) => {
+    if (m[1] !== undefined) return { word: '', value: toDollars(m[1]), clean: true };
+    if (m[2] !== undefined) return { word: '', value: Number(m[2]), clean: false };
+    return { word: m[3] };
+  });
+}
+
+/** True when the word at i is the number of a fixed phrase, "one time", "two times" or "two tries left". */
+const inFixedPhrase = (words, i) => FIXED_NEXT.has(words[i + 1]) || (TRY_WORDS.has(words[i + 1]) && words[i + 2] === 'left');
+
+/** A run of number words minus the one word a fixed phrase owns, so "sixty, one time" still says sixty (R3-1). */
+function keptRun(words, run) {
+  const kept = inFixedPhrase(words, run.end) ? run.words.slice(0, -1) : [...run.words];
+  while (kept.length > 0 && LOOSE_ENDS.has(kept.at(-1))) kept.pop();
+  if (kept.length === 0) return [];
+  return [{ at: run.start, end: run.start + kept.length - 1, value: runValue(kept), clean: isWellFormedRun(kept) }];
+}
+
+/** Every number said, as {at, end, value, clean}: figures, other digit runs and runs of number words, minus fixed phrases. */
+function numbersSaid(said) {
+  const words = said.map((t) => t.word);
+  const runs = numberRuns(words).flatMap((run) => keptRun(words, run));
+  const figures = said.flatMap((t, i) => (t.word === '' && !inFixedPhrase(words, i) ? [{ at: i, end: i, value: t.value, clean: t.clean }] : []));
+  return [...runs, ...figures].sort((a, b) => a.at - b.at);
+}
+
+/** "fifty dollars, I mean sixty": a correction with a number before it and another after it. */
+function correctsItself(words, numbers) {
+  return words.some((_, i) => CORRECTIONS.some((phrase) => phrase.every((word, k) => words[i + k] === word)
+    && numbers.some((n) => n.end < i) && numbers.some((n) => n.at >= i + phrase.length)));
+}
+
+/** A number said with no currency, such as "twenty five" or "75". Two different numbers, or "twelve fifty", is unclear. */
+function plainAmount(numbers, words, bareAfterGive) {
+  const values = distinct(numbers.map((n) => n.value));
+  if (values.length > 1 || !numbers.every((n) => n.clean)) return CONFLICT;
+  if (values.length === 0 || numbers.some((n) => NOT_AMOUNT_NEXT.has(words[n.end + 1]))) return amountOf(NO_CLEAR_AMOUNT);
+  if (bareAfterGive && !numbers.some((n) => GIVE_WORDS.has(words[n.at - 1]))) return amountOf(NO_CLEAR_AMOUNT);
+  return amountOf(values[0]);
 }
 
 // "fifty point five" could mean cents or a slip, so the line asks for the amount again instead of guessing.
@@ -66,19 +111,39 @@ function saysPoint(tokens) {
   return tokens.some((token, i) => token === 'point' && numeric(tokens[i - 1]) && numeric(tokens[i + 1]));
 }
 
+/** How the caller's words name an amount, as {amount, conflict}. conflict means they name more than one or correct one. */
+function readAmount(text, { needCurrency = false, bareAfterGive = false } = {}) {
+  const lower = String(text ?? '').normalize('NFKC').toLowerCase();
+  const tokens = tokenize(lower);
+  if (saysPoint(tokens)) return CONFLICT;
+  const said = saidTokens(lower);
+  const words = said.map((t) => t.word);
+  const numbers = numbersSaid(said);
+  if (correctsItself(words, numbers)) return CONFLICT;
+  const marked = markedAmounts(lower, tokens, numberRuns(tokens));
+  if (marked.unclear || marked.dollars.length > 0 || marked.cents.length > 0) {
+    // Every number said must belong to the one amount, so "fifty dollars and 60" is not fifty.
+    const amount = new Set([...marked.dollars, ...marked.cents]);
+    return numbers.every((n) => amount.has(n.value)) ? combineMarked(marked) : CONFLICT;
+  }
+  const plain = plainAmount(numbers, words, bareAfterGive);
+  return needCurrency && !plain.conflict ? amountOf(NO_CLEAR_AMOUNT) : plain;
+}
+
 /**
  * Parses "fifty dollars", "$50", "25 dollars", "fifty cents" or "twenty five". Returns 0 when no single clear
- * amount is heard, so the line asks. With needCurrency, a number counts only when it is said as money.
+ * amount is heard, so the line asks: a correction, two different numbers, or a number that is not well formed.
+ * With needCurrency, a number counts only when it is said as money. With bareAfterGive, a bare number counts
+ * only right after give or donate, as in "give 75".
  */
-export function parseAmountDollars(text, { needCurrency = false } = {}) {
-  const lower = String(text ?? '').toLowerCase();
-  const tokens = tokenize(lower);
-  if (saysPoint(tokens)) return NO_CLEAR_AMOUNT;
-  const runs = numberRuns(tokens);
-  const marked = markedAmounts(lower, tokens, runs);
-  if (marked.unclear || marked.dollars.length > 0 || marked.cents.length > 0) return combineMarked(marked);
-  return needCurrency ? NO_CLEAR_AMOUNT : plainAmount(lower, tokens, runs);
-}
+export const parseAmountDollars = (text, options) => readAmount(text, options).amount;
+
+/**
+ * True when the caller's words correct an amount or name two different numbers, once the fixed phrases are set
+ * aside. Then the line asks for the amount, whatever amount the router heard. Words with no number at all are no
+ * conflict, so an amount only Haiku can read still counts (R3-1).
+ */
+export const amountConflict = (text) => readAmount(text).conflict;
 
 const RULES = Object.freeze({
   goodbye: /\b(good ?bye|bye|that's all|that is all|hang up|i'm done|im done|nothing else)\b/,
@@ -96,10 +161,13 @@ const RULES = Object.freeze({
 
 const rulesText = (text) => String(text ?? '').toLowerCase().replace(/[‘’]/g, "'").replace(/-/g, ' ').replace(/[^a-z0-9$.' ]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-/** Offline keyword routing for mock runs and tests. Same intents as the Haiku router. */
-export function rulesRoute(text) {
+/**
+ * Offline keyword routing for mock runs and tests. Same intents as the Haiku router. A bare number is an amount
+ * only right after give or donate, or when it answers the line's own amount question, so "I'm 75" never is.
+ */
+export function rulesRoute(text, state = {}) {
   const t = rulesText(text);
-  const amountDollars = parseAmountDollars(text);
+  const amountDollars = parseAmountDollars(text, { bareAfterGive: !asksForAmount(state?.lastSaid) });
   const has = (name) => RULES[name].test(t);
   const action = has('stop') || has('pause') || has('resume') || has('oneTime');
   if (has('goodbye') && !action) return { intent: 'goodbye', amountDollars: 0 };
@@ -186,9 +254,9 @@ export function createRouter({ mode, apiKey, model, timeoutMs = 6000, client = n
   if (mode === 'rules') {
     return {
       mode,
-      route: async ({ text }) => {
+      route: async ({ text, state }) => {
         const started = performance.now();
-        const result = rulesRoute(text);
+        const result = rulesRoute(text, state);
         return { ...result, empathy: 'none', latencyMs: Math.round(performance.now() - started), model: 'rules' };
       },
     };

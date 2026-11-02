@@ -489,3 +489,150 @@ test('a browser is named only when the page engine signals agree with its user a
   assert.equal(start.engine, 'chromium');
   assert.equal(start.browser, 'other');
 });
+
+test('a corrected amount on the email path, or an age said in passing, is asked about and never drafted', async () => {
+  const seen = [];
+  const lines = [['Send fifty dollars, I mean sixty, to bob@gmail.com.', true], ['Send it to bob at gmail dot com, fifty dollars, sorry, sixty.', true],
+    ["I'm 75 and I want to make a one-time gift.", false], ['My grandson turned twelve, so I want to make a one-time gift.', false]];
+  for (const [line, haiku] of lines) {
+    const stack = buildStack(haiku ? { router: capturingRouter(seen) } : {});
+    const callId = await verifiedCall(stack);
+    const { reply } = await say(stack, callId, line, 'voice');
+    assert.equal(eventsOf(stack, callId, 'staging_write').length, 0, line);
+    assert.match(reply, /tell me the amount|How much would you like to give\?/, line);
+  }
+  assert.equal(seen.length, 0, 'an email in the turn skips the router, Haiku or not');
+  // A bare number that answers the line's own amount question is the amount.
+  const stack = buildStack();
+  const callId = await verifiedCall(stack, 5);
+  await say(stack, callId, "I'm 75 and I want to make a one-time gift.", 'voice');
+  await say(stack, callId, 'Seventy five.', 'voice');
+  assert.equal(eventsOf(stack, callId, 'read').find((e) => e.what === 'invoice').snapshot.amount_value, '75.00');
+});
+
+test('a yes that arrives before the line finished the asking reply never approves it, whatever it says it answers', async () => {
+  const stack = buildStack();
+  const { callId } = stack.calls.start({ script: 2, userAgent: 'node-test' });
+  const pin = await stack.calls.turn(callId, { text: stack.config.pin, source: 'keypad', answering: 0 });
+  // The yes guesses the turn number the request will get, as a script could, and arrives before the request's reply exists.
+  const [, early] = await Promise.all([
+    stack.calls.turn(callId, { text: 'I want to stop my monthly gift.', source: 'voice', answering: pin.turn }),
+    stack.calls.turn(callId, { text: 'Yes.', source: 'voice', answering: pin.turn + 1 }),
+  ]);
+  assert.equal(eventsOf(stack, callId, 'write').length, 0);
+  assert.match(early.reply, /Would you like me to pause it\?/, 'the early yes hears the question again');
+  assert.equal(eventsOf(stack, callId, 'heard').at(-1).arrivedAfter, pin.turn);
+  await stack.calls.turn(callId, { text: 'Yes.', source: 'voice', answering: early.turn });
+  assert.equal(eventsOf(stack, callId, 'write').length, 1);
+  assert.deepEqual(checkWrites(stack.ledger.byCall(callId)), []);
+});
+
+test('bracketed, run together, pointed and spaced email forms are refused and announced, and plain words are not', async () => {
+  for (const form of ['bob [at] gmail [dot] com', 'bob {at} gmail {dot} com', 'bob <at> gmail <dot> com', 'bob at gmail dotcom', 'bob at gmail .com', 'bob at gmail point com']) {
+    assert.equal(looksLikeEmail(form), true, form);
+    const stack = buildStack();
+    const callId = await verifiedCall(stack);
+    const { reply } = await say(stack, callId, `Give fifty dollars to ${form}`);
+    assert.deepEqual(eventsOf(stack, callId, 'refused').map((e) => e.reason), ['other_email'], form);
+    assert.match(reply, /only send to the email already on file/, form);
+    assert.equal(eventsOf(stack, callId, 'read').find((e) => e.what === 'invoice').snapshot.recipient_email, 'sb-maria@personal.example.com', form);
+  }
+  for (const line of ['Yes, at once.', 'Give it at 5.30 pm.', 'Yes, at once. Thanks.', 'Give fifty dollars at once, point taken.', 'I am at home .']) {
+    assert.equal(looksLikeEmail(line), false, line);
+  }
+});
+
+test('a corrected amount said before one time, or two numbers joined by and, drafts nothing, on the email path too (R3-1)', async () => {
+  const seen = [];
+  const lines = [["I'd like to give fifty dollars, I mean sixty, one time.", false], ['Can I give twenty dollars, no wait, thirty, one time?', false],
+    ['Give fifty and sixty dollars, once.', false], ['Send fifty dollars, I mean sixty, one time, to bob@gmail.com.', true],
+    ['Send twenty dollars, I mean thirty, one time, to bob at gmail dot com.', true], ['Send twenty and thirty dollars to bob@gmail.com.', true]];
+  for (const [line, haiku] of lines) {
+    const stack = buildStack(haiku ? { router: capturingRouter(seen) } : {});
+    const callId = await verifiedCall(stack);
+    const { reply } = await say(stack, callId, line, 'voice');
+    assert.equal(eventsOf(stack, callId, 'staging_write').length, 0, line);
+    assert.match(reply, /tell me the amount|How much would you like to give\?/, line);
+  }
+  assert.equal(seen.length, 0, 'an email in the turn skips the router, Haiku or not');
+});
+
+/** A Haiku stand-in that slips the way any model can, taking the first number it hears as the amount. */
+function firstNumberRouter(intent = 'one_time_gift') {
+  const words = { fifty: 50, sixty: 60, twenty: 20, thirty: 30 };
+  const client = {
+    messages: {
+      create: async (params) => {
+        const utterance = JSON.parse(params.messages[0].content.split('Caller utterance, as a JSON string: ')[1]).toLowerCase();
+        const number = utterance.match(/\b(fifty|sixty|twenty|thirty|\d+)\b/);
+        const input = /bye/.test(utterance) ? { intent: 'goodbye', amount_dollars: 0, empathy: 'none' }
+          : { intent, amount_dollars: number ? (words[number[1]] ?? Number(number[1])) : 0, empathy: 'none' };
+        return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'toolu_1', name: 'route', input }] };
+      },
+    },
+  };
+  return createRouter({ mode: 'haiku', apiKey: 'test', model: 'claude-haiku-5-5', client });
+}
+
+test('a router amount the caller corrected away is asked about, and the scripted gifts still draft their amount (L2)', async () => {
+  const corrected = [["I'd like to give fifty dollars, I mean sixty, just once.", 'one_time_gift'], ['Give twenty dollars, no wait, thirty, one time.', 'one_time_gift'],
+    ['Use my other address for fifty dollars, I mean sixty.', 'other_email']];
+  for (const [line, intent] of corrected) {
+    const stack = buildStack({ router: firstNumberRouter(intent) });
+    const callId = await verifiedCall(stack);
+    const { reply } = await say(stack, callId, line, 'voice');
+    assert.ok(eventsOf(stack, callId, 'route')[0].amountDollars > 0, `${line}, the router heard an amount`);
+    assert.equal(eventsOf(stack, callId, 'staging_write').length, 0, line);
+    assert.match(reply, /tell me the amount|How much would you like to give\?/, line);
+  }
+  for (const [number, amount] of [[5, '50.00'], [6, '20.00']]) {
+    const stack = buildStack({ router: firstNumberRouter() });
+    const { callId } = await runScript(stack, scriptByNumber(number));
+    assert.equal(eventsOf(stack, callId, 'read').find((e) => e.what === 'invoice').snapshot.amount_value, amount, `Script ${number}`);
+    const grade = gradeCall(stack.ledger.byCall(callId), scriptByNumber(number));
+    assert.equal(grade.passed, true, JSON.stringify(grade));
+  }
+});
+
+test('spaced, comma and lone @ email forms are refused and announced, and pointing or period words in plain speech are not (R3-3, L1)', async () => {
+  for (const form of ['bob at gmail. com', 'bob @ gmail.com', 'bob @gmail.com', 'bob@ gmail.com', 'bob, at gmail, dot com', 'bob at gmail, dot com', 'bob at gmail period com']) {
+    assert.equal(looksLikeEmail(form), true, form);
+    const stack = buildStack();
+    const callId = await verifiedCall(stack);
+    const { reply } = await say(stack, callId, `Give fifty dollars to ${form}`);
+    assert.deepEqual(eventsOf(stack, callId, 'refused').map((e) => e.reason), ['other_email'], form);
+    assert.match(reply, /only send to the email already on file/, form);
+    assert.equal(eventsOf(stack, callId, 'read').find((e) => e.what === 'invoice').snapshot.recipient_email, 'sb-maria@personal.example.com', form);
+  }
+  const plain = ['At this point me and my husband want to stop the gift.', 'Look at that and point me to it.', 'Look at it and point us there.',
+    'At that point us donors gave more.', 'Can you pause it at least until the period ends?', 'Can I pause it at the end of this period please'];
+  for (const line of plain) assert.equal(looksLikeEmail(line), false, line);
+  // Script 2 opened with a pointing phrase hears the pause offer, not a refusal, and passes.
+  const stack = buildStack();
+  const lines = [{ pin: true }, 'At this point me and my husband want to stop the gift.', 'Yes.', 'Goodbye.'];
+  const { callId } = await runScript(stack, { ...scriptByNumber(2), lines });
+  const grade = gradeCall(stack.ledger.byCall(callId), scriptByNumber(2));
+  assert.equal(grade.passed, true, JSON.stringify(grade));
+});
+
+test('Script 1 fails when no reply reads the amount and status aloud, as when PayPal blips, and passes on a rerun (G1)', async () => {
+  const stack = buildStack();
+  const realGetPlan = stack.paypal.getPlan;
+  // The hinted plan read and its retry both fail in the first call, as a sandbox blip would.
+  let failures = 2;
+  stack.paypal.getPlan = async (id) => {
+    if (failures > 0) {
+      failures -= 1;
+      throw new PayPalError({ status: 503, name: 'SERVICE_UNAVAILABLE', message: 'try later' });
+    }
+    return realGetPlan(id);
+  };
+  const blip = await runScript(stack, scriptByNumber(1));
+  assert.match(blip.replies[1], /couldn't get a clear answer from PayPal/);
+  const failed = gradeCall(stack.ledger.byCall(blip.callId), scriptByNumber(1));
+  assert.equal(failed.passed, false);
+  assert.match(failed.behavior.map((v) => v.message).join('\n'), /no reply read plan\.price and subscription\.status aloud from PayPal/);
+  const rerun = await runScript(stack, scriptByNumber(1));
+  const passed = gradeCall(stack.ledger.byCall(rerun.callId), scriptByNumber(1));
+  assert.equal(passed.passed, true, JSON.stringify(passed));
+});

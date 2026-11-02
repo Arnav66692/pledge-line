@@ -138,11 +138,13 @@ export function textHasPin(text, pin) {
 
 /**
  * True when a run of number words is said the way people say one amount, such as "twenty five" or
- * "one hundred and fifty". "twelve fifty" could be $12.50 or $1,250, so it is not.
+ * "one hundred and fifty". "twelve fifty" could be $12.50 or $1,250, so it is not. "and" joins only right
+ * after hundred or thousand, so "fifty and sixty" is two numbers, not 110.
  */
 export function isWellFormedRun(words) {
   let prev = null;
   for (const word of words) {
+    if (word === 'and' && !has(SCALES, prev)) return false;
     const joins = prev === null || prev === 'and' || prev === 'a' || has(SCALES, prev) || has(SCALES, word) || word === 'and';
     const tensThenOnes = has(TENS, prev) && has(ONES, word) && ONES[word] > 0;
     if (!joins && !tensThenOnes) return false;

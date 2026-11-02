@@ -25,7 +25,8 @@ function ledger() {
 function verifiedStart() {
   const add = ledger();
   add('call_start', { script: 2, browser: 'chrome', mode: { paypal: 'sandbox', router: 'haiku' }, timeZone: 'America/Los_Angeles' });
-  add('said', { turn: 0, text: 'Thanks for calling. Please enter your PIN.', facts: [] });
+  // Every sentence a passing reply says is one the templates say (R3-6).
+  add('said', { turn: 0, text: 'Thanks for calling. Please enter your PIN on the keypad, or say its digits.', facts: [] });
   add('heard', { turn: 1, text: '####', source: 'keypad' });
   add('pin_ok', { turn: 1 });
   add('said', { turn: 1, text: 'Thanks, you are verified.', facts: [] });
@@ -189,10 +190,13 @@ test('amounts and dates said in words, and digits from other scripts, fail the f
 
 test('an amount in words matching a PayPal read is covered, and tries left in words never count', () => {
   const add = verifiedStart();
+  // A plan fact comes only from the plan of the call's own subscription, so the subscription is read first (R3-7).
+  add('read', { turn: 2, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd1' });
   add('read', { turn: 2, what: 'plan', id: 'P-1', status: null, snapshot: PLAN, debugId: 'd2' });
   add('said', { turn: 2, text: 'That is twenty five dollars.', facts: [{ kind: 'money', value: '$25.00', source: 'plan.price' }] });
   add('said', { turn: 3, text: "That PIN didn't match. You have two tries left.", facts: [] });
-  assert.deepEqual(checkFacts(add.events), []);
+  // The scans read the amount in words and the read covers it. The sentence is no template's, so only that is a problem (R3-6).
+  assert.deepEqual(checkFacts(add.events).map((v) => `${v.turn} ${v.message}`), ['2 said "That is twenty five dollars.", a sentence the line\'s own templates never say']);
 });
 
 test('latestCallsByScript compares --since as a time and skips calls with no turns', () => {
@@ -289,6 +293,8 @@ test('facts said in other forms fail the facts check, and a masked email proven 
     assert.ok(messages.some((m) => m.startsWith(`${turn} `) && m.includes(`"${word}"`)), `${turn} ${word}\n${messages.join('\n')}`);
   }
   const digits = verifiedStart();
+  // An invoice fact comes only from the call's own draft, so the draft is made first (R3-7).
+  digits('staging_write', { turn: 2, kind: 'create_draft', id: 'INV2-1', ok: true, debugId: 'd0' });
   digits('read', { turn: 2, what: 'invoice', id: 'INV2-1', status: 'DRAFT', snapshot: { ...DRAFT, recipient_email: '42jo@mail2.example.com' }, debugId: 'd1' });
   digits('said', { turn: 2, text: 'It would go to the email on file, four two at mail two dot example dot com.',
     facts: [{ kind: 'email', value: 'four two at mail two dot example dot com', source: 'invoice.recipient_email' }] });
@@ -364,6 +370,104 @@ test('a reply that never started playing counts as never, and only one gap per h
     { type: 'gap', callId: 'c1', turn: 3, gapMs: 5000, source: 'voice', seq: 31 },
     { type: 'gap', callId: 'c1', turn: 60, gapMs: 250, source: 'voice', seq: 61 },
   ];
-  // The keypad turn, the second gap for one turn and a turn the line never heard are all left out.
-  assert.deepEqual(countedGaps([...heard, ...gaps]).map((g) => g.seq), [21, 31]);
+  // The keypad turn, a turn the line never heard, and both gaps of a turn with two are all left out (R3-8).
+  assert.deepEqual(countedGaps([...heard, ...gaps]).map((g) => g.seq), [31]);
+});
+
+test('a write whose yes arrived before the asking reply was finished, or sooner than a person can answer, fails the writes check', () => {
+  const withHeard = (heard) => writeMessages(pauseYesWith(proposePause(verifiedStart()), { heard }));
+  assert.match(withHeard({ answering: 2, arrivedAfter: 1 }), /arrived before the line had finished the reply that asked/);
+  assert.match(withHeard({ answering: 2, arrivedAfter: 2, afterReplyMs: 30 }), /reached the line 30 ms after the reply that asked/);
+  assert.equal(withHeard({ answering: 2, arrivedAfter: 2, afterReplyMs: 1200 }), '');
+});
+
+test('a declared fact the reply never says fails the facts check, as whole words only', () => {
+  const add = proposePause(verifiedStart());
+  add('said', { turn: 3, text: 'Before you stop it, I can pause it instead.', facts: OFFER_FACTS });
+  add('said', { turn: 4, text: 'Done. What else can I help with?', facts: OFFER_FACTS });
+  const messages = checkFacts(add.events).map((v) => `${v.turn} ${v.message}`);
+  for (const turn of [3, 4]) {
+    for (const value of ['$25.00', 'active']) assert.ok(messages.some((m) => m.startsWith(`${turn} `) && m.includes(`"${value}"`) && m.includes('never says it')), `${turn} ${value}\n${messages.join('\n')}`);
+  }
+  // "December 1" is never found inside "December 15", nor "active" inside "inactive".
+  const dates = verifiedStart();
+  dates('read', { turn: 2, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd1' });
+  dates('said', { turn: 2, text: 'The next gift is on December 15. It is inactive.', facts: [
+    { kind: 'date', value: 'December 1', source: 'subscription.next_billing_time' }, { kind: 'status', value: 'active', source: 'subscription.status' }] });
+  const dateMessages = checkFacts(dates.events).map((v) => v.message).join('\n');
+  assert.match(dateMessages, /declared date "December 1" .*never says it/);
+  assert.match(dateMessages, /declared status "active" .*never says it/);
+  assert.deepEqual(checkFacts(proposePause(verifiedStart()).events), []);
+});
+
+test('a word the line never uses fails the facts check, so a fact said in a form no scan knows is caught', () => {
+  const add = verifiedStart();
+  add('read', { turn: 2, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd1' });
+  add('read', { turn: 2, what: 'plan', id: 'P-1', status: null, snapshot: PLAN, debugId: 'd2' });
+  add('said', { turn: 2, text: 'PayPal shows your monthly gift of $25.00 as active. The next gift is in January. What else can I help with?', facts: OFFER_FACTS });
+  add('said', { turn: 3, text: 'OK, your monthly gift is halted and frozen until you call back. What else can I help with?', facts: [] });
+  add('said', { turn: 4, text: 'OK, your monthly gift is terminated. What else can I help with?', facts: [] });
+  const messages = checkFacts(add.events).map((v) => `${v.turn} ${v.message}`);
+  for (const [turn, word] of [[2, 'january'], [3, 'halted'], [3, 'frozen'], [4, 'terminated']]) {
+    assert.ok(messages.some((m) => m.startsWith(`${turn} `) && m.includes(`"${word}"`)), `${turn} ${word}\n${messages.join('\n')}`);
+  }
+  // The org name is set aside, the one the call logged, or the configured one when pilot-check passes it.
+  const greet = ledger();
+  greet('call_start', { script: 1, orgName: 'Maple Street Pantry', timeZone: 'America/Los_Angeles' });
+  greet('said', { turn: 0, text: 'Thanks for calling the Maple Street Pantry donor line. This is a PayPal sandbox demo, so no real money moves. To keep your gift safe, please enter your PIN on the keypad, or say its digits.', facts: [] });
+  assert.deepEqual(checkFacts(greet.events), []);
+  assert.ok(checkFacts(greet.events, { orgName: 'Sunny Hollow Pantry' }).some((v) => v.message.includes('"maple"')));
+});
+
+test('a fact read from another subscription, plan or invoice fails, and every subscription step in a call targets one subscription', () => {
+  // The gift's own fresh GET still shows ACTIVE, and a read of another subscription shows SUSPENDED.
+  const add = proposePause(verifiedStart());
+  add('heard', { turn: 3, text: 'Yes.', source: 'voice' });
+  add('yes', { turn: 3, pendingId: 'p1', tokenId: 't1', text: 'Yes.' });
+  add('write', { turn: 3, kind: 'suspend', targetId: 'I-1', tokenId: 't1', ok: true, debugId: 'd3' });
+  add('read', { turn: 3, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd4' });
+  add('read', { turn: 3, what: 'subscription', id: 'I-OTHER', status: 'SUSPENDED', snapshot: { ...SUSPENDED, id: 'I-OTHER' }, debugId: 'd5' });
+  add('said', { turn: 3, text: 'Done. PayPal now shows your monthly gift of $25.00 as suspended.', facts: [
+    { kind: 'money', value: '$25.00', source: 'plan.price' }, { kind: 'status', value: 'suspended', source: 'subscription.status' }] });
+  assert.match(checkFacts(add.events).map((v) => v.message).join('\n'), /said "suspended" for subscription\.status, PayPal's latest read gives "active"/);
+  assert.match(writeMessages(add), /a read of I-OTHER, not of I-1, the subscription this call works on/);
+  assert.match(checkWrites(proposePause(verifiedStart()).events, { subscriptionId: 'I-PILOT' }).map((v) => v.message).join('\n'), /a read of I-1, not of the pilot's subscription, I-PILOT/);
+  // A price from a plan that is not the subscription's own.
+  const plan = verifiedStart();
+  plan('read', { turn: 2, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd1' });
+  plan('read', { turn: 2, what: 'plan', id: 'P-2', status: null, snapshot: { id: 'P-2', price_value: '99.00', price_currency: 'USD' }, debugId: 'd2' });
+  plan('said', { turn: 2, text: 'PayPal shows your monthly gift of $99.00 as active.', facts: [{ kind: 'money', value: '$99.00', source: 'plan.price' }, OFFER_FACTS[1]] });
+  assert.match(checkFacts(plan.events).map((v) => v.message).join('\n'), /has no earlier PayPal read of that subscription's plan/);
+  // An invoice read back that is not the call's own draft.
+  const inv = proposeInvoice(verifiedStart());
+  inv('read', { turn: 3, what: 'invoice', id: 'INV2-99', status: 'DRAFT', snapshot: { ...DRAFT, id: 'INV2-99', number: '0099', amount_value: '200.00' }, debugId: 'd9' });
+  inv('said', { turn: 3, text: 'PayPal shows a one-time gift invoice ending in 0099, for $200.00, with the status draft.', facts: [
+    { kind: 'number_suffix', value: '0099', source: 'invoice.number_last4' }, { kind: 'money', value: '$200.00', source: 'invoice.amount' }, INVOICE_FACTS[2]] });
+  assert.match(checkFacts(inv.events).map((v) => v.message).join('\n'), /said "0099" for invoice\.number_last4, PayPal's latest read gives "0001"/);
+});
+
+test('a status or date claim made of template words in a sentence no template says fails the facts check (R3-6)', () => {
+  const add = verifiedStart();
+  add('read', { turn: 2, what: 'subscription', id: 'I-1', status: 'ACTIVE', snapshot: SUB, debugId: 'd1' });
+  add('read', { turn: 2, what: 'plan', id: 'P-1', status: null, snapshot: PLAN, debugId: 'd2' });
+  // Each claim keeps its declared facts, and every word in it is a template word.
+  const claims = ['PayPal no longer shows your monthly gift of $25.00 as active.', "I couldn't restart it. PayPal never shows your monthly gift of $25.00 as active.",
+    'PayPal shows your monthly gift of $25.00 as active. The next gift is this month.', 'PayPal shows your monthly gift of $25.00 as active. It is set to stop next month.',
+    'OK, your monthly gift is locked until you call back.', 'OK, PayPal shows your monthly gift as deleted.', 'The next gift is in January.',
+    'OK, your monthly gift is halted and frozen until you call back.'];
+  claims.forEach((text, i) => add('said', { turn: 3 + i, text, facts: text.includes('$25.00') ? OFFER_FACTS : [] }));
+  const messages = checkFacts(add.events).map((v) => `${v.turn} ${v.message}`);
+  claims.forEach((text, i) => {
+    assert.ok(messages.some((m) => m.startsWith(`${3 + i} said "`) && m.endsWith("a sentence the line's own templates never say")), `${text}\n${messages.join('\n')}`);
+  });
+  // A sent invoice said never to have gone out, and the draft's amount put where the gift's amount goes.
+  const sent = proposeInvoice(verifiedStart());
+  sent('said', { turn: 3, text: 'PayPal shows a one-time gift invoice ending in 0001, for $50.00, with the status draft. It never went out.', facts: INVOICE_FACTS });
+  sent('said', { turn: 4, text: 'PayPal shows your monthly gift of $50.00 as active.', facts: [INVOICE_FACTS[1], OFFER_FACTS[1]] });
+  sent('said', { turn: 5, text: 'PayPal shows your monthly gift of {plan.price} as {subscription.status}.', facts: [] });
+  const sentMessages = checkFacts(sent.events).map((v) => `${v.turn} ${v.message}`).join('\n');
+  assert.match(sentMessages, /3 said "It never went out\.", a sentence/);
+  assert.match(sentMessages, /4 said "PayPal shows your monthly gift of \{invoice\.amount\} as \{subscription\.status\}\.", a sentence/);
+  assert.match(sentMessages, /5 said a brace, which no template says/);
+  assert.doesNotMatch(sentMessages, /^2 /m, 'the template read-back itself passes');
 });

@@ -20,6 +20,8 @@ const EMPATHY_MAX_WORDS = 12;
 const DIGIT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 const MONTH_PATTERN = '(January|February|March|April|May|June|July|August|September|October|November|December)';
 const ANYTHING_ELSE = 'What else can I help with?';
+// Not "may", which is also a month, so no month name is ever one of the line's own words (check.js holds replies to them).
+const UPDATE_LATER = 'It can take a minute to update.';
 const YES_OR_NO = 'Please say yes or no.';
 
 const fact = (kind, value, source) => ({ kind, value, source });
@@ -162,7 +164,7 @@ export function afterWrite(kind, snapshotAfter, plan, { ok = true } = {}) {
   if (!snapshotAfter) return combine("PayPal didn't return the gift just now, so I can't confirm the change. Staff will check on it.");
   const changed = snapshotAfter.status === EXPECTED[kind];
   if (!ok) return combine("PayPal didn't accept that change.", shows(snapshotAfter, plan, 'PayPal now shows'), ANYTHING_ELSE);
-  if (!changed) return combine(`I asked PayPal to ${VERBS[kind]} it.`, shows(snapshotAfter, plan, 'PayPal now shows'), 'It may take a minute to update.', ANYTHING_ELSE);
+  if (!changed) return combine(`I asked PayPal to ${VERBS[kind]} it.`, shows(snapshotAfter, plan, 'PayPal now shows'), UPDATE_LATER, ANYTHING_ELSE);
   const tail = kind === 'suspend' ? 'You can restart it any time.' : null;
   return combine('Done.', shows(snapshotAfter, plan, 'PayPal now shows'), tail, ANYTHING_ELSE);
 }
@@ -172,7 +174,7 @@ function afterSend(inv, ok) {
   const phrase = invoicePhrase(inv);
   const now = part(`PayPal now shows ${phrase.text}.`, phrase.facts);
   if (!ok) return combine("PayPal didn't accept the send.", now, ANYTHING_ELSE);
-  if (inv.status === 'DRAFT') return combine('I asked PayPal to send it.', now, 'It may take a minute to update.', ANYTHING_ELSE);
+  if (inv.status === 'DRAFT') return combine('I asked PayPal to send it.', now, UPDATE_LATER, ANYTHING_ELSE);
   return combine('Done.', now, 'PayPal will email it to the address on file.', ANYTHING_ELSE);
 }
 
@@ -192,11 +194,18 @@ export const noEmail = () => part("PayPal has no email on file for this gift, so
 /** "from one dollar to five hundred dollars". check.js accepts the config facts only inside this phrase. */
 export const limitsPhrase = (min, max) => `from ${numberToWords(min)} ${min === 1 ? 'dollar' : 'dollars'} to ${numberToWords(max)} dollars`;
 
+const AMOUNT_QUESTION = 'How much would you like to give?';
+const AMOUNT_FOR_FILE = 'If you would like to give a one-time gift to the email on file, tell me the amount.';
+
 /** The limits are config, not PayPal facts, so they are declared with a config source that check.js holds to the config. */
 export function amountOutOfRange(min, max) {
   const facts = [fact('money', formatMoney(min), 'config.invoice_min_dollars'), fact('money', formatMoney(max), 'config.invoice_max_dollars')];
-  return part(`I can set up a one-time gift ${limitsPhrase(min, max)}. How much would you like to give?`, facts);
+  return part(`I can set up a one-time gift ${limitsPhrase(min, max)}. ${AMOUNT_QUESTION}`, facts);
 }
+/** Said after a new email is refused, when the turn named no amount as money. */
+export const amountForFile = () => part(AMOUNT_FOR_FILE);
+/** True when the line's last reply asked for an amount, so a bare number in the next turn answers it. */
+export const asksForAmount = (text) => typeof text === 'string' && (text.includes(AMOUNT_QUESTION) || text.includes(AMOUNT_FOR_FILE));
 export const nothingPending = () => part("There's nothing waiting for a yes or no right now. What would you like to do?");
 export const needYesOrNo = () => part('I need a clear yes or no before I change anything.');
 export const callEnded = () => part('This call has ended. Please start a new call if you need anything else.');
@@ -292,15 +301,55 @@ function runScans(text, scans, found) {
   return rest;
 }
 
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// A phrase counts only as whole words, so "active" is never found inside "inactive" and "December 1" never inside "December 15".
+const wholePhrase = (phrase, flags) => new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(phrase)}(?![\\p{L}\\p{N}])`, flags);
+
+/** True when the text says the phrase as whole words, in any case. */
+export const saysPhrase = (text, phrase) => typeof phrase === 'string' && phrase.trim() !== '' && wholePhrase(phrase, 'iu').test(String(text ?? ''));
+
+/** The words a declared fact is spoken as. A suffix is spoken as "ending in 0001". */
+export const spokenForm = (f) => (f.kind === 'number_suffix' ? `ending in ${f.value}` : String(f.value ?? ''));
+
 /**
  * Finds money, dates, "ending in" suffixes and status words, in digits or in words, and any other digit runs.
- * strict adds the scans above, which check.js and the ORG_NAME check use. skip lists spoken phrases, such as a
- * masked email already proven against a PayPal read, that are set aside before any scan.
+ * strict adds the scans above, which check.js and the ORG_NAME check use. skip lists spoken phrases, such as
+ * facts already proven against a PayPal read or the org name, that are set aside as whole words before any scan.
+ * rest is what is left once the skipped phrases, the allowed phrases and every scan's matches are set aside.
  */
-export function extractSpokenFacts(text, { strict = false, skip = [] } = {}) {
+export function scanSpoken(text, { strict = false, skip = [] } = {}) {
   const found = [];
-  const start = skip.filter((phrase) => typeof phrase === 'string' && phrase !== '').reduce((acc, phrase) => acc.split(phrase).join(' '), String(text ?? ''));
-  const rest = runScans(start, SCANS, found);
-  if (strict) runScans(ALLOWED_PHRASES.reduce((acc, pattern) => acc.replace(pattern, ' '), rest), STRICT_SCANS, found);
-  return found;
+  const start = skip.filter((phrase) => typeof phrase === 'string' && phrase.trim() !== '')
+    .reduce((acc, phrase) => acc.replace(wholePhrase(phrase, 'giu'), ' '), String(text ?? ''));
+  let rest = runScans(start, SCANS, found);
+  if (strict) rest = runScans(ALLOWED_PHRASES.reduce((acc, pattern) => acc.replace(pattern, ' '), rest), STRICT_SCANS, found);
+  return { found, rest };
 }
+
+export const extractSpokenFacts = (text, options) => scanSpoken(text, options).found;
+
+const WORD = /[\p{L}\p{N}]+(?:'[\p{L}\p{N}]+)*/gu;
+
+/** The lowercase words of a text, apostrophes kept, as the facts check compares them with the template words. */
+export const wordsOf = (text) => String(text ?? '').toLowerCase().replace(/[‘’]/g, "'").match(WORD) ?? [];
+
+/** Braces mark slots, so a reply that says one could pass for a template sentence. No template says one. */
+export const SLOT_MARKS = /[{}]/;
+
+/**
+ * The text with the org name and each fact's spoken form, longest first, turned into slots such as {org} and
+ * {plan.price}. A slot names the fact's source, so a sentence that puts the invoice amount where the gift's
+ * amount goes never matches a template sentence (R3-6).
+ */
+export function slotFacts(text, facts = [], orgName = null) {
+  let out = String(text ?? '');
+  if (typeof orgName === 'string' && orgName.trim() !== '') out = out.replace(wholePhrase(orgName, 'giu'), '{org}');
+  const named = facts.filter((f) => f && typeof f.source === 'string' && spokenForm(f).trim() !== '');
+  for (const f of [...named].sort((a, b) => spokenForm(b).length - spokenForm(a).length)) {
+    out = out.replace(wholePhrase(spokenForm(f), 'giu'), `{${f.source}}`);
+  }
+  return out;
+}
+
+/** The sentences of a text, each ending at a period, question mark or exclamation mark, spaces collapsed. */
+export const sentencesOf = (text) => String(text ?? '').replace(/\s+/g, ' ').trim().split(/(?<=[.?!]) /).filter(Boolean);

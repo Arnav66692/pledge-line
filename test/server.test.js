@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { loadConfig } from '../src/config.js';
 import { buildDeps, createServer, resolveStatic, clientIp } from '../src/server.js';
+import { checkWrites } from '../src/check.js';
 import { tempLedgerPath } from './helpers.js';
 
 // Six digits, so a random UUID in the ledger cannot contain it by chance.
@@ -109,6 +110,8 @@ test('the PIN never appears in replies, call state, events or the ledger file', 
 
 test('gap logging validates its body', async () => {
   const start = await (await postJson('/api/calls', { script: null })).json();
+  // A gap is only for a reply the line has finished, so the turn comes first (R3-8).
+  await postJson(`/api/calls/${start.callId}/turn`, { text: 'hello', source: 'voice', answering: start.turn });
   const ok = await postJson(`/api/calls/${start.callId}/gap`, { turn: 1, gapMs: 1234, source: 'voice', muted: false });
   assert.equal(ok.status, 200);
   const bad = await postJson(`/api/calls/${start.callId}/gap`, { turn: 'x', gapMs: -5, source: 'mind' });
@@ -192,4 +195,32 @@ test('turns say which reply they answer, gaps say whether the reply played, and 
   assert.equal(callStart.browser, 'other', 'Chrome with an iPhone agent is never Safari');
   assert.equal(events.find((e) => e.type === 'heard').answering, 0);
   assert.equal(events.find((e) => e.type === 'gap').played, false);
+});
+
+test('the line logs one gap per finished reply, and refuses the greeting, an unfinished turn and a second gap', async () => {
+  const start = await (await postJson('/api/calls', { script: null })).json();
+  const gap = (turn) => postJson(`/api/calls/${start.callId}/gap`, { turn, gapMs: 900, source: 'voice', muted: false, played: true });
+  assert.equal((await gap(0)).status, 400, 'the greeting has no gap');
+  assert.equal((await gap(1)).status, 409, 'turn 1 has not happened yet');
+  await postJson(`/api/calls/${start.callId}/turn`, { text: 'hello', source: 'voice', answering: start.turn });
+  assert.equal((await gap(1)).status, 200);
+  assert.equal((await gap(1)).status, 409, 'a second gap for one turn');
+  assert.equal(deps.ledger.byCall(start.callId).filter((e) => e.type === 'gap').length, 1);
+});
+
+test('a yes that reaches the line sooner after the asking reply than a person can answer is asked again', async () => {
+  const start = await (await postJson('/api/calls', { script: 2 })).json();
+  const turn = async (text, source, answering) => (await postJson(`/api/calls/${start.callId}/turn`, { text, source, answering })).json();
+  const pin = await turn(PIN, 'keypad', start.turn);
+  const offer = await turn('I want to stop my monthly gift.', 'voice', pin.turn);
+  // Sent the moment the offer came back, with the right turn, as a script could. No one hears an offer that fast.
+  const quick = await turn('Yes.', 'voice', offer.turn);
+  assert.match(quick.reply, /Would you like me to pause it\?/);
+  await new Promise((resolve) => { setTimeout(resolve, 300); });
+  const yes = await turn('Yes.', 'voice', quick.turn);
+  assert.match(yes.reply, /as suspended/);
+  const events = deps.ledger.byCall(start.callId);
+  assert.equal(events.filter((e) => e.type === 'write').length, 1);
+  assert.ok(events.find((e) => e.type === 'heard' && e.turn === quick.turn).afterReplyMs < 250);
+  assert.deepEqual(checkWrites(events), []);
 });

@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { spawn, spawnSync, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { scriptByNumber, scriptTurns } from '../src/pilot-scripts.js';
-import { DEADLINE, formatPt, selectCalls, windowCalls, sweep, stops, timing, pilotTests, pinLeaks } from '../src/pilot-grade.js';
+import { DEADLINE, formatPt, selectCalls, windowCalls, startedAfter, sweep, stops, timing, pilotTests, pinLeaks } from '../src/pilot-grade.js';
 import { buildStack, tempDir } from './helpers.js';
 
 const CHECK_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'pilot-check.js');
@@ -53,12 +56,13 @@ async function honestPilot({ before = async () => {}, after = async () => {}, sa
   return { stack, events: asSandbox(stack.ledger.all()) };
 }
 
-function grade(events, { webhook = WEBHOOK, pin = '2468' } = {}) {
-  const selected = selectCalls(events);
+/** Grades the events as pilot-check does. With until, only calls that started by then are graded, as pilot-check picks them (G2). */
+function grade(events, { webhook = WEBHOOK, pin = '2468', until = null } = {}) {
+  const selected = selectCalls(events, { until });
   const swept = sweep(windowCalls(events), { pin });
   const times = timing([...selected.main.values(), ...selected.fox.values()], webhook.event);
   const results = pilotTests({ main: selected.main, fox: selected.fox, swept, webhook, late: times.late });
-  return { selected, swept, times, gap: results.gap, pass: results.tests.map((t) => t.pass), stops: stops(swept) };
+  return { selected, swept, times, gap: results.gap, gapProblems: results.gapProblems, pass: results.tests.map((t) => t.pass), tests: results.tests, stops: stops(swept) };
 }
 
 const callOf = (events, number, browser) => events.filter((e) => e.type === 'call_start' && e.script === number && e.browser === browser).at(-1).callId;
@@ -145,7 +149,9 @@ test('Test 4 counts one gap per heard voice turn, so extra gap events cannot pul
   const slow = events.map((e) => (e.type === 'gap' && e.source === 'voice' ? { ...e, gapMs: 5000 } : e));
   const forged = slow.filter((e) => e.type === 'gap').flatMap((e) => [{ ...e, gapMs: 100 }, { ...e, source: 'voice', gapMs: 100 }, { ...e, turn: e.turn + 50, source: 'voice', gapMs: 100 }]);
   const result = grade([...slow, ...forged].map((e, i) => ({ ...e, seq: i + 1 })));
-  assert.equal(result.gap, 5000);
+  // A turn with two gaps counts neither of them and is a problem, so the forged 100 ms gaps never reach the median (R3-8).
+  assert.notEqual(result.gap, 100);
+  assert.ok(result.gapProblems.some((v) => /gaps were logged for one turn/.test(v.message)));
   assert.equal(result.pass[3], false);
 });
 
@@ -173,4 +179,319 @@ test('a refused or empty run replaces PILOT-RESULTS.md with a notice, and keeps 
   assert.equal(empty.status, 1, empty.stderr);
   assert.match(fs.readFileSync(path.join(dir, 'PILOT-RESULTS.md'), 'utf8'), /found no scripted calls/);
   assert.match(fs.readFileSync(path.join(dir, 'PILOT-RESULTS.previous.md'), 'utf8'), /Test 1, gift care end to end\.\*\* PASS/, 'a notice never replaces the kept results');
+});
+
+const LOCK = [{ text: '1111', source: 'keypad' }, { text: '2222', source: 'keypad' }, { text: '3333', source: 'keypad' }];
+
+/** Scripts 1 to 10, each run as plan(n) says, then Scripts 2 and 3 typed in Firefox. */
+async function pilotWith(plan) {
+  const stack = buildStack();
+  for (let n = 1; n <= 10; n += 1) {
+    const { browser, ...options } = plan(n);
+    await runAs(stack, n, browser, options);
+  }
+  for (const n of [2, 3]) await runAs(stack, n, 'firefox');
+  return asSandbox(stack.ledger.all());
+}
+
+test('Script 8 never earns browser credit, so a run whose speech never worked in Safari or Chrome fails Test 4', async () => {
+  // The only Safari call is Script 8, and its one voice turn after the lock is noise.
+  const safari = await pilotWith((n) => (n === 8 ? { browser: 'safari', turns: [...LOCK, { text: 'blah blah', source: 'voice' }] } : { browser: 'chrome' }));
+  assert.deepEqual(grade(safari).pass, [true, true, true, false]);
+  // Chrome speech never gave a usable line, so every Chrome call but Script 8 was typed, and Scripts 2 and 3 ran by voice in Safari.
+  const chrome = await pilotWith((n) => {
+    if (n === 2 || n === 3) return { browser: 'safari' };
+    return n === 8 ? { browser: 'chrome', turns: [...LOCK, { text: 'uh huh', source: 'voice' }] } : { browser: 'chrome', source: 'typed' };
+  });
+  assert.deepEqual(grade(chrome).pass, [true, true, true, false]);
+});
+
+test('pilot-check holds every call to the configured org name', async () => {
+  const { events } = await honestPilot();
+  assert.ok([...selectCalls(events, { orgName: 'Sunny Hollow Pantry' }).main.values()].every((c) => c.grade.passed));
+  const other = selectCalls(events, { orgName: 'Maple Street Pantry' });
+  assert.ok([...other.main.values()].every((c) => !c.grade.passed));
+  assert.ok(other.main.get(1).grade.facts.some((v) => v.message.includes('logged the org name "Sunny Hollow Pantry", but ORG_NAME is "Maple Street Pantry"')));
+});
+
+test('a gap shorter than the line took to make its reply, or two gaps for one turn, fails Test 4 with a clear reason', async () => {
+  const { events } = await honestPilot();
+  // The line logged 2,500 ms to make Script 2's offer, but the page says it began playing 1,800 ms after the button.
+  const two = callOf(events, 2, 'chrome');
+  const offerTurn = events.find((e) => e.callId === two && e.type === 'proposed').turn;
+  const slowServer = grade(events.map((e) => (e.callId === two && e.type === 'said' && e.turn === offerTurn ? { ...e, ms: 2500 } : e)));
+  assert.equal(slowServer.pass[3], false);
+  assert.ok(slowServer.gapProblems.some((v) => v.message.includes('shorter than the 2500 ms the line took')));
+  // Every real voice gap is 5,000 ms, and a forged 250 ms gap was posted just before each one.
+  const forged = [];
+  for (const e of events) {
+    if (e.type === 'gap' && e.source === 'voice') forged.push({ ...e, gapMs: 250 }, { ...e, gapMs: 5000 });
+    else forged.push(e);
+  }
+  const doubled = grade(forged.map((e, i) => ({ ...e, seq: i + 1 })));
+  assert.equal(doubled.pass[3], false);
+  assert.notEqual(doubled.gap, 250);
+  assert.ok(doubled.gapProblems.some((v) => v.message.includes('2 gaps were logged for one turn')));
+});
+
+test('the line\'s own housekeeping after the last heard turn never makes a run late, and a late caller turn still does', async () => {
+  for (const close of ['idle', 'client']) {
+    // Script 10's goodbye is misheard, so its call stays open until the idle sweep or the page's end beacon closes it.
+    const { events } = await honestPilot({
+      after: async (stack) => {
+        const turns = scriptTurns(scriptByNumber(10), stack.config.pin).map((t) => (t.source === 'typed' ? { ...t, source: 'voice' } : t));
+        const callId = await runAs(stack, 10, 'chrome', { turns: [...turns.slice(0, -1), { text: 'Good buy.', source: 'voice' }] });
+        stack.clock.advance(stack.config.limits.callIdleMs + 1);
+        if (close === 'idle') await stack.calls.sweep();
+        else await stack.calls.end(callId, 'client');
+      },
+    });
+    // Everything the caller and PayPal did is 5 minutes before the deadline, and the call closes 5 minutes after it.
+    const shift = Date.parse(DEADLINE) - Date.parse(events[0].ts) - 300000;
+    const shifted = events.map((e) => ({ ...e, ts: new Date(Date.parse(e.ts) + shift).toISOString() }));
+    const ten = callOf(shifted, 10, 'chrome');
+    assert.ok(shifted.some((e) => e.callId === ten && e.type === 'call_end' && e.reason === close && Date.parse(e.ts) > Date.parse(DEADLINE)), close);
+    const onTime = grade(shifted);
+    assert.deepEqual(onTime.times.late, [], close);
+    assert.deepEqual(onTime.pass, [true, true, true, true], close);
+    const lastHeard = shifted.filter((e) => e.callId === ten && e.type === 'heard').at(-1);
+    const lateTurn = shifted.map((e) => (e === lastHeard ? { ...e, ts: new Date(Date.parse(DEADLINE) + 1000).toISOString() } : e));
+    assert.deepEqual(grade(lateTurn).pass, [false, false, false, false], `${close}, a caller turn after the deadline`);
+  }
+});
+
+/** The real pilot-check CLI over a sandbox-labelled copy of the events, in a scratch folder, with a scratch Hours log. */
+function cliRun(events, { hours = '| Tue Nov 3 | 9:00 am | 11:00 am | 2 | scripted calls |', env = { DEMO_SUBSCRIPTION_ID: 'I-MOCK0000001' }, args = [] } = {}) {
+  const dir = tempDir();
+  const ledgerPath = path.join(dir, 'ledger.jsonl');
+  fs.writeFileSync(ledgerPath, `${events.map((e) => JSON.stringify(e)).join('\n')}\n`);
+  const hoursPath = path.join(dir, 'hours.md');
+  fs.writeFileSync(hoursPath, ['## Hours log', '', '| Date | Start | End | Hours | What |', '|---|---|---|---|---|', hours, '| | | | | |', ''].join('\n'));
+  const result = spawnSync(process.execPath, [CHECK_SCRIPT, '--ledger', ledgerPath, '--hours', hoursPath, ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+  return { ...result, results: fs.readFileSync(path.join(dir, 'PILOT-RESULTS.md'), 'utf8') };
+}
+
+test('pilot-check refuses a real grade without DEMO_SUBSCRIPTION_ID, and holds every call in the window to it', async () => {
+  const { events } = await honestPilot();
+  const refused = cliRun(events, { env: {} });
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.match(refused.results, /no grade[\s\S]*DEMO_SUBSCRIPTION_ID is not configured/);
+  const graded = cliRun(events);
+  assert.match(graded.results, /Test 3, read-back truth in 10 of 10 calls\.\*\* PASS/);
+  const other = cliRun(events, { env: { DEMO_SUBSCRIPTION_ID: 'I-OTHER00001' } });
+  assert.match(other.results, /Test 3, read-back truth in 10 of 10 calls\.\*\* FAIL/);
+  assert.match(other.results, /a read of I-MOCK0000001, not of the pilot's subscription, I-OTHER00001/);
+});
+
+test('pilot-check reads the Hours log, refuses an empty or unreadable one, and fails anything after the 6th logged hour', async () => {
+  const { events } = await honestPilot();
+  const empty = cliRun(events, { hours: '| | | | | |' });
+  assert.equal(empty.status, 2, empty.stderr);
+  assert.match(empty.results, /no grade[\s\S]*found no rows in the Hours log[\s\S]*\| Tue Nov 3 \| 6:00 pm \| 8:30 pm \| 2\.5 \| sandbox setup \|/);
+  const unreadable = cliRun(events, { hours: '| Wed Nov 3 | 9 am | 11 am | 2 | typo |' });
+  assert.equal(unreadable.status, 2, unreadable.stderr);
+  assert.match(unreadable.results, /Line 5 of hours\.md, `\| Wed Nov 3 \| 9 am \| 11 am \| 2 \| typo \|`, has a Date pilot-check cannot read/);
+  // Six hours logged on Tue Nov 3 end before any call, so every test fails, and the calls are recorded after the deadline (G2).
+  const spent = cliRun(events, { hours: '| Tue Nov 3 | 3:00 am | 9:00 am | 6 | early |' });
+  assert.equal(spent.status, 1, spent.stderr);
+  assert.equal((spent.results.match(/\*\* FAIL/g) ?? []).length, 4);
+  assert.match(spent.results, /The 6th logged hour ended Tue Nov 3, 2026, 9:00 am PT\. The effective deadline is Tue Nov 3, 2026, 9:00 am PT/);
+  assert.match(spent.results, /## Recorded after the deadline, not scored[\s\S]*- Script 1, safari, call /);
+  // Hours logged on Mon Nov 2 come before the clock and never count toward the 6 hours (G4). Alone they are refused.
+  const monday = cliRun(events, { hours: '| 11/2 | 9:00 am | 3:00 pm | 6 | early |' });
+  assert.equal(monday.status, 2, monday.stderr);
+  assert.match(monday.results, /no grade[\s\S]*found no rows on Tue Nov 3 or Wed Nov 4/);
+  const withTuesday = cliRun(events, { hours: '| 11/2 | 9:00 am | 3:00 pm | 6 | early |\n| Tue Nov 3 | 9:00 am | 11:00 am | 2 | scripted calls |' });
+  assert.match(withTuesday.results, /Test 1, gift care end to end\.\*\* PASS/);
+  assert.match(withTuesday.results, /Total logged, 2 hours[\s\S]*the bar's own deadline/);
+  assert.match(withTuesday.results, /Warnings, not fails\.\*\* The row on line 5 is on 2026-11-02, outside Tue Nov 3 and Wed Nov 4, so its hours don't count/);
+  // A log that covers the calls grades them, prints the rows and the deadline, and warns about calls outside every row.
+  const covered = cliRun(events);
+  assert.match(covered.results, /Test 1, gift care end to end\.\*\* PASS/);
+  assert.match(covered.results, /- Line 5, Tue Nov 3, 2026, 9:00 am PT to Tue Nov 3, 2026, 11:00 am PT, 2 hours\./);
+  assert.match(covered.results, /Total logged, 2 hours[\s\S]*The effective deadline is Wed Nov 4, 2026, 9:00 pm PT, the bar's own deadline/);
+  assert.match(cliRun(events, { hours: '| Tue Nov 3 | 11:00 am | 1:00 pm | 2 | later |' }).results, /Warnings, not fails\.\*\* Script 1, safari, call [0-9a-f-]+, has events outside every logged row/);
+});
+
+test('every run that stops without a fresh grade leaves the notice, keeps the last real grade beside it, and --since takes an offset', async () => {
+  const { stack } = await honestPilot();
+  const dir = tempDir();
+  const run = (args, env = {}) => spawnSync(process.execPath, [CHECK_SCRIPT, '--ledger', stack.ledger.path, ...args], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+  const results = path.join(dir, 'PILOT-RESULTS.md');
+  const previous = path.join(dir, 'PILOT-RESULTS.previous.md');
+  const realGrade = '# Pilot results\n\n- **Test 1, gift care end to end.** PASS\n';
+  const stops = [[['--since', '2026-11-03T00:00PT'], {}, /--since must be an ISO time with its offset, such as 2026-11-03T18:00-08:00/], [[], { ORG_NAME: 'Pantry 2' }, /Config problems/]];
+  for (const [args, env, why] of stops) {
+    fs.writeFileSync(results, realGrade);
+    fs.rmSync(previous, { force: true });
+    const stopped = run(args, env);
+    assert.equal(stopped.status, 1, stopped.stderr);
+    assert.match(fs.readFileSync(results, 'utf8'), /^# Pilot results, no grade[\s\S]*stopped on an error before it could grade/);
+    assert.match(fs.readFileSync(results, 'utf8'), why);
+    assert.equal(fs.readFileSync(previous, 'utf8'), realGrade);
+  }
+  // A -08:00 or -07:00 offset is read as a time, so this mock ledger is graded and refused as a mock run.
+  for (const since of ['2026-11-03T09:00-08:00', '2026-11-03T09:00:00-07:00']) assert.equal(run(['--since', since]).status, 2, since);
+});
+
+const execFileAsync = promisify(execFile);
+const REAL_ENV = { DEMO_SUBSCRIPTION_ID: 'I-MOCK0000001', PILOT_PIN: '2468' };
+
+/** A ledger and an Hours log in a scratch folder, for runs of the real pilot-check CLI. */
+function scratchRun(events, hours = '| Tue Nov 3 | 9:00 am | 11:00 am | 2 | scripted calls |') {
+  const dir = tempDir();
+  const ledgerPath = path.join(dir, 'ledger.jsonl');
+  const hoursPath = path.join(dir, 'hours.md');
+  const writeEvents = (list) => fs.writeFileSync(ledgerPath, `${list.map((e) => JSON.stringify(e)).join('\n')}\n`);
+  writeEvents(events);
+  fs.writeFileSync(hoursPath, ['## Hours log', '', '| Date | Start | End | Hours | What |', '|---|---|---|---|---|', hours, ''].join('\n'));
+  const file = (name) => path.join(dir, name);
+  return { dir, ledgerPath, hoursPath, writeEvents, file, read: (name) => fs.readFileSync(file(name), 'utf8') };
+}
+
+/** The real CLI, run without blocking, so a fake Render in this process can answer it. */
+async function cliAsync(run, args, env = REAL_ENV) {
+  try {
+    const out = await execFileAsync(process.execPath, [CHECK_SCRIPT, ...args], { cwd: run.dir, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+    return { status: 0, ...out };
+  } catch (error) {
+    return { status: error.code, stdout: error.stdout, stderr: error.stderr };
+  }
+}
+
+/** A fake Render whose webhook list the test can change, or that never answers, like a free service still waking. */
+async function fakeRender({ webhooks = [], hang = false } = {}) {
+  const state = { webhooks };
+  const server = http.createServer((req, res) => {
+    if (hang) return;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(req.url === '/api/webhooks' ? JSON.stringify({ webhooks: state.webhooks }) : '{"ok":true}');
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const close = () => {
+    server.closeAllConnections();
+    return new Promise((resolve) => { server.close(resolve); });
+  };
+  return { url: `http://127.0.0.1:${server.address().port}`, state, server, close };
+}
+
+test('a call that started after the deadline is recorded, not scored, so a later demo never fails a pilot that met the bar (G2)', async () => {
+  const { stack, events } = await honestPilot();
+  assert.deepEqual(grade(events, { until: DEADLINE }).pass, [true, true, true, true]);
+  // A Safari demo of Script 1 at 9:15 pm on Wed Nov 4, picked from the menu after the deadline.
+  stack.clock.t = Date.parse(DEADLINE) + 15 * 60000;
+  await runAs(stack, 1, 'safari');
+  const withDemo = asSandbox(stack.ledger.all());
+  const result = grade(withDemo, { until: DEADLINE });
+  assert.deepEqual(result.pass, [true, true, true, true]);
+  assert.notEqual(result.selected.main.get(1).callId, callOf(withDemo, 1, 'safari'), 'the demo never replaces the graded Script 1');
+  assert.deepEqual(startedAfter(withDemo, { until: DEADLINE }).map((c) => [c.number, c.browser]), [[1, 'safari']]);
+  // A graded call that started by the deadline and ran past it still fails every test.
+  const ten = callOf(events, 10, 'chrome');
+  const lastHeard = events.filter((e) => e.callId === ten && e.type === 'heard').at(-1);
+  const ranPast = events.map((e) => (e === lastHeard ? { ...e, ts: new Date(Date.parse(DEADLINE) + 1000).toISOString() } : e));
+  assert.deepEqual(grade(ranPast, { until: DEADLINE }).pass, [false, false, false, false]);
+});
+
+test('a regrade after a late demo and a Render restart still passes, moves the last grade aside, and reuses the paid event (G2)', async () => {
+  const { stack, events } = await honestPilot();
+  const invoice = events.find((e) => e.type === 'write' && e.kind === 'send_invoice').targetId;
+  const paid = { eventId: 'WH-1', eventType: 'INVOICING.INVOICE.PAID', resourceId: invoice, verified: true, verifyStatus: 'SUCCESS', ts: '2026-11-03T19:00:00.000Z' };
+  const render = await fakeRender({ webhooks: [paid] });
+  try {
+    const run = scratchRun(events);
+    const args = ['--ledger', run.ledgerPath, '--hours', run.hoursPath, '--render', render.url];
+    const first = await cliAsync(run, args);
+    assert.equal(first.status, 0, first.stdout);
+    const evidence = JSON.parse(run.read('ledger.paid-webhook.json'));
+    assert.deepEqual([evidence.eventId, evidence.resourceId, evidence.ts], ['WH-1', invoice, paid.ts]);
+    // A Safari demo of Script 1 after the deadline, then Render restarts and loses its list.
+    stack.clock.t = Date.parse(DEADLINE) + 15 * 60000;
+    await runAs(stack, 1, 'safari');
+    run.writeEvents(asSandbox(stack.ledger.all()));
+    render.state.webhooks = [];
+    const second = await cliAsync(run, args);
+    assert.equal(second.status, 0, second.stdout);
+    const results = run.read('PILOT-RESULTS.md');
+    assert.equal((results.match(/\*\* PASS/g) ?? []).length, 4);
+    assert.match(results, /## Recorded after the deadline, not scored\n\n- Script 1, safari, call [0-9a-f-]+, started Wed Nov 4, 2026, 9:15 pm PT\./);
+    assert.match(results, /Webhook event, WH-1, from http:\/\/127\.0\.0\.1:\d+, saved [^,]+, 2026, [^,]+ PT, received Tue Nov 3, 2026, 11:00 am PT\./);
+    const previous = run.read('PILOT-RESULTS.previous.md');
+    assert.match(previous, /^# Pilot results\n/);
+    assert.equal((previous.match(/\*\* PASS/g) ?? []).length, 4, 'the first grade is moved aside, not lost');
+  } finally {
+    await render.close();
+  }
+});
+
+test('a run stopped while Render hangs leaves the notice, never the last grade, and keeps that grade beside it (R3-9)', async () => {
+  const { events } = await honestPilot();
+  const run = scratchRun(events);
+  const realGrade = '# Pilot results\n\n- **Test 1, gift care end to end.** PASS\n';
+  fs.writeFileSync(run.file('PILOT-RESULTS.md'), realGrade);
+  const render = await fakeRender({ hang: true });
+  try {
+    const reached = once(render.server, 'request').then(() => 'reached Render');
+    const child = spawn(process.execPath, [CHECK_SCRIPT, '--ledger', run.ledgerPath, '--hours', run.hoursPath, '--render', render.url],
+      { cwd: run.dir, env: { PATH: process.env.PATH, ...REAL_ENV }, stdio: 'ignore' });
+    const exited = once(child, 'exit');
+    assert.equal(await Promise.race([reached, exited.then(() => 'exited first')]), 'reached Render');
+    const during = run.read('PILOT-RESULTS.md');
+    child.kill('SIGINT');
+    await exited;
+    assert.match(during, /^# Pilot results, no grade[\s\S]*started grading and has not finished/);
+    assert.equal(run.read('PILOT-RESULTS.md'), during, 'a Ctrl-C leaves the notice');
+    assert.equal(run.read('PILOT-RESULTS.previous.md'), realGrade);
+  } finally {
+    await render.close();
+  }
+});
+
+test('pilot-check reads its flags strictly, in both forms, and refuses a flag npm kept, a stray value, a repeat or an unknown flag (G5)', async () => {
+  const { events } = await honestPilot();
+  const run = scratchRun(events);
+  const cli = (args, env = REAL_ENV) => spawnSync(process.execPath, [CHECK_SCRIPT, ...args], { cwd: run.dir, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+  const graded = cli([`--ledger=${run.ledgerPath}`, `--hours=${run.hoursPath}`]);
+  assert.match(run.read('PILOT-RESULTS.md'), /Test 1, gift care end to end\.\*\* PASS/, graded.stderr);
+  assert.ok(run.read('PILOT-RESULTS.md').includes(`Read from \`${run.hoursPath}\``), 'the --hours=path form is the file read');
+  // A --since after every call grades nothing, in either form.
+  for (const since of [['--since=2030-01-01T00:00Z'], ['--since', '2030-01-01T00:00Z']]) {
+    assert.equal(cli(['--ledger', run.ledgerPath, '--hours', run.hoursPath, ...since]).status, 1, since.join(' '));
+    assert.match(run.read('PILOT-RESULTS.md'), /no grade[\s\S]*found no scripted calls/, since.join(' '));
+  }
+  const refusals = [
+    [['--frobnicate'], {}, /pilot-check has no flag --frobnicate\./],
+    [['2026-11-03T18:00-08:00'], {}, /got "2026-11-03T18:00-08:00" with no flag before it/],
+    [['--since', '2026-11-03T18:00-08:00', '--since', '2026-11-04T18:00-08:00'], {}, /--since was given twice\./],
+    [['--resend=yes'], {}, /--resend takes no value\./],
+    [['2026-11-03T18:00-08:00'], { npm_config_since: 'true' }, /npm kept --since for itself/],
+  ];
+  for (const [args, env, why] of refusals) {
+    const result = cli(['--ledger', run.ledgerPath, '--hours', run.hoursPath, ...args], { ...REAL_ENV, ...env });
+    assert.equal(result.status, 1, args.join(' '));
+    const notice = run.read('PILOT-RESULTS.md');
+    assert.match(notice, /^# Pilot results, no grade[\s\S]*stopped on an error before it could grade/, args.join(' '));
+    assert.match(notice, why, args.join(' '));
+    assert.match(notice, /Usage: npm run pilot:check -- \[--since ISO\]/, args.join(' '));
+  }
+  assert.match(run.read('PILOT-RESULTS.previous.md'), /Test 1, gift care end to end\.\*\* PASS/, 'the last real grade is kept beside the notices');
+});
+
+test('every test lists its clauses with the call each used, so a FAIL always says which clause missed (G6)', async () => {
+  const safari = await pilotWith((n) => (n === 8 ? { browser: 'safari', turns: [...LOCK, { text: 'blah blah', source: 'voice' }] } : { browser: 'chrome' }));
+  const four = grade(safari).tests[3];
+  assert.equal(four.pass, false);
+  assert.deepEqual(four.clauses.filter((c) => !c.pass).map((c) => c.text.replace(/call [0-9a-f]{8}-[0-9a-f-]+/g, 'call X')),
+    ['Safari has no call finished by voice. Script 8, safari, call X, the line acted on no voice turn after the PIN']);
+  // Script 2 run again by voice at the end, so the graded Script 2 paused the gift after Script 3 restarted it.
+  const rerun = await honestPilot({ after: (stack) => runAs(stack, 2, 'chrome') });
+  const one = grade(rerun.events).tests[0];
+  assert.deepEqual(one.clauses.filter((c) => !c.pass).map((c) => c.text), ['Script 3 did not restart the gift Script 2 paused, after it']);
+  const cli = cliRun(rerun.events);
+  assert.match(cli.results, /- \*\*Test 1, gift care end to end\.\*\* FAIL\n {2}- Met\. Script 2 passed by voice, Script 2, chrome, call [0-9a-f-]+\.\n {2}- Met\. Script 3 passed by voice[^\n]*\n {2}- Missed\. Script 3 did not restart the gift Script 2 paused, after it\./);
+  assert.match(cli.results, /## Every problem\n\nNo call check problems\. Each failing test above says which clause it missed\./);
+  // With every voice reply muted, the gap clause says so.
+  const muted = grade(rerun.events.map((e) => (e.type === 'gap' ? { ...e, muted: true } : e))).tests[3];
+  assert.ok(muted.clauses.some((c) => !c.pass && /^No unmuted voice turn was timed, and \d+ muted turns don't count$/.test(c.text)), JSON.stringify(muted.clauses));
 });

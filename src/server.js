@@ -8,7 +8,7 @@ import { createPayPal } from './paypal.js';
 import { createMockPayPal } from './paypal-mock.js';
 import { createTokens, createGate } from './gate.js';
 import { createRouter } from './router.js';
-import { createCallService, CallNotFound } from './call.js';
+import { createCallService, CallNotFound, GapRefused } from './call.js';
 import { PILOT_SCRIPTS, displayLines } from './pilot-scripts.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
@@ -283,18 +283,30 @@ function createApi(deps) {
   const scripts = PILOT_SCRIPTS.map((s) => ({ number: s.number, title: s.title, lines: displayLines(s), expected: s.expected }));
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
 
+  // A second gap for a turn is a 409, and so is one for a reply the line has not finished (Test 4).
+  function logGap(id, gap) {
+    try {
+      return calls.logGap(id, gap);
+    } catch (error) {
+      if (error instanceof GapRefused) throw new HttpError(error.status, error.message);
+      throw error;
+    }
+  }
+
   async function callRoute(req, res, ip, id, action) {
     if (!action) {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
       return send(res, 200, calls.get(id));
     }
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
+    // When the turn reached the server, before its body is read, so a yes can't count before a person could answer (I1).
+    const receivedAt = performance.now();
     const body = await readJson(req);
     if (action === 'turn') {
       limitOr429(turns, ip);
-      return send(res, 200, await calls.turn(id, validTurnBody(body)));
+      return send(res, 200, await calls.turn(id, validTurnBody(body), { receivedAt }));
     }
-    if (action === 'gap') return send(res, 200, calls.logGap(id, validGapBody(body)));
+    if (action === 'gap') return send(res, 200, logGap(id, validGapBody(body)));
     return send(res, 200, await calls.end(id, 'client'));
   }
 

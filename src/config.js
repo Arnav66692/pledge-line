@@ -26,6 +26,9 @@ export const LIMITS = Object.freeze({
   maxTurnsPerCall: 40,
   maxTextChars: 500,
   pinTries: 3,
+  // A person needs this long at least to hear or read a proposal and answer it. A yes that reaches the server
+  // sooner after the asking reply was finished never counts (I1).
+  minAnswerMs: 250,
   invoiceMinDollars: 1,
   invoiceMaxDollars: 500,
   newCallsPerHour: 20,

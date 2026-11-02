@@ -10,7 +10,7 @@ export const PILOT_SCRIPTS = Object.freeze([
     title: 'Check my gift',
     lines: [PIN, 'How much is my monthly gift?', 'Thanks, goodbye.'],
     expected: 'No writes. Amount and status read from PayPal',
-    expect: { writes: [], staging: [], refusals: [], proposals: [], unchanged: true },
+    expect: { writes: [], staging: [], refusals: [], proposals: [], unchanged: true, readsAloud: ['plan.price', 'subscription.status'] },
   },
   {
     number: 2,

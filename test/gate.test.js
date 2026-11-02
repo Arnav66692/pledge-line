@@ -230,3 +230,11 @@ test('execute logs the write, consumes the token and clears the pending action',
   const again = await f.gate.execute(f.call, approval, writer, 2);
   assert.equal(again.ok, false, 'a used token cannot write twice');
 });
+
+test('a yes counts only when the line had finished the asking reply before it arrived, and a person could have answered it', () => {
+  const f = gateFixture();
+  f.gate.propose(f.call, { kind: 'suspend', targetId: 'I-1', readBack: f.readBack, origin: 'pause_offer', turn: 2 });
+  assert.equal(f.gate.approve(f.call, 'yes', 3, 2, { arrivedAfter: 1 }), null, 'the yes arrived while the line was still making the proposal');
+  assert.equal(f.gate.approve(f.call, 'yes', 3, 2, { arrivedAfter: 2, afterReplyMs: 40 }), null, 'no person answers 40 ms after a reply');
+  assert.ok(f.gate.approve(f.call, 'yes', 3, 2, { arrivedAfter: 2, afterReplyMs: 900 }).token);
+});

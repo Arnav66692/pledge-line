@@ -1,6 +1,6 @@
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import * as say from './say.js';
-import { parseAmountDollars } from './router.js';
+import { parseAmountDollars, amountConflict } from './router.js';
 import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
 import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } from './gate.js';
 import { toSnapshot, PayPalError } from './paypal.js';
@@ -19,10 +19,15 @@ const WRITER_METHODS = Object.freeze({ suspend: 'suspendSubscription', activate:
 const PENDING_LABELS = Object.freeze({ suspend: 'Pause the monthly gift', activate: 'Restart the monthly gift', cancel: 'Cancel the monthly gift', send_invoice: 'Send the one-time gift invoice' });
 const BARE_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'correct', 'ok', 'okay', 'please', 'do', 'go', 'ahead', 'it', 'that', "that's", 'is',
   'right', 'confirm', 'no', 'nope', 'nah', 'thanks', 'thank', 'you', 'not', 'now', 'never', 'mind', 'nevermind', 'keep', 'leave', "don't", 'dont']);
-// "x@y", "x at y dot z" and "x at y.z". NFKC first, so a full-width or small @ counts as @.
+// Endings an address can have when said as "dotcom", "gmail .com" or "gmail period com". A short list, so "at once. Thanks"
+// and "until the period ends" stay plain words.
+const EMAIL_ENDINGS = 'com|net|org|edu|gov|io|co|us|me|info|biz|uk|ca';
+// The endings that are never plain words, for "point com" and "gmail. com", so "at this point me" and "at once. Me too" stay plain.
+const PLAIN_ENDINGS = 'com|net|org|edu|gov|io';
+// "x@y" and "x @ y", "x at y dot z", also with commas, and "x at y.z". NFKC first, so a full-width or small @ counts as @.
 const EMAIL_PATTERNS = [
-  /[^\s@]+@[^\s@]+/g,
-  /\bat\s+[a-z0-9.-]+(?:\s+[a-z0-9.-]+){0,3}\s+(?:dot|period)\s+[a-z]{2,}\b/gi,
+  /[^\s@]+\s*@\s*[^\s@]+/g,
+  new RegExp(`\\bat[\\s,]+[a-z0-9.-]+(?:[\\s,]+[a-z0-9.-]+){0,3}[\\s,]+(?:dot[\\s,]+[a-z]{2,}|period[\\s,]+(?:${EMAIL_ENDINGS}))\\b`, 'gi'),
   /\bat\s+[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/gi,
 ];
 
@@ -33,6 +38,15 @@ export class CallNotFound extends Error {
   }
 }
 
+/** A gap the line will not log: for the greeting, for a reply it has not finished, or a second one for a turn (R3-8). */
+export class GapRefused extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = 'GapRefused';
+    this.status = status;
+  }
+}
+
 const defaultSleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 /** The digits of a PIN typed or said, including "twenty four sixty eight" and "thirteen fourteen". */
@@ -40,8 +54,13 @@ export function parsePinDigits(text) {
   return spokenDigits(text);
 }
 
-// "bob (at) gmail (dot) com" reads like "bob at gmail dot com".
-const emailText = (text) => String(text ?? '').normalize('NFKC').replace(/\(\s*(at|dot)\s*\)/gi, ' $1 ');
+// "bob (at) gmail [dot] com", "gmail dotcom", "gmail point com", "gmail .com" and "gmail. com" read like "bob at gmail dot com".
+const emailText = (text) => String(text ?? '').normalize('NFKC')
+  .replace(/[([{<]\s*(at|dot)\s*[)\]}>]/gi, ' $1 ')
+  .replace(new RegExp(`\\bdot(${EMAIL_ENDINGS})\\b`, 'gi'), ' dot $1')
+  .replace(new RegExp(`\\bpoint\\s*(${PLAIN_ENDINGS})\\b`, 'gi'), ' dot $1')
+  .replace(new RegExp(`\\s+\\.\\s*(${EMAIL_ENDINGS})\\b`, 'gi'), '.$1')
+  .replace(new RegExp(`\\.\\s+(${PLAIN_ENDINGS})\\b`, 'gi'), '.$1');
 
 export function looksLikeEmail(text) {
   const prepared = emailText(text);
@@ -340,7 +359,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     refused(ctx, 'other_email');
     // Only an amount said as money counts here, so digits left over from a spoken address never become a gift.
     const amount = routedAmount > 0 ? routedAmount : parseAmountDollars(stripEmails(text), { needCurrency: true });
-    if (!(amount > 0)) return say.combine(say.otherEmail(), 'If you would like to give a one-time gift to the email on file, tell me the amount.');
+    if (!(amount > 0)) return say.combine(say.otherEmail(), say.amountForFile());
     return say.combine(say.otherEmail(), await oneTimeTurn(ctx, amount));
   }
 
@@ -362,6 +381,10 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
   // A proposal that expired or was set aside is never read out again as if it still waited for a yes.
   const repeatLast = (call) => (call.lastSaidPending && call.lastSaidPending !== call.pending?.id ? say.nothingPending() : say.repeat(call.lastSaid));
 
+  // The router's amount, unless the caller's own words correct it or name another number, as in "fifty dollars, I mean
+  // sixty". Then the line asks, whatever the router heard, so a model that picks the first number never drafts it (R3-1).
+  const routedAmount = (routed, words) => (amountConflict(words) ? 0 : routed.amountDollars);
+
   async function handleIntent(ctx, routed, text) {
     const { call } = ctx;
     switch (routed.intent) {
@@ -371,8 +394,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       case 'pause_gift': return pauseTurn(ctx);
       case 'resume_gift': return resumeTurn(ctx);
       // The router's amount only. When it heard none, the line asks, rather than reading another number in the turn as one.
-      case 'one_time_gift': return oneTimeTurn(ctx, routed.amountDollars);
-      case 'other_email': return otherEmailTurn(ctx, text, routed.amountDollars);
+      case 'one_time_gift': return oneTimeTurn(ctx, routedAmount(routed, text));
+      case 'other_email': return otherEmailTurn(ctx, text, routedAmount(routed, stripEmails(text)));
       case 'help': return say.help();
       case 'repeat': return repeatLast(call);
       case 'staff_callback':
@@ -418,7 +441,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   async function yesTurn(ctx, text) {
     const { call } = ctx;
-    const approval = gate.approve(call, text, ctx.turn, ctx.answering);
+    const approval = gate.approve(call, text, ctx.turn, ctx.answering, ctx.arrival);
     if (!approval) return call.pending ? askAgain(ctx) : say.nothingPending();
     const { pending } = approval;
     const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
@@ -528,13 +551,14 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     }
   }
 
-  async function runTurn(call, { text, source, answering }) {
+  async function runTurn(call, { text, source, answering }, arrival) {
     const started = performance.now();
     const clean = typeof text === 'string' ? text.trim() : '';
     call.turn += 1;
     // answering is the turn of the last reply the caller's client received. A yes must answer the reply that asked (I6).
+    // arrival holds the server's own facts about when the turn arrived, which the client can't forge (I1).
     const ctx = { call, turn: call.turn, source: normalizeSource(source), answering: Number.isInteger(answering) ? answering : null,
-      routerMs: 0, paypalMs: 0, empathy: null, notice: null, pinShown: false };
+      arrival, routerMs: 0, paypalMs: 0, empathy: null, notice: null, pinShown: false };
     call.lastActiveAt = now().getTime();
     let reply;
     if (clean.length > limits.maxTextChars) {
@@ -544,7 +568,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // I4: mask while waiting for the PIN, on keypad turns, and whenever the PIN shows up later.
       const hidePin = !call.verified || ctx.source === 'keypad' || textHasPin(clean, config.pin);
       const heardText = hidePin ? maskPinText(clean) : clean;
-      log(call, { type: 'heard', turn: ctx.turn, text: heardText, source: ctx.source, answering: ctx.answering });
+      log(call, { type: 'heard', turn: ctx.turn, text: heardText, source: ctx.source, answering: ctx.answering, ...arrival });
       ctx.pinShown = call.verified && hidePin;
       reply = await dispatch(ctx, call.verified ? heardText : clean);
     }
@@ -553,6 +577,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     log(call, { type: 'said', turn: ctx.turn, text: full.text, facts: full.facts, ms: serverMs });
     call.lastSaid = full;
     call.lastSaidPending = call.pending?.id ?? null;
+    call.lastFinishedTurn = ctx.turn;
+    call.lastFinishedAt = performance.now();
     return { reply: full.text, turn: ctx.turn, state: stateFor(call), timings: { serverMs, routerMs: ctx.routerMs, paypalMs: ctx.paypalMs } };
   }
 
@@ -571,11 +597,14 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
       pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastSaid: null, lastSaidPending: null, ended: false, endedAt: null,
       noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null }, queue: Promise.resolve(),
+      // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
+      lastFinishedTurn: 0, lastFinishedAt: performance.now(), gapTurns: new Set(),
     };
     calls.set(call.id, call);
     log(call, {
       type: 'call_start', script: call.script, userAgent: String(userAgent ?? '').slice(0, USER_AGENT_MAX), client: signals, engine: engineOf(signals),
-      browser: call.browser, mode: { paypal: config.paypal.mode, router: config.router.mode }, timeZone: config.timeZone, ...(dryRun ? { dryRun: true } : {}),
+      browser: call.browser, mode: { paypal: config.paypal.mode, router: config.router.mode }, timeZone: config.timeZone, orgName: config.orgName,
+      ...(dryRun ? { dryRun: true } : {}),
     });
     const reply = say.greeting(config.orgName);
     log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, ms: 0 });
@@ -608,12 +637,23 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   return {
     start,
-    turn: (callId, input = {}) => {
+    /**
+     * The arrival facts are taken before the turn waits in the queue, so they say which replies existed when it
+     * arrived (I1). receivedAt is when the HTTP server got the request. Tests and the dry run send none.
+     */
+    turn: (callId, input = {}, { receivedAt = null } = {}) => {
       const call = getCall(callId);
-      return enqueue(call, () => runTurn(call, input));
+      const arrival = { arrivedAfter: call.lastFinishedTurn };
+      if (Number.isFinite(receivedAt)) arrival.afterReplyMs = Math.round(receivedAt - call.lastFinishedAt);
+      return enqueue(call, () => runTurn(call, input, Object.freeze(arrival)));
     },
     logGap: (callId, { turn, gapMs, source, muted, played }) => {
       const call = getCall(callId);
+      // One gap per reply the line finished, so a client can't add gaps to pull the median down (Test 4).
+      if (!(turn >= 1)) throw new GapRefused(400, 'The greeting has no gap.');
+      if (turn > call.lastFinishedTurn) throw new GapRefused(409, 'That reply is not finished yet.');
+      if (call.gapTurns.has(turn)) throw new GapRefused(409, 'A gap for that turn was already logged.');
+      call.gapTurns.add(turn);
       // muted is the mute switch alone. played is false when the reply was cut off or failed before it began.
       log(call, { type: 'gap', turn, gapMs, source, browser: call.browser, muted: Boolean(muted), ...(typeof played === 'boolean' ? { played } : {}) });
       return { ok: true };
