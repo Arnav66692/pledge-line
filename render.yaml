@@ -16,7 +16,7 @@ services:
       - key: PAYPAL_MODE
         value: sandbox
       - key: ROUTER_MODE
-        value: haiku
+        value: gemini
       - key: ORG_NAME
         value: Sunny Hollow Pantry
       - key: PAYPAL_CLIENT_ID
@@ -25,7 +25,7 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
       - key: PILOT_PIN
         sync: false

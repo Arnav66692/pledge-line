@@ -23,18 +23,16 @@ A few button labels below come from guides, not from the live pages, and are mar
 13. Test that login at https://www.sandbox.paypal.com/signin, then log out.
 14. Bookmark Testing Tools, then Sandbox Notifications. That's where sandbox emails show up, since they never reach a real inbox.
 
-## 2. Anthropic API key with a $10 limit, about 10 minutes
+## 2. Gemini API key, free, about 5 minutes
 
-1. Open https://platform.claude.com (console.anthropic.com now redirects there) and sign up with your own email.
-2. If it asks for a phone number, use your real mobile. VoIP and Google Voice numbers are refused.
-3. Open https://platform.claude.com/settings/billing and click Buy credits (check, may say Purchase credits).
-4. Buy $10. Pick Other and type 10 if there's no $10 option. Check the total with tax, then confirm. Leave auto-reload off.
-5. On the same page, under Spend limits, click Set limit, enter 10, and save.
-6. Open https://platform.claude.com/settings/keys and click Create key.
-7. Name it `pledge-line`, link it to yourself, pick the Default workspace, and set it to expire in 60 days so it outlasts judging on Dec 15.
-8. Copy the key, which starts with `sk-ant-`. It's shown only once. Paste it into `.env` as `ANTHROPIC_API_KEY=`.
+The line uses Google's free Gemini tier to understand the caller, so this costs nothing and needs no card.
 
-The whole pilot should use well under $1 of that $10. That's computed, not measured: about 100 router calls at roughly 1,000 input and 60 output tokens each, at Haiku 5.5's $0.10 and $0.50 per million tokens, comes to about 1 to 2 cents.
+1. Open https://aistudio.google.com/apikey and sign in with your Google account.
+2. If you already made a key, copy it. Otherwise click Create API key (check), and pick or create a project.
+3. Paste it into `.env` as `GEMINI_API_KEY=`. Don't add billing or a card.
+4. The pilot needs about 100 calls, well inside the free daily limit.
+
+Google may use free-tier prompts to improve its products. Every donor in the pilot is fake, so that's fine, but never use this key with real donor data.
 
 ## 3. Render account and the $50 credit, about 10 minutes
 
@@ -57,7 +55,7 @@ The private repo `Arnav66692/pledge-line` is pushed, with the tested code on the
 4. In the Render Dashboard, click New, then Blueprint, then Connect next to `pledge-line`.
 5. Name it `pledge-line`, pick the branch `pilot`, and leave Blueprint Path empty.
 6. Check that the change list shows one web service named `pledge-line` on the free plan.
-7. Fill `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `ANTHROPIC_API_KEY` and `PILOT_PIN` with the values from your `.env`.
+7. Fill `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `GEMINI_API_KEY` and `PILOT_PIN` with the values from your `.env`.
 8. Type `pending` in `PUBLIC_BASE_URL`, `PAYPAL_WEBHOOK_ID` and `DEMO_SUBSCRIPTION_ID`. You fill them in on pilot day.
 9. Click Deploy Blueprint. When it's live, copy the service URL from the top of the service page.
 10. Open that URL with `/healthz` added. Allow about a minute if it was asleep, and check it says ok.
@@ -71,7 +69,7 @@ Start a row in the Hours log in PILOT.md with today's date and your start time, 
 2. Run `npm run seed -- --check` and confirm it says ACTIVE.
 3. Run `npm run seed -- --webhook https://YOUR-RENDER-URL/webhooks/paypal`. Put the webhook id it prints into `.env` and into Render as `PAYPAL_WEBHOOK_ID`.
 4. Put the subscription id from `.pilot/state.json` into Render as `DEMO_SUBSCRIPTION_ID`, then Save and deploy. pilot-check reads it from `.pilot/state.json`, so grade in this folder. Don't run `npm run seed` again after your first graded call. A new subscription means redoing every call.
-5. Tell Claude to run the dry run. It runs all 10 scripts as typed text against the real sandbox and Haiku. This catches problems before you spend time on the voice runs, and it doesn't count for the bar.
+5. Tell Claude to run the dry run. It runs all 10 scripts as typed text against the real sandbox and Gemini. This catches problems before you spend time on the voice runs, and it doesn't count for the bar.
 6. Run `npm start` and open http://localhost:3000. If it prints a WARNING when it starts, stop and tell Claude before any call. Make the 10 scripted calls in PILOT.md, mostly in Chrome and at least one in Safari (turn Siri on first). Then do Scripts 2 and 3 in Firefox with the typed box.
    - In Safari, finish at least one script other than Script 8 by voice, since Script 8 never counts for a browser.
    - Answer each proposal after you hear it. Say a one-time amount once, as money.

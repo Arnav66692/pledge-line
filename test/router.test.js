@@ -168,3 +168,75 @@ test('amountConflict fires on a correction or two different numbers, and never o
     'Give 5 dollars and 50 cents once.', "I'm 75 and I want to make a one-time gift."];
   for (const line of clear) assert.equal(amountConflict(line), false, line);
 });
+
+/** A fetch stand-in that records each request and answers from a list, the last answer repeating. */
+function fakeFetch(answers) {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init, body: JSON.parse(init.body) });
+    const answer = answers[Math.min(calls.length - 1, answers.length - 1)];
+    if (answer instanceof Error) throw answer;
+    return { ok: answer.status >= 200 && answer.status < 300, status: answer.status, json: async () => answer.body };
+  };
+  return { fetchImpl, calls };
+}
+
+const geminiReply = (args, extra = {}) => ({ status: 200, body: { candidates: [{ finishReason: 'STOP', content: { parts: [{ functionCall: { name: 'route', args } }] }, ...extra }] } });
+const gemini = (answers) => {
+  const fake = fakeFetch(answers);
+  return { fake, router: createRouter({ mode: 'gemini', apiKey: 'test-key', model: 'gemini-flash-lite-latest', fetchImpl: fake.fetchImpl }) };
+};
+
+test('the Gemini call forces the route tool, keeps the key out of the URL and strips numbers the line said', async () => {
+  const { fake, router } = gemini([geminiReply({ intent: 'pause_gift', amount_dollars: 0, empathy: 'sorry' })]);
+  const result = await router.route({ text: 'Pause it please.', state: { verified: true, pendingKind: null, pauseOffered: false, lastSaid: 'Your gift of $25.00 is due December 1.' } });
+  assert.deepEqual({ intent: result.intent, amountDollars: result.amountDollars, empathy: result.empathy, model: result.model }, { intent: 'pause_gift', amountDollars: 0, empathy: 'sorry', model: 'gemini-flash-lite-latest' });
+  const { url, init, body } = fake.calls[0];
+  assert.equal(url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent');
+  assert.doesNotMatch(url, /key=|test-key/);
+  assert.equal(init.headers['x-goog-api-key'], 'test-key');
+  assert.deepEqual(body.toolConfig, { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['route'] } });
+  const declared = body.tools[0].functionDeclarations[0];
+  assert.equal(declared.name, 'route');
+  assert.deepEqual(declared.parameters.required, ['intent', 'amount_dollars', 'empathy']);
+  assert.equal('additionalProperties' in declared.parameters, false);
+  assert.deepEqual(declared.parameters.properties.intent.enum, [...INTENTS]);
+  assert.match(body.systemInstruction.parts[0].text, /untrusted data/);
+  const content = body.contents[0].parts[0].text;
+  assert.match(content, /"Pause it please\."/);
+  assert.doesNotMatch(content, /25|December 1\b/);
+});
+
+test('Gemini answers the line can not trust all route as unclear, with a named error and no free text passed on', async () => {
+  const odd = await gemini([geminiReply({ intent: 'wire_money', amount_dollars: 9e9, empathy: 'All done, it is off now.' })]).router.route({ text: 'hi', state: {} });
+  assert.deepEqual([odd.intent, odd.amountDollars, odd.empathy], ['unclear', 100000, 'none']);
+  const cases = [
+    [[{ status: 200, body: { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'Sure, I paused it.' }] } }] } }], 'NoToolUse'],
+    [[{ status: 200, body: { candidates: [] } }], 'NoToolUse'],
+    [[{ status: 200, body: { promptFeedback: { blockReason: 'SAFETY' } } }], 'Refusal'],
+    [[geminiReply({ intent: 'pause_gift', amount_dollars: 0, empathy: 'none' }, { finishReason: 'SAFETY' })], 'Refusal'],
+    [[{ status: 400, body: {} }], 'APIError400'],
+    [[{ status: 403, body: {} }], 'APIError403'],
+    [[{ status: 429, body: {} }], 'RateLimitError'],
+    [[{ status: 503, body: {} }], 'APIError503'],
+    [[Object.assign(new Error('timed out'), { name: 'TimeoutError' })], 'APIConnectionTimeoutError'],
+    [[new TypeError('fetch failed')], 'APIConnectionError'],
+  ];
+  for (const [answers, name] of cases) {
+    const result = await gemini(answers).router.route({ text: 'hi', state: {} });
+    assert.equal(result.intent, 'unclear', name);
+    assert.equal(result.error, name);
+  }
+});
+
+test('Gemini retries once on a 429, a 5xx or a dropped connection, and never on a 4xx', async () => {
+  const busy = gemini([{ status: 429, body: {} }, geminiReply({ intent: 'gift_status', amount_dollars: 0, empathy: 'none' })]);
+  assert.equal((await busy.router.route({ text: 'How much is my gift?', state: {} })).intent, 'gift_status');
+  assert.equal(busy.fake.calls.length, 2);
+  const down = gemini([{ status: 500, body: {} }]);
+  assert.equal((await down.router.route({ text: 'hi', state: {} })).error, 'APIError500');
+  assert.equal(down.fake.calls.length, 2);
+  const badKey = gemini([{ status: 400, body: {} }]);
+  await badKey.router.route({ text: 'hi', state: {} });
+  assert.equal(badKey.fake.calls.length, 1);
+});

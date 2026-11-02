@@ -11,13 +11,13 @@ This is a pilot for the PayPal AI Hackathon. It runs against the PayPal sandbox 
 Live in the pilot, once the keys are in `.env`.
 
 - PayPal sandbox REST calls for subscriptions, invoices and webhook checks. The code refuses any other PayPal address.
-- Claude Haiku 5.5 reads what the caller means. It never decides a yes or a no, and it never touches PayPal.
+- An AI router reads what the caller means. For the pilot it's Google's Gemini on the free tier, or Claude Haiku 5.5 with `ROUTER_MODE=haiku`. It never decides a yes or a no, and it never touches PayPal. Below, Haiku means whichever router model is set.
 - Speech in and out uses the browser's own speech tools. Chrome and Safari can listen. Firefox uses the typed box.
 
 Simulated in mock mode.
 
 - `PAYPAL_MODE=mock` swaps in a fake PayPal held in memory.
-- `ROUTER_MODE=rules` swaps Haiku for offline keyword rules.
+- `ROUTER_MODE=rules` swaps the AI router for offline keyword rules.
 - Any run with either switch on prints `MOCK RUN, does not count` and never writes a pass.
 
 The donor, Maria, and the nonprofit, Sunny Hollow Pantry, are fictional.
@@ -44,7 +44,7 @@ The tests and the mock dry run need no network and no keys.
 
 ## Run it against the sandbox
 
-Follow `SETUP.md` first. It covers the PayPal sandbox app, the Anthropic key with a spend limit, and Render.
+Follow `SETUP.md` first. It covers the PayPal sandbox app, the free Gemini key, and Render.
 
 ```
 cp .env.example .env        then fill in the values

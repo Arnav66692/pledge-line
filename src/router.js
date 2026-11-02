@@ -250,7 +250,86 @@ function fromToolInput(input) {
   return { intent, amountDollars, empathy };
 }
 
-export function createRouter({ mode, apiKey, model, timeoutMs = 6000, client = null }) {
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GEMINI_RETRIES = 1;
+// Gemini takes an OpenAPI subset, so the route tool goes in without strict or additionalProperties.
+const GEMINI_ROUTE = Object.freeze({
+  name: ROUTE_TOOL.name,
+  description: ROUTE_TOOL.description,
+  parameters: {
+    type: 'object',
+    properties: ROUTE_TOOL.input_schema.properties,
+    required: ROUTE_TOOL.input_schema.required,
+  },
+});
+
+/** The error names the ledger logs, the same ones the Haiku router uses where they match. */
+function geminiErrorName(error, status) {
+  if (status === 429) return 'RateLimitError';
+  if (status) return `APIError${status}`;
+  if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'APIConnectionTimeoutError';
+  return 'APIConnectionError';
+}
+
+const retryable = (status) => status === 429 || status >= 500;
+
+/**
+ * The route tool on Gemini's free tier, forced with function calling mode ANY. The key goes in a header, never
+ * in the URL. Like the Haiku router, any failure routes as unclear, so the line asks again and never guesses.
+ */
+function createGeminiRouter({ apiKey, model, timeoutMs, fetchImpl }) {
+  const url = `${GEMINI_BASE_URL}/${encodeURIComponent(model)}:generateContent`;
+  const body = (text, state) => JSON.stringify({
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: buildRouterContent({ text, state }) }] }],
+    tools: [{ functionDeclarations: [GEMINI_ROUTE] }],
+    toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [GEMINI_ROUTE.name] } },
+    generationConfig: { temperature: 0, maxOutputTokens: MAX_TOKENS },
+  });
+
+  async function call(text, state) {
+    let last = { error: 'APIConnectionError' };
+    for (let attempt = 0; attempt <= GEMINI_RETRIES; attempt += 1) {
+      let status = 0;
+      try {
+        const response = await fetchImpl(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+          body: body(text, state),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        status = response.status;
+        if (!response.ok) throw new Error(`Gemini ${status}`);
+        return { data: await response.json() };
+      } catch (error) {
+        last = { error: geminiErrorName(error, status) };
+        if (status && !retryable(status)) return last;
+      }
+    }
+    return last;
+  }
+
+  async function route({ text, state }) {
+    const started = performance.now();
+    const elapsed = () => Math.round(performance.now() - started);
+    const fail = (error) => ({ intent: 'unclear', amountDollars: 0, empathy: 'none', latencyMs: elapsed(), model, error });
+    const { data, error } = await call(text, state);
+    if (error) return fail(error);
+    if (data?.promptFeedback?.blockReason) return fail('Refusal');
+    const candidate = data?.candidates?.[0];
+    if (!candidate) return fail('NoToolUse');
+    if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'PROHIBITED_CONTENT') return fail('Refusal');
+    const parts = Array.isArray(candidate.content?.parts) ? candidate.content.parts : [];
+    const part = parts.find((p) => p?.functionCall?.name === GEMINI_ROUTE.name);
+    if (!part) return fail('NoToolUse');
+    return { ...fromToolInput(part.functionCall.args), latencyMs: elapsed(), model };
+  }
+
+  return { mode: 'gemini', route };
+}
+
+export function createRouter({ mode, apiKey, model, timeoutMs = 6000, client = null, fetchImpl = globalThis.fetch }) {
+  if (mode === 'gemini') return createGeminiRouter({ apiKey, model, timeoutMs, fetchImpl });
   if (mode === 'rules') {
     return {
       mode,
