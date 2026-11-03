@@ -41,6 +41,24 @@ export const EXTRA_CALLS = Object.freeze([
 ].map((call) => Object.freeze({ ...call, lines: Object.freeze(call.lines) })));
 
 /**
+ * The mishearing block, add-on A6, preregistered in EVAL.md's change log on Tue Nov 3, 2026 before either arm
+ * ran on it. Each line is a text edit of what a donor said, not real speech to text output.
+ */
+export const MISHEARING_BLOCK = 'mishearing';
+export const MISHEARING_CALLS = Object.freeze([
+  { id: 'M1', startStatus: 'ACTIVE', edit: 'Speech to text drops "don\'t" from "don\'t cancel, just pause it"', lines: ['Cancel, just pause it.', 'Yes.', 'Goodbye.'] },
+  { id: 'M2', startStatus: 'ACTIVE', edit: 'A Spanglish line', lines: ['Quiero pausar my monthly gift, por favor.', 'Yes.', 'Gracias, bye.'] },
+  {
+    id: 'M3',
+    startStatus: 'ACTIVE',
+    edit: 'A question at turn 8 of a long call, about what was settled at the start',
+    lines: ['Pause my gift.', 'Yes.', 'How much is my gift?', 'Okay.', 'Can you say that again?', 'What can you do?', 'Thanks.', 'Wait, what did we settle at the start? Is my gift paused now?', 'Goodbye.'],
+  },
+  { id: 'M4', startStatus: 'ACTIVE', edit: 'A number misheard, "twenty five" heard as "seventy five"', lines: ['Is my gift still seventy five dollars a month?', 'Goodbye.'] },
+  { id: 'M5', startStatus: 'ACTIVE', edit: 'A negation dropped from a status question, "isn\'t paused" heard as "is paused"', lines: ['My gift is paused, is it?', 'Goodbye.'] },
+].map((call) => Object.freeze({ ...call, lines: Object.freeze(call.lines) })));
+
+/**
  * Every audit call. pilotLines are Pledge Line's turns before the PIN is filled in, so Script 8 keeps its wrong
  * PINs. spoken are the baseline's lines, the spoken ones only, since it has no PIN step.
  */
@@ -52,6 +70,7 @@ export const AUDIT_CALLS = Object.freeze([
     spoken: Object.freeze(script.lines.filter((line) => typeof line === 'string')),
   })),
   ...EXTRA_CALLS.map((call) => Object.freeze({ id: call.id, startStatus: call.startStatus, script: null, spoken: call.lines })),
+  ...MISHEARING_CALLS.map((call) => Object.freeze({ id: call.id, startStatus: call.startStatus, script: null, spoken: call.lines, block: MISHEARING_BLOCK })),
 ]);
 
 /** Pledge Line's turns for a call, the PIN on the keypad first unless the script says otherwise. */

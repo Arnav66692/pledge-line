@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, PILOT_LEDGER } from '../src/config.js';
-import { AUDIT_CALLS, runPledgeLineCall, runBaselineCall, ModelRateLimited } from '../src/claim-arms.js';
+import { AUDIT_CALLS, MISHEARING_BLOCK, runPledgeLineCall, runBaselineCall, ModelRateLimited } from '../src/claim-arms.js';
 import { createScriptedModel } from '../src/claim-fake-model.js';
 import { auditCall, totalsOf } from '../src/claim-audit.js';
 
@@ -106,15 +106,39 @@ function problemLines(audits) {
   return lines;
 }
 
+const BLOCK_IDS = new Set(AUDIT_CALLS.filter((call) => call.block === MISHEARING_BLOCK).map((call) => call.id));
+const inBlock = (audit) => BLOCK_IDS.has(audit.id);
+
+/** The totals EVAL.md asks for, all calls, the first 20 on their own, and the mishearing block on its own. */
+function partTotals(audits) {
+  return { all: totalsOf(audits), first20: totalsOf(audits.filter((x) => !inBlock(x))), mishearing: totalsOf(audits.filter(inBlock)) };
+}
+
+const changesOf = (audit) => {
+  const accepted = audit.writes.filter((w) => w.ok).map((w) => w.kind);
+  return accepted.length ? accepted.join(', ') : 'none';
+};
+
+// The measures don't score whether a line picked a pause or a cancel, so the block's accepted changes are named (EVAL.md).
+function blockChanges(a, b) {
+  return a.filter(inBlock).map((x) => `| ${x.id} | ${changesOf(x)} | ${changesOf(b.find((y) => y.id === x.id) ?? { writes: [] })} |`);
+}
+
 function markdown({ label, modelName, a, b, totals }) {
   const rows = a.map((x, i) => `| ${x.id} | ${x.counts.claims} | ${cell(x.counts)} | ${b[i].counts.claims} | ${cell(b[i].counts)} |`);
   const total = (name, t) => `| ${name} | ${t.calls} | ${t.callsWithProblems} | ${t.claims} | ${t.unbacked.total} | ${split(t.unbacked)} | ${t.echoes} | ${t.writes} | ${t.writesWithoutYes} | ${t.neverShown} |`;
+  const parts = { A: partTotals(a), B: partTotals(b) };
   const problems = problemLines([...a, ...b]);
+  const changes = blockChanges(a, b);
   return [
     '# Claim audit', '', label, '', `Arm A is Pledge Line with the rules router. Arm B is the free text baseline, model ${modelName}. Both run on the mock PayPal. EVAL.md says what each number means.`, '',
     '| Arm | Calls | Calls with a problem | Claims | Unbacked | Money / status / date / completion | Echoed amounts | Writes | Writes with no yes | Status never shown |',
     '|---|---|---|---|---|---|---|---|---|---|',
-    total('A, Pledge Line', totals.A), total('B, baseline', totals.B), '',
+    total('A, Pledge Line', totals.A), total('B, baseline', totals.B),
+    total('A, first 20 calls', parts.A.first20), total('B, first 20 calls', parts.B.first20),
+    total('A, mishearing block', parts.A.mishearing), total('B, mishearing block', parts.B.mishearing), '',
+    ...(changes.length ? ['## Mishearing block, changes PayPal accepted', '', 'The measures don\'t score whether a line picked a pause or a cancel, so each arm\'s accepted changes are named here.', '',
+      '| Call | A accepted | B accepted |', '|---|---|---|', ...changes, ''] : []),
     '| Call | A claims | A unbacked | A writes with no yes | A status never shown | B claims | B unbacked | B writes with no yes | B status never shown |',
     '|---|---|---|---|---|---|---|---|---|', ...rows, '',
     '## Every problem', '', ...(problems.length ? problems : ['None in either arm.']), '',
@@ -154,11 +178,12 @@ async function main() {
     process.exitCode = 1;
   }
   const totals = { A: totalsOf(a), B: totalsOf(b) };
+  const parts = { A: partTotals(a), B: partTotals(b) };
   const base = path.join(OUT_DIR, `claim-audit-${fake ? 'fake' : 'real'}-${stampPT()}`);
   for (const file of [`${base}.md`, `${base}.json`]) refuseOutsideOutDir(file);
   const table = markdown({ label, modelName: model.name, a, b, totals });
   fs.writeFileSync(`${base}.md`, table);
-  fs.writeFileSync(`${base}.json`, `${JSON.stringify({ label, fake, stoppedAt, model: model.name, timeZone: TIME_ZONE, totals, arms: { A: a, B: b } }, null, 2)}\n`);
+  fs.writeFileSync(`${base}.json`, `${JSON.stringify({ label, fake, stoppedAt, model: model.name, timeZone: TIME_ZONE, totals, parts, arms: { A: a, B: b } }, null, 2)}\n`);
   out('');
   out(table);
   out(`Wrote ${base}.md and ${base}.json. Pledge Line's ledger for this run is ${ledgerPath}.`);
