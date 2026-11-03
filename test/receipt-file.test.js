@@ -249,6 +249,55 @@ test('a sentence copied in from another call breaks the chain at that sentence',
   assert.ok(result.changed.includes(3), `${result.changed} ${result.problems}`);
 });
 
+test('a key the seal does not sign fails, at the top, in the chain, in the signature, and as fake sentences', async () => {
+  const { stack, events } = await endedScript(2);
+  const { text } = receiptFile(events, stack.config, signer);
+  const fake = { ...JSON.parse(text).sentences[0], text: 'PayPal refunded you 500 dollars.' };
+  const extras = {
+    top: (top) => { top.refund = 'PayPal refunded this donor 500 dollars'; },
+    chain: (top) => { top.chain = { ...top.chain, note: 'checked by PayPal' }; },
+    signature: (top) => { top.signature = { ...top.signature, signedBy: 'PayPal Inc' }; },
+    sentences: (top) => { top.sentences = [fake]; },
+  };
+  for (const [where, add] of Object.entries(extras)) {
+    // rebuild sorts the keys, so the added key sits where the exact layout expects it.
+    const forged = rebuild(text, (s, top) => { add(top); return s; });
+    const result = verifyReceipt(forged, lineKey);
+    assert.equal(result.ok, false, `an unsigned key in ${where} passed`);
+    assert.equal(result.signedByThisLine, false, where);
+    assert.deepEqual(result.problems, ['The call details or the seal at the top of the file were changed.'], where);
+  }
+});
+
+test('a number the line could never sign, or deep nesting, gives a clean answer, not a crash', async () => {
+  const { stack, events } = await endedScript(2);
+  const { text } = receiptFile(events, stack.config, signer);
+  const lines = text.split('\n');
+  const edit = (index, change) => lines.map((line, i) => (i === index ? change(line) : line)).join('\n');
+  const deep = 100_000;
+  const inSentence = {
+    decimal: edit(1, (l) => l.replace(/"turn":\d+/, '"turn":1.5')),
+    huge: edit(1, (l) => l.replace(/"turn":\d+/, '"turn":1e300')),
+    nested: edit(1, (l) => `{"deep":${'['.repeat(deep)}${']'.repeat(deep)},${l.slice(1)}`),
+  };
+  for (const [what, file] of Object.entries(inSentence)) {
+    assert.notEqual(file, text, what);
+    const result = verifyReceipt(file, lineKey);
+    assert.equal(result.ok, false, what);
+    assert.deepEqual(result.changed, [1], `${what} named ${result.changed}`);
+  }
+  const inCall = {
+    decimal: edit(0, (l) => l.replace(/"script":\d+/, '"script":2.5')),
+    nested: edit(0, (l) => l.replace('"call":{', `"call":{"deep":${'['.repeat(deep)}${']'.repeat(deep)},`)),
+  };
+  for (const [what, file] of Object.entries(inCall)) {
+    assert.notEqual(file, text, what);
+    const result = verifyReceipt(file, lineKey);
+    assert.equal(result.ok, false, what);
+    assert.ok(result.problems.includes('The call details or the seal at the top of the file were changed.'), `${what} ${result.problems}`);
+  }
+});
+
 test('POST /api/calls gives the page a 128-bit secret for its own call, and only that call', async () => {
   assert.match(call.receiptSecret, /^[0-9a-f]{32}$/);
   assert.notEqual(call.receiptSecret, other.receiptSecret);
