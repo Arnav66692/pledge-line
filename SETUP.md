@@ -77,7 +77,7 @@ Start a row in the Hours log in PILOT.md with today's date and your start time, 
    - Answer each proposal after you hear it. Say a one-time amount once, as money.
    - If Script 1 says PayPal gave no clear answer, run it again.
    - If the line says "PayPal didn't answer clearly, so I checked again.", that call fails. Listen to the status it reads back. If the gift changed, put it back in a free call before you rerun the script.
-   - Don't start a scripted call in the last minutes before the deadline, and use Free call for demos.
+   - Don't start a scripted call in the last minutes before the deadline, and use No script for demos.
    - Don't change the code, `ORG_NAME` or `.env` during the pilot. If something needs a change, tell Claude first, and restart `npm start` and reload every page after it.
 7. After Script 5, open the invoice's payer link, which the line's record card shows. Sign in as the sandbox Personal account and pay it. The same invoice email also appears under Sandbox Notifications, but no real email is ever sent.
 8. Fill in End for today's row in the Hours log.
