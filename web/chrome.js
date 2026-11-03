@@ -361,6 +361,7 @@
     let ctx = null;
     let bus = null;
     let on = false;
+    let rest = 0;
     function build() {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
@@ -423,7 +424,10 @@
       bus.gain.setValueAtTime(bus.gain.value, now);
       // Down fast enough that the first reply never shares the air with it.
       bus.gain.linearRampToValueAtTime(play ? 0.32 : 0, now + (play ? 1.6 : 0.25));
+      clearTimeout(rest);
       if (play && ctx.state === 'suspended') ctx.resume();
+      // Once the fade is down, the whole graph sleeps, so nothing runs next to the mic and the reply.
+      if (!play) rest = setTimeout(() => { if (!audible() && ctx.state === 'running') ctx.suspend(); }, 300);
     }
     disc?.addEventListener('click', () => {
       on = !on;

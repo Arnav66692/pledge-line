@@ -185,7 +185,7 @@ html.header-away:not(.menu-open) .logo { opacity: 0; transform: translateY(-1.5r
 }
 .disc:hover::before { transform: scale(1.06); }
 /* Over the white panels of the call, a white disc needs an edge, or only its two dots show. */
-html.scrolled .disc--menu::before, html[data-mode="call"] .disc--menu::before { box-shadow: 0 0 0 1px rgb(33 33 33 / 0.12), 0 0.4rem 1.4rem rgb(33 33 33 / 0.1); }
+html.scrolled .disc--menu::before, html[data-mode="call"] .disc--menu::before { box-shadow: 0 0 0 1px rgb(33 33 33 / 0.16); }
 .disc__fill {
   position: absolute; width: 2.83rem; height: 2.83rem; border-radius: 50%;
   background: #212121;
@@ -210,6 +210,8 @@ html.scrolled .disc--menu::before, html[data-mode="call"] .disc--menu::before { 
 .disc--sound.is-playing .disc__bars i:nth-child(4) { animation-delay: -0.2s; }
 .disc--sound[aria-pressed="false"] .disc__fill { transform: scale(1.05); }
 .disc--sound[aria-pressed="false"] .disc__bars i { background: var(--paper); transform: scaleY(0.15); }
+/* Off over the dusk room, the dark fill needs a light edge, or only its four bars show. */
+@media (prefers-color-scheme: dark) { .disc--sound[aria-pressed="false"] .disc__fill { box-shadow: 0 0 0 1px rgb(241 237 235 / 0.4); } }
 @keyframes bars { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
 
 /* ---- Pills: one shape. The fill rises from the bottom, the label rolls, the arrow slides out and back in ---- */

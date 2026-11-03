@@ -103,9 +103,9 @@ vec3 room(vec2 p, float soft) {
   float t = uTime;
   float y = p.y - H;
   // Plaster, a touch warmer low down, with a slow breathing of the light across it.
-  vec3 wall = mix(pal(vec3(0.95, 0.895, 0.862), vec3(0.3, 0.29, 0.31)), pal(vec3(0.905, 0.835, 0.81), vec3(0.25, 0.24, 0.27)), smoothstep(0.0, 0.7, y));
-  // A long diagonal shadow over the upper left of the wall.
-  float shade = smoothstep(-0.05, 0.12, y * 0.9 - (p.x + 0.05) * 0.75 - 0.12);
+  vec3 wall = mix(pal(vec3(0.957, 0.893, 0.855), vec3(0.3, 0.29, 0.31)), pal(vec3(0.913, 0.827, 0.798), vec3(0.25, 0.24, 0.27)), smoothstep(0.0, 0.7, y));
+  // A long diagonal shadow over the upper left of the wall, with the hard edge of direct sun.
+  float shade = smoothstep(0.023, 0.047, y * 0.9 - (p.x + 0.05) * 0.75 - 0.12);
   wall *= 1.0 - shade * pal(vec3(0.15, 0.16, 0.12), vec3(0.22));
 
   // The window high on the right, and the patch of light it throws down and to the left.
@@ -113,8 +113,8 @@ vec3 room(vec2 p, float soft) {
   float breath = 0.82 + 0.18 * sin(t * 0.21) * sin(t * 0.13 + 1.0);
   vec2 lq = wq - vec2(-0.29, -0.27);
   lq.x += lq.y * 0.55;
-  float sunPatch = inside(sdBox(lq, vec2(0.085, 0.16)), 0.03 + soft);
-  wall += pal(vec3(0.075, 0.065, 0.045), vec3(0.05, 0.06, 0.075)) * sunPatch * breath;
+  float sunPatch = inside(sdBox(lq, vec2(0.085, 0.16)), 0.008 + soft);
+  wall += pal(vec3(0.09, 0.078, 0.054), vec3(0.05, 0.06, 0.075)) * sunPatch * breath;
 
   // Steps rising from the water, centre left, each tread a little lighter than its riser.
   vec2 sq = p - vec2(-0.06, H);
@@ -522,7 +522,10 @@ void main() {
       resize();
     }
     frame((now - state.t0) / 1000, dt);
-    if (reduced()) {
+    // In a call the room settles into its dim still and stops drawing, so the line has the machine to itself.
+    // setMode('hero'), a resize or a theme change kicks it again.
+    const settled = state.mode === 'call' && Math.abs(state.calmTarget - state.calm) < 0.002;
+    if (reduced() || settled) {
       state.running = false;
       return;
     }
