@@ -89,6 +89,40 @@ test('the fonts match the sha256 in web/fonts/README.md', async () => {
   for (const [, file, sum] of rows) assert.equal(createHash('sha256').update(fs.readFileSync(new URL(file, dir))).digest('hex'), sum, file);
 });
 
+test('the baked room files serve with their types and the page policy, with STAFF_KEY unset', async () => {
+  const assets = { '/room/room.glb': /^model\/gltf-binary$/, '/room/room-light.webp': /^image\/webp$/, '/room/rocks-light.webp': /^image\/webp$/ };
+  for (const [path, type] of Object.entries(assets)) {
+    const res = await rawGet(path);
+    assert.equal(res.status, 200, path);
+    assert.match(res.headers['content-type'], type, path);
+    assert.equal(res.headers['content-security-policy'], PAGE_POLICY, path);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff', path);
+  }
+  // The README is notes for people, not a page file.
+  assert.equal((await rawGet('/room/README.md')).status, 404);
+});
+
+test('the room files match the sha256 in web/room/README.md and stay under 1 MB together', async () => {
+  const { createHash } = await import('node:crypto');
+  const dir = new URL('../web/room/', import.meta.url);
+  const readme = fs.readFileSync(new URL('README.md', dir), 'utf8');
+  const rows = [...readme.matchAll(/^\| `([^`]+)` \|.*\| (\d+) \| `([0-9a-f]{64})` \|$/gm)];
+  const files = fs.readdirSync(dir).filter((f) => f !== 'README.md').sort();
+  assert.deepEqual(rows.map((r) => r[1]).sort(), files);
+  let total = 0;
+  for (const [, file, bytes, sum] of rows) {
+    const data = fs.readFileSync(new URL(file, dir));
+    assert.equal(data.length, Number(bytes), file);
+    assert.equal(createHash('sha256').update(data).digest('hex'), sum, file);
+    total += data.length;
+  }
+  assert.ok(total < 1024 * 1024, `room files are ${total} bytes`);
+  // The room is a glTF 2.0 binary, which the scene's own loader reads.
+  const glb = fs.readFileSync(new URL('room.glb', dir));
+  assert.equal(glb.readUInt32LE(0), 0x46546c67);
+  assert.equal(glb.readUInt32LE(4), 2);
+});
+
 test('static path traversal is refused', async () => {
   const attempts = ['/../package.json', '/..%2fpackage.json', '/%2e%2e/%2e%2e/package.json', '/web/../../package.json',
     '/%2e%2e%2fsrc%2fconfig.js', '//etc/passwd', '/..\\package.json', '/%252e%252e/package.json', '/%00index.html', '/.env', '/web/'];
