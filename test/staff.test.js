@@ -62,7 +62,7 @@ const staffGet = (base, path, key = STAFF_KEY) => fetch(`${base}${path}`, { head
 
 test('every staff route and file is a 404 when STAFF_KEY is unset', async () => {
   const paths = ['/staff', '/api/staff/calls', `/api/staff/calls/${callId}`, '/api/staff', '/staff.html', '/staff.js', '/staff.css',
-    '/vendor/ag-grid.css', '/vendor/ag-grid-community.min.js', '/%73taff.js', '/vendor%2fag-grid.css'];
+    '/vendor/ag-grid.css', '/vendor/ag-grid-community.min.js', '/%73taff.js', '/vendor%2fag-grid.css', '/Staff.js', '/Staff.html', '/%53taff.js', '/VENDOR/ag-grid.css', '/Vendor/ag-grid-community.min.js'];
   for (const path of paths) {
     const res = await staffGet(off.base, path);
     assert.equal(res.status, 404, path);
@@ -170,6 +170,10 @@ test('staff events are rebuilt from an allowlist, so a new ledger field never le
   assert.deepEqual(Object.keys(projectStaffEvent({ type: 'something_new', seq: 1, ts: 't', extra: PIN })).sort(), ['seq', 'ts', 'type']);
   assert.equal(projectStaffEvent({ type: 'heard', seq: 9, text: `it is ${PIN}`, source: 'typed' }, { pin: PIN }).text.includes(PIN), false);
   assert.equal(projectStaffEvent({ type: 'heard', seq: 9, text: 'bob at gmail dot com', source: 'voice' }, { pin: PIN }).text, `(${HIDDEN_EMAIL})`);
+  for (const text of ['bob at gmail com', 'bob at gmail', 'bob dot smith at yahoo', 'robert underscore jones at hotmail', 'bob (at) gmail', 'bob [at] gmail', 'bob at gmail.c']) {
+    assert.equal(projectStaffEvent({ type: 'heard', seq: 9, text, source: 'voice' }, { pin: PIN }).text, `(${HIDDEN_EMAIL})`, text);
+  }
+  assert.equal(projectStaffEvent({ type: 'heard', seq: 9, text: 'Please pause my gift.', source: 'voice' }, { pin: PIN }).text, 'Please pause my gift.');
 });
 
 test('the staff API is rate limited, wrong keys included', async () => {

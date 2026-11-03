@@ -237,7 +237,9 @@ export function resolveStatic(rawPath, webDir = WEB_DIR) {
 /** True for a file only the staff view uses, which stays a 404 while the staff view is off. */
 export function isStaffFile(file, webDir = WEB_DIR) {
   const parts = path.relative(webDir, file).split(path.sep);
-  return parts.length === 1 ? STAFF_FILES.has(parts[0]) : STAFF_DIRS.has(parts[0]);
+  // Lowercased, since a Mac's disk serves /Staff.js as staff.js.
+  const head = parts[0].toLowerCase();
+  return parts.length === 1 ? STAFF_FILES.has(head) : STAFF_DIRS.has(head);
 }
 
 function serveFile(res, file) {

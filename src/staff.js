@@ -10,6 +10,9 @@ import { looksLikeEmail } from './call.js';
 // The newest calls the list shows. A night of calls is a few dozen, and each row runs the facts check once.
 export const STAFF_LIST_MAX = 200;
 const AT_SIGNS = /[@＠﹫]/;
+// A spoken "at" between two words, as in "bob at gmail com", once speech to text drops the "dot". It hides some plain
+// turns too, such as "look at it", which is fine for a staff log.
+const SPOKEN_AT = /\S+\s*(?:\bat\b|\(at\)|\[at\])\s*\S+/i;
 const EMAIL_TOKEN = /[^\s@＠﹫]+\s*[@＠﹫]\s*[^\s@＠﹫]+/g;
 export const HIDDEN_PIN = 'PIN entry, hidden';
 export const HIDDEN_EMAIL = 'an email address, hidden';
@@ -47,7 +50,7 @@ export function staffKeyMatches(given, expected) {
 function callerText(text, pin) {
   const raw = String(text ?? '');
   const masked = textHasPin(raw, pin) ? maskPinText(raw) : raw;
-  return looksLikeEmail(masked) || AT_SIGNS.test(masked) ? `(${HIDDEN_EMAIL})` : masked;
+  return looksLikeEmail(masked) || AT_SIGNS.test(masked) || SPOKEN_AT.test(masked) ? `(${HIDDEN_EMAIL})` : masked;
 }
 
 /** Words the line said. They come from templates, which read the email on file masked, so only a stray @ form is hidden. */
