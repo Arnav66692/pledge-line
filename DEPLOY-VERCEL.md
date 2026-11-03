@@ -2,7 +2,7 @@
 
 The Vercel copy is a public demo of the donor page. It runs with mock PayPal, the offline rules router and the mock PIN 2468. No PayPal key, no Gemini key and no real money ever reach it. It never counts toward the pilot.
 
-Render and the graded pilot are untouched. Render still deploys branch `pilot` with `render.yaml`, and nothing on this branch changes that service, its env or its ledger. The demo is built from branch `feat/vercel-demo` only.
+Render and the graded pilot are untouched. Render still deploys branch `pilot` with `render.yaml`, and nothing on this branch changes that service, its env or its ledger. The demo is built from branch `feat/unseen-look` only, which holds the Vercel work from `feat/vercel-demo` and the baked room from `feat/unseen-room`.
 
 ## How it works
 
@@ -65,6 +65,9 @@ web/fonts/instrument-serif-latin-400-italic.woff2
 web/fonts/instrument-serif-latin-400-normal.woff2
 web/index.html
 web/scene.js
+web/room/rocks-light.webp
+web/room/room-light.webp
+web/room/room.glb
 web/staff.css
 web/staff.html
 web/staff.js
@@ -85,7 +88,7 @@ Deploy from a clean export of the branch, never from the main checkout, which st
 ```
 df -h ~
 mkdir -p /private/tmp/pledge-line-demo-export/pledge-line-demo
-git -C /Users/arnavsingh/Desktop/Business/pledge-line archive feat/vercel-demo | tar -x -C /private/tmp/pledge-line-demo-export/pledge-line-demo
+git -C /Users/arnavsingh/Desktop/Business/pledge-line archive feat/unseen-look | tar -x -C /private/tmp/pledge-line-demo-export/pledge-line-demo
 cd /private/tmp/pledge-line-demo-export/pledge-line-demo
 npx vercel@64.5.0 deploy --prod --yes
 ```
@@ -103,6 +106,8 @@ Use the URL the CLI prints.
 ```
 curl -sI https://pledge-line-demo.vercel.app/
 curl -sI https://pledge-line-demo.vercel.app/app.js
+curl -sI https://pledge-line-demo.vercel.app/room/room.glb
+curl -sI https://pledge-line-demo.vercel.app/room/README.md
 curl -s https://pledge-line-demo.vercel.app/healthz
 curl -sI https://pledge-line-demo.vercel.app/src/config.js
 curl -sI https://pledge-line-demo.vercel.app/package.json
@@ -110,6 +115,7 @@ curl -sI https://pledge-line-demo.vercel.app/staff
 ```
 
 - `/` is 200 text/html and `/app.js` is 200 text/javascript, each with the page's Content-Security-Policy.
+- `/room/room.glb` is 200 model/gltf-binary with the Content-Security-Policy, and `/room/README.md` is a 404.
 - `/healthz` says paypal mock and router rules.
 - `/src/config.js`, `/package.json` and `/staff` are 404s that also carry the Content-Security-Policy. A 200 there means Vercel served a file from the root, and the `routes` entry is not working.
 
