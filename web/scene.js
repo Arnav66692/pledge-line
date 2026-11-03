@@ -730,7 +730,7 @@ void main() {
   };
   const DARK = {
     lit: '#68505f', mid: '#4f4055', shade: '#372e44', deep: '#262031', keep: 0.14, exposure: 1.0, sheen: 0.5,
-    horizon: '#9a6c7c', zenith: '#221d36', glowCol: '#e0937a', glow: 0.6, cloudLit: '#d89a92', cloudDark: '#4a3653', clouds: 0.5,
+    horizon: '#8e6474', zenith: '#221d36', glowCol: '#e0937a', glow: 0.5, cloudLit: '#d89a92', cloudDark: '#4a3653', clouds: 0.5,
     ridgeFar: '#5e4864', ridgeMid: '#463751', ridgeNear: '#2e263b',
     water: '#1d1928', reflect: 0.85, blur: 1.0, wave: 0.012, fog: '#2d2535', fogDensity: 0.0045, sunCol: '#ffd9c4',
     mote: '#ffd9c8', moteAmt: 0.12, body: '#3e3647', spec: 0, film: 0.6, mist: '#131016', floor: '#15121a', floorAmt: 0.45,
@@ -785,7 +785,7 @@ void main() {
   /** The page's framing at this screen shape, plus the walk-in on entry. */
   function baseCamera() {
     const aspect = size.cssW / size.cssH;
-    const k = Math.min(Math.max((1.25 - aspect) / 0.75, 0), 1);
+    const k = Math.min(Math.max((1.25 - aspect) / 0.45, 0), 1);
     const mix = (a, b) => a.map((v, i) => v + (b[i] - v) * k);
     let pos = mix(VIEW.pos, VIEW.portrait.pos);
     const target = mix(VIEW.target, VIEW.portrait.target);
