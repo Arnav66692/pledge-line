@@ -3,7 +3,7 @@
 The staff view at `/staff` draws its table with AG Grid Community. The line serves these files itself, so the page loads nothing from a CDN at run time and the Content-Security-Policy stays self only.
 
 - Package: `ag-grid-community`, version 32.3.3.
-- License: MIT, copyright AG Grid Ltd. See https://github.com/ag-grid/ag-grid/blob/v32.3.3/LICENSE.txt.
+- License: MIT, copyright (c) 2015-2024 AG GRID LTD. MIT asks for the notice to travel with every copy, and the minified files carry none, so the full notice sits next to them in `LICENSE-ag-grid-community.txt`. It is copied byte for byte from https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/LICENSE.txt, sha256 `977e2b6dfa502036ff3ffb879e9b0a4cc9b0f3bedf1e67b3f356942deac6c8fe`, and the staff page footer links to it.
 - Downloaded Nov 2, 2026 from jsDelivr. The styles live at the package root in this version, not under `dist/`, so `dist/styles/...` is a 404.
 
 | File | Source | sha256 |

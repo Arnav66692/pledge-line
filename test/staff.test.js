@@ -194,6 +194,10 @@ test('the vendored AG Grid files match the sha256 in web/vendor/README.md, and t
     assert.equal(createHash('sha256').update(fs.readFileSync(new URL(file, dir))).digest('hex'), sha, file);
   }
   assert.match(readme, /32\.3\.3/);
+  // MIT wants its notice with every copy, and the minified files carry none.
+  const notice = fs.readFileSync(new URL('LICENSE-ag-grid-community.txt', dir));
+  assert.match(notice.toString('utf8'), /Copyright \(c\) 2015-2024 AG GRID LTD[\s\S]*Permission is hereby granted/);
+  assert.ok(readme.includes(createHash('sha256').update(notice).digest('hex')));
   const page = fs.readFileSync(new URL('../web/staff.js', import.meta.url), 'utf8');
   assert.doesNotMatch(page, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
 });
