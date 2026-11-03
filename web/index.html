@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pledge Line</title>
-  <meta name="description" content="The after-hours donor line for small nonprofits. A PayPal sandbox demo with no real money.">
+  <meta name="description" content="An after-hours line where monthly donors to a small nonprofit can check, pause or restart their gift. A demo on PayPal's test system, no real money.">
   <meta name="theme-color" content="#efe7e0" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#151918" media="(prefers-color-scheme: dark)">
   <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/scene.js" defer></script>
   <script src="/chrome.js" defer></script>
+  <script src="/claim-words.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body class="donor">
@@ -21,7 +22,7 @@
   <canvas class="gl" id="scene" aria-hidden="true"></canvas>
 
   <header class="header">
-    <a class="logo" href="#hero" data-go="hero" aria-label="Pledge Line, back to the start"><span class="logo__a">pledge</span><span class="logo__b">line</span></a>
+    <a class="logo" href="#hero" data-go="hero" aria-label="Pledge Line, back to the top"><span class="logo__a">pledge</span><span class="logo__b">line</span></a>
     <nav class="header__nav" aria-label="Primary">
       <a class="nav-item" href="#workspace" data-go="line" data-page-link="line">The line</a>
       <a class="nav-item" href="#receipts-title" data-go="receipts">Receipts</a>
@@ -46,11 +47,7 @@
         </ol>
       </nav>
       <div class="menu__foot">
-        <p class="menu__contact"><span>The after-hours donor line</span><span>PayPal sandbox. No real money moves.</span></p>
-        <ul class="menu__social">
-          <li>MIT license</li>
-          <li>Sandbox only</li>
-        </ul>
+        <p class="menu__contact"><span>The after-hours donor line</span><span>A demo, no real money.</span></p>
       </div>
     </div></div>
   </div>
@@ -61,8 +58,8 @@
         <h1 class="hero__title" id="hero-title">
           <span class="visually-hidden">Pledge Line. </span>
           <span class="hero__caps">the after-hours donor line for small nonprofits</span>
-          <span class="hero__l1">Every word</span>
-          <span class="hero__l2">backed by PayPal</span>
+          <span class="hero__l1">Your gift,</span>
+          <span class="hero__l2">right from PayPal</span>
         </h1>
         <div class="hero__cta">
           <button class="btn" type="button" id="open-line" data-go="line">
@@ -72,7 +69,7 @@
           </button>
         </div>
       </div>
-      <p class="hero__note">PayPal sandbox demo. No real money moves, and no real donor is called.</p>
+      <p class="hero__note">This is a demo on PayPal's test system. No real money moves, and the gift belongs to a test account.</p>
     </section>
 
     <div class="ws" id="workspace" tabindex="-1" aria-label="The call">
@@ -81,7 +78,7 @@
           <h2 id="phone-title">Your call</h2>
           <label class="toggle"><input id="mute" type="checkbox"><span class="toggle__disc" aria-hidden="true"></span><span class="toggle__text">Mute the line's voice</span></label>
         </div>
-        <p id="status" class="status">No call yet. Press Start call.</p>
+        <p id="status" class="status">Press Start call when you're ready.</p>
         <button id="start" class="pill pill--dark" type="button">Start call</button>
 
         <div class="said said--reply">
@@ -95,13 +92,13 @@
 
         <div class="talk-row">
           <button id="talk" class="talk" type="button" disabled aria-describedby="talk-hint">Hold to talk</button>
-          <p id="talk-hint" class="hint">Hold the button, or the Space bar, while you speak. Let go when you finish.</p>
+          <p id="talk-hint" class="hint">Hold this button or the Space bar while you talk, and let go when you're done.</p>
         </div>
         <p id="speech-error" class="error" role="alert" hidden></p>
 
         <div class="keypad" role="group" aria-labelledby="keypad-label">
-          <p class="label" id="keypad-label">PIN keypad</p>
-          <output id="pin-dots" class="dots dots-empty" aria-live="polite">No digits yet</output>
+          <p class="label" id="keypad-label">Your PIN</p>
+          <output id="pin-dots" class="dots dots-empty" aria-live="polite">No numbers yet</output>
           <div class="keys">
             <button type="button" class="key" data-digit="1">1</button>
             <button type="button" class="key" data-digit="2">2</button>
@@ -134,21 +131,20 @@
           <div class="demo-body">
             <label class="field-label" for="script">Script</label>
             <div class="select"><select id="script">
-              <option value="">Free call</option>
+              <option value="">No script</option>
             </select></div>
-            <p id="script-help" class="hint">Pick a script before you start, so the record knows which one you ran. Say each line after the line stops talking.</p>
+            <p id="script-help" class="hint">Pick a script before you start so the call is filed under it. Wait for the line to finish talking before you say each line.</p>
             <ol id="script-lines" class="lines" aria-label="Lines to say"></ol>
-            <p class="timing">Last gap <span id="gap-last">none yet</span>. Median of voice turns <span id="gap-median">none yet</span>.</p>
+            <p class="timing">Reply time. Last one <span id="gap-last">none yet</span>. Typical spoken reply <span id="gap-median">none yet</span>.</p>
           </div>
         </details>
       </section>
 
       <section class="panel receipts-card" aria-labelledby="receipts-title">
-        <p class="kicker">Every sentence, with its PayPal read</p>
         <h2 id="receipts-title">What the line said</h2>
-        <p class="hint">Each sentence with a fact in it shows the PayPal read behind it. Times are Pacific.</p>
+        <p class="hint">When a sentence has an amount, a date, a status or a change in it, you can see what PayPal said and when. Times are Pacific.</p>
         <p id="receipts-summary" class="receipts-summary">Nothing said yet.</p>
-        <div id="receipts-scroll" class="receipts-scroll" tabindex="0" role="region" aria-label="Everything the line said, with receipts">
+        <div id="receipts-scroll" class="receipts-scroll" tabindex="0" role="region" aria-label="Everything the line said, with what backs it">
           <ol id="receipts" class="receipts"></ol>
         </div>
       </section>
@@ -163,36 +159,37 @@
 
         <article id="gift" class="gift" aria-labelledby="gift-title">
           <h3 id="gift-title">Monthly gift</h3>
-          <p id="sub-status" class="gift-status">not read yet</p>
-          <p id="sub-read" class="gift-read">Not read from PayPal yet.</p>
+          <p id="sub-status" class="gift-status">not checked yet</p>
+          <p id="sub-read" class="gift-read">Not checked with PayPal yet.</p>
           <p id="sub-change" class="gift-change" hidden></p>
           <dl class="facts">
-            <dt>Amount</dt><dd id="sub-amount">not read yet</dd>
-            <dt>Next date</dt><dd id="sub-next">not read yet</dd>
-            <dt>Debug id</dt><dd id="sub-debug" class="mono">none</dd>
+            <dt>Amount</dt><dd id="sub-amount">not checked yet</dd>
+            <dt>Next payment</dt><dd id="sub-next">not checked yet</dd>
+            <dt>PayPal reference</dt><dd id="sub-debug" class="mono">none</dd>
           </dl>
         </article>
 
         <article class="gift invoice" aria-labelledby="invoice-title">
           <h3 id="invoice-title">One-time gift invoice</h3>
+          <p class="invoice-none">No one-time gift on this call.</p>
           <dl class="facts">
-            <dt>Invoice number</dt><dd id="inv-number">none</dd>
-            <dt>Status</dt><dd id="inv-status">none</dd>
+            <dt>Invoice number</dt><dd id="inv-number"></dd>
+            <dt>Status</dt><dd id="inv-status"></dd>
             <dt>Amount</dt><dd id="inv-amount">none</dd>
-            <dt>Debug id</dt><dd id="inv-debug" class="mono">none</dd>
-            <dt>Payer page</dt><dd id="inv-link">none</dd>
+            <dt>PayPal reference</dt><dd id="inv-debug" class="mono">none</dd>
+            <dt>Payment page</dt><dd id="inv-link">none</dd>
           </dl>
         </article>
 
         <details class="fold log" open>
           <summary>Event log</summary>
-          <p class="hint">Newest first. Every PayPal read and change shows here.</p>
+          <p class="hint">Newest first. Every time the line read or changed something in PayPal, it shows here.</p>
           <ol id="events" class="events" tabindex="0" aria-label="Event log, newest first"></ol>
         </details>
       </section>
 
       <footer class="foot">
-        <p>Pledge Line pilot, MIT license. PayPal sandbox only.</p>
+        <p>Pledge Line, open source under MIT.</p>
         <p>&copy;2026</p>
       </footer>
     </div>

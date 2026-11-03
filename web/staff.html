@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pledge Line staff view</title>
-  <meta name="description" content="The morning after. Every call the line took, what PayPal changed, and the PayPal read behind every sentence the line said.">
+  <title>Pledge Line, staff</title>
+  <meta name="description" content="For the nonprofit's staff. Every call the line took overnight and what it changed in PayPal.">
   <meta name="theme-color" content="#0e0f0f">
   <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -15,10 +15,11 @@
   <script src="/scene.js" defer></script>
   <script src="/chrome.js" defer></script>
   <script src="/vendor/ag-grid-community.min.js" defer></script>
+  <script src="/claim-words.js" defer></script>
   <script src="/staff.js" defer></script>
 </head>
 <body class="staff-page">
-  <a class="skip" href="#main">Skip to the record</a>
+  <a class="skip" href="#main">Skip to the calls</a>
   <canvas class="gl" id="scene" aria-hidden="true"></canvas>
 
   <header class="header">
@@ -47,11 +48,7 @@
         </ol>
       </nav>
       <div class="menu__foot">
-        <p class="menu__contact"><span>The after-hours donor line</span><span>PayPal sandbox. No real money moves.</span></p>
-        <ul class="menu__social">
-          <li>MIT license</li>
-          <li>Sandbox only</li>
-        </ul>
+        <p class="menu__contact"><span>The after-hours donor line</span><span>A demo, no real money.</span></p>
       </div>
     </div></div>
   </div>
@@ -59,19 +56,19 @@
   <main class="staff" id="main" tabindex="-1">
     <header class="case-head">
       <p class="case-caps">Staff view, Pledge Line</p>
-      <h1 class="case-title"><span class="case-title__a">the morning</span> <span class="case-title__b">after</span></h1>
-      <p class="case-kicker">Every call the line took, what PayPal changed, and the PayPal read behind every sentence the line said.</p>
-      <p class="case-note">This is a PayPal sandbox demo. No real money moves. Only staff with the key can read this record.</p>
+      <h1 class="case-title"><span class="case-title__a">last night's</span> <span class="case-title__b">calls</span></h1>
+      <p class="case-kicker">Every call the line took, and what it changed in PayPal.</p>
+      <p class="case-note">This is a demo on PayPal's test system. No real money moves. You need the staff key to see the calls.</p>
     </header>
 
     <section id="key-card" class="key-card" aria-labelledby="key-title">
       <h2 id="key-title">Staff key</h2>
-      <p class="hint">Type the staff key set as STAFF_KEY for this line. This tab keeps it until you close it, and nothing else stores it.</p>
+      <p class="hint">Enter the staff key you were given. This tab keeps it until you close it, and nothing else saves it.</p>
       <form id="key-form" class="key-form">
         <label class="field-label" for="key-input">Staff key</label>
         <div class="typed-row">
           <input id="key-input" type="password" autocomplete="off" spellcheck="false" required minlength="16" maxlength="200">
-          <button id="key-open" type="submit" class="pill key-open">Open the record</button>
+          <button id="key-open" type="submit" class="pill key-open">Show the calls</button>
         </div>
       </form>
       <p id="key-error" class="error" role="alert" hidden></p>
@@ -80,22 +77,22 @@
     <section id="board" class="board" aria-labelledby="board-title" hidden>
       <ul id="tiles" class="tiles" aria-label="Totals for the calls shown">
         <li class="tile"><span class="tile-value" id="tile-calls">0</span><span class="tile-label">calls</span></li>
-        <li class="tile tile-proven"><span class="tile-value" id="tile-proven">0</span><span class="tile-label">sentences proven</span></li>
+        <li class="tile tile-proven"><span class="tile-value" id="tile-proven">0</span><span class="tile-label">proven sentences</span></li>
         <li class="tile tile-plain"><span class="tile-value" id="tile-plain">0</span><span class="tile-label">plain sentences</span></li>
-        <li class="tile tile-blocked"><span class="tile-value" id="tile-blocked">0</span><span class="tile-label">sentences blocked</span></li>
-        <li class="tile"><span class="tile-value" id="tile-changes">0</span><span class="tile-label">PayPal changes</span></li>
-        <li class="tile tile-callback"><span class="tile-value" id="tile-callbacks">0</span><span class="tile-label">callbacks asked</span></li>
+        <li class="tile tile-blocked"><span class="tile-value" id="tile-blocked">0</span><span class="tile-label">blocked sentences</span></li>
+        <li class="tile"><span class="tile-value" id="tile-changes">0</span><span class="tile-label">changes in PayPal</span></li>
+        <li class="tile tile-callback"><span class="tile-value" id="tile-callbacks">0</span><span class="tile-label">asked for a call back</span></li>
       </ul>
 
       <div class="board-head">
         <h2 id="board-title">Calls</h2>
-        <p id="board-status" class="hint" aria-live="polite">Loading the record.</p>
+        <p id="board-status" class="hint" aria-live="polite">Loading the calls.</p>
       </div>
 
       <div class="toolbar">
         <div class="filter">
-          <label class="field-label" for="filter">Filter calls</label>
-          <input id="filter" type="search" autocomplete="off" placeholder="Pause, blocked, Script 2, callback">
+          <label class="field-label" for="filter">Search the calls</label>
+          <input id="filter" type="search" autocomplete="off" placeholder="Try pause, blocked or Script 2">
         </div>
         <div class="toolbar-buttons">
           <button id="refresh" type="button" class="pill">Refresh</button>
@@ -103,7 +100,7 @@
         </div>
       </div>
 
-      <p id="grid-help" class="hint">Pick a call to read every sentence and its receipt. With the keyboard, move to a row with the arrow keys and press Enter.</p>
+      <p id="grid-help" class="hint">Pick a call to see everything the line said and the proof for each sentence. With a keyboard, use the arrow keys and press Enter.</p>
 
       <div class="board-body">
         <div id="grid" class="ag-theme-quartz pl-grid" role="region" aria-label="Calls, one row per call" aria-describedby="grid-help"></div>
@@ -120,7 +117,7 @@
   </main>
 
   <footer class="foot">
-    <p>Pledge Line pilot, MIT license. PayPal sandbox only. Grid by AG Grid Community, <a href="/vendor/LICENSE-ag-grid-community.txt">MIT license</a>.</p>
+    <p>Pledge Line, open source under MIT. Table by AG Grid Community, <a href="/vendor/LICENSE-ag-grid-community.txt">MIT license</a>.</p>
     <p>&copy;2026</p>
   </footer>
 

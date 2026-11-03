@@ -18,9 +18,9 @@
   };
 
   const INTENTS = {
-    gift_status: 'hear the gift', stop_gift: 'stop the gift', cancel_now: 'cancel now', pause_gift: 'pause the gift',
-    resume_gift: 'restart the gift', one_time_gift: 'one-time gift', other_email: 'a new email, refused', how_do_you_know: 'how do you know',
-    repeat: 'repeat', help: 'help', staff_callback: 'a call back', goodbye: 'goodbye', unclear: 'unclear',
+    gift_status: 'check the gift', stop_gift: 'stop the gift', cancel_now: 'cancel now', pause_gift: 'pause the gift',
+    resume_gift: 'restart the gift', one_time_gift: 'give once', other_email: 'use a new email, turned down', how_do_you_know: 'ask how the line knows',
+    repeat: 'hear it again', help: 'help', staff_callback: 'a call back', goodbye: 'say goodbye', unclear: 'unclear',
   };
   const WRITES = {
     suspend: 'paused the gift', activate: 'restarted the gift', cancel: 'cancelled the gift', send_invoice: 'sent the invoice',
@@ -30,9 +30,12 @@
     suspend: 'refused the pause', activate: 'refused the restart', cancel: 'refused the cancel', send_invoice: 'refused the send',
     create_draft: 'refused the draft', delete_draft: 'refused the delete',
   };
-  const READS = { subscription: 'gift', plan: 'plan', invoice: 'invoice' };
+  const READS = { subscription: 'gift', plan: 'gift plan', invoice: 'invoice' };
+  // The donor page says paused, so the staff view does too. PayPal's own word for it is suspended.
+  const STATUS_WORDS = { SUSPENDED: 'paused' };
+  const CLAIM_WORDS = window.PledgeClaimWords || {};
   const VERDICTS = { proven: 'Proven', plain: 'Plain', blocked: 'Blocked' };
-  const END_REASONS = { goodbye: 'said goodbye', locked: 'locked after wrong PINs', idle: 'went idle', client: 'closed by the page' };
+  const END_REASONS = { goodbye: 'said goodbye', locked: 'locked after wrong PINs', idle: 'went idle', client: 'page closed' };
 
   const state = { key: null, api: null, rows: [], selected: null, loading: false };
 
@@ -57,7 +60,7 @@
   const tinyPt = (iso) => (iso ? tinyFormat.format(new Date(iso)) : 'not yet');
   const whenPt = (iso) => (iso ? `${dateFormat.format(new Date(iso))} PT` : 'not yet');
   const clockPt = (iso) => (iso ? `${clockFormat.format(new Date(iso))} PT` : 'no time');
-  const statusWord = (status) => (status ? String(status).toLowerCase().replace(/_/g, ' ') : 'not read');
+  const statusWord = (status) => (status ? STATUS_WORDS[status] ?? String(status).toLowerCase().replace(/_/g, ' ') : 'not read');
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
   function el(tag, className, text) {
@@ -69,7 +72,7 @@
 
   // ---- What each row says, in plain words ----
 
-  const callLabel = (row) => (row.kind === 'script' ? `Script ${row.script}` : 'Free call');
+  const callLabel = (row) => (row.kind === 'script' ? `Script ${row.script}` : 'No script');
   function wanted(row) {
     // A yes or a no routes as unclear, so unclear shows only when nothing else was heard.
     const routed = row.intents.length > 1 ? row.intents.filter((i) => i !== 'unclear') : row.intents;
@@ -123,7 +126,7 @@
       const row = params.data;
       if (!row) return true;
       const tags = [];
-      if (row.mock) tags.push(el('span', 'tag', 'mock'));
+      if (row.mock) tags.push(el('span', 'tag', 'test'));
       if (row.dryRun) tags.push(el('span', 'tag', 'dry run'));
       if (row.callback) tags.push(el('span', 'flag call-flag', 'Call back'));
       this.gui.replaceChildren(el('span', 'call-name', callLabel(row)), ...tags);
@@ -153,7 +156,7 @@
       { colId: 'started', headerName: narrow ? 'PT' : 'Started (PT)', field: 'started', sort: 'desc', minWidth: narrow ? 118 : 150, flex: 1.1,
         valueFormatter: (p) => (narrow ? tinyPt(p.value) : shortPt(p.value)), getQuickFilterText: (p) => whenPt(p.value) },
       { colId: 'call', headerName: 'Call', minWidth: narrow ? 92 : 130, flex: narrow ? 0.8 : 1, cellRenderer: CallCell,
-        valueGetter: (p) => `${callLabel(p.data)}${p.data.mock ? ' mock' : ''}${p.data.dryRun ? ' dry run' : ''}${p.data.callback ? ' callback call back' : ''}` },
+        valueGetter: (p) => `${callLabel(p.data)}${p.data.mock ? ' test mock' : ''}${p.data.dryRun ? ' dry run' : ''}${p.data.callback ? ' callback call back' : ''}` },
       { colId: 'wanted', headerName: 'The donor wanted', minWidth: 170, flex: 1.4, valueGetter: (p) => wanted(p.data), tooltipValueGetter: (p) => wanted(p.data) },
       { colId: 'changed', headerName: 'PayPal changed', minWidth: 170, flex: 1.4, valueGetter: (p) => changed(p.data), tooltipValueGetter: (p) => changed(p.data) },
       { colId: 'now', headerName: 'PayPal now', minWidth: 150, flex: 1.1, valueGetter: (p) => paypalNow(p.data) },
@@ -175,9 +178,9 @@
   async function staffGet(path) {
     const res = await fetch(path, { headers: { 'x-staff-key': state.key }, cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401) throw new KeyRefused(data.error || 'That staff key is not right.');
-    if (res.status === 404 && path === '/api/staff/calls') throw new KeyRefused('The staff view is off on this line. Set STAFF_KEY and restart it.');
-    if (!res.ok) throw new Error(data.error || 'The record could not load. Please try again.');
+    if (res.status === 401) throw new KeyRefused(data.error || 'That staff key didn\'t work.');
+    if (res.status === 404 && path === '/api/staff/calls') throw new KeyRefused('The staff view is off on this line. Whoever runs the line can turn it on by setting STAFF_KEY.');
+    if (!res.ok) throw new Error(data.error || 'The calls didn\'t load. Please try again.');
     return data;
   }
 
@@ -247,7 +250,7 @@
       animateRows: false,
       ensureDomOrder: true,
       tooltipShowDelay: 400,
-      overlayNoRowsTemplate: '<span class="pl-empty">No calls in the record yet.</span>',
+      overlayNoRowsTemplate: '<span class="pl-empty">No calls yet.</span>',
       onSelectionChanged: () => {
         const [row] = state.api.getSelectedRows();
         if (row) openDetail(row.callId);
@@ -268,14 +271,14 @@
   async function loadCalls() {
     if (state.loading) return;
     state.loading = true;
-    els.status.textContent = 'Loading the record.';
+    els.status.textContent = 'Loading the calls.';
     try {
       const { calls } = await staffGet('/api/staff/calls');
       state.rows = calls;
       if (!state.api) makeGrid();
       state.api.setGridOption('rowData', calls);
       renderTiles(calls);
-      els.status.textContent = `${plural(calls.length, 'call', 'calls')} in the record, newest first. Loaded at ${clockPt(new Date().toISOString())}.`;
+      els.status.textContent = `${plural(calls.length, 'call', 'calls')}, newest first. Updated at ${clockPt(new Date().toISOString())}.`;
     } catch (error) {
       if (error instanceof KeyRefused) return showKeyPrompt(error.message);
       els.status.textContent = error.message;
@@ -289,24 +292,27 @@
   function factLine(fact) {
     const item = el('li', 'proof');
     item.append(el('span', 'proof-value', fact.value));
+    // The field the value came from, such as plan.price, stays in the hover for whoever needs it.
+    if (fact.source) item.title = fact.source;
     if (!fact.proof) {
-      item.append(el('span', 'proof-from', ` from the line's own limits, not a PayPal read (${fact.source})`));
+      item.append(el('span', 'proof-from', ", the line's own limit, not from PayPal"));
       return item;
     }
     const p = fact.proof;
-    // A plan read has no status, so only a gift or invoice read names one.
-    const status = p.status ? `, which showed ${statusWord(p.status)}` : '';
-    item.append(el('span', 'proof-from', ` from PayPal's ${READS[p.what] ?? p.what} read at ${clockPt(p.ts)}${status}`));
+    item.append(el('span', 'proof-from', `, from PayPal's ${READS[p.what] ?? p.what} record at ${clockPt(p.ts)}`));
     const meta = el('span', 'proof-meta');
-    meta.append(el('span', null, 'debug id '), el('code', 'mono', p.debugId ?? 'none'), el('span', null, ', '), el('span', null, fact.source));
+    meta.append(el('span', null, 'PayPal reference '), el('code', 'mono', p.debugId ?? 'none'));
     item.append(meta);
     return item;
   }
 
   function claimLine(claim) {
     const item = el('li', `proof claim ${claim.proven ? 'claim-proven' : 'claim-unproven'}`);
-    item.append(el('span', 'proof-value', claim.proven ? 'Claim proven' : 'Claim not proven'));
-    item.append(el('span', 'proof-from', ` ${claim.meaning ?? claim.name}`));
+    const words = CLAIM_WORDS[String(claim.name).split('=')[0]];
+    item.append(el('span', 'proof-value', claim.proven ? 'Backed,' : 'Not backed,'));
+    item.append(el('span', 'proof-from', words
+      ? ` ${claim.proven ? '' : "the record doesn't show that "}${words}`
+      : ` ${claim.proven ? '' : 'it needs '}${claim.meaning ?? claim.name}`));
     return item;
   }
 
@@ -325,11 +331,11 @@
 
   function turnBlock(receipt, heardByTurn) {
     const block = el('section', 'turn');
-    block.append(el('h3', 'turn-title', receipt.turn === 0 ? 'Greeting' : `Turn ${receipt.turn}, at ${clockPt(receipt.ts)}`));
+    block.append(el('h3', 'turn-title', receipt.turn === 0 ? 'Greeting' : `Reply ${receipt.turn}, ${clockPt(receipt.ts)}`));
     const heard = heardByTurn.get(receipt.turn);
     if (heard) {
       const said = el('p', 'heard');
-      said.append(el('span', 'heard-label', `The donor ${heard.source === 'voice' ? 'said' : heard.source === 'keypad' ? 'keyed' : 'typed'} `), el('span', 'heard-text', heard.text));
+      said.append(el('span', 'heard-label', `The donor ${heard.source === 'voice' ? 'said' : heard.source === 'keypad' ? 'entered' : 'typed'} `), el('span', 'heard-text', heard.text));
       block.append(said);
     }
     const list = el('ol', 'sentences');
@@ -345,11 +351,11 @@
   }
 
   function writesList(call) {
-    if (call.writes.length === 0) return el('p', 'hint', 'PayPal changed nothing in this call.');
+    if (call.writes.length === 0) return el('p', 'hint', 'Nothing changed in PayPal on this call.');
     const list = el('ul', 'writes');
     for (const w of call.writes) {
       const item = el('li', w.ok ? 'write-ok' : 'write-refused');
-      item.append(el('span', null, `${writeWords(w)} at ${clockPt(w.ts)}, debug id `), el('code', 'mono', w.debugId ?? 'none'));
+      item.append(el('span', null, `${writeWords(w)} at ${clockPt(w.ts)}, PayPal reference `), el('code', 'mono', w.debugId ?? 'none'));
       list.append(item);
     }
     return list;
@@ -362,18 +368,18 @@
     const inv = call.paypalNow.invoice;
     const body = [
       facts([
-        ['Run', call.mock ? 'mock, does not count' : call.dryRun ? 'dry run, does not count' : 'PayPal sandbox'],
+        ['Run', call.mock ? 'Test call, not counted' : call.dryRun ? 'Dry run, not counted' : "PayPal's test system"],
         ['Ended', call.ended ? `${whenPt(call.ended)}, ${END_REASONS[call.endReason] ?? call.endReason}` : 'still open'],
         ['The donor wanted', wanted(call)],
-        ['Gift now', sub ? `${statusWord(sub.status)}, read at ${clockPt(sub.ts)}` : 'not read'],
-        ['Invoice now', inv ? `${statusWord(inv.status)}, read at ${clockPt(inv.ts)}` : 'none'],
+        ['Gift now', sub ? `${statusWord(sub.status)}, checked at ${clockPt(sub.ts)}` : 'not checked'],
+        ['Invoice now', inv ? `${statusWord(inv.status)}, checked at ${clockPt(inv.ts)}` : 'none'],
         ['Callback', call.callback ? 'asked, call the donor back' : 'not asked'],
         ['Receipts', `${call.counts.proven} proven, ${call.counts.plain} plain, ${call.counts.blocked} blocked`],
       ]),
       el('h3', null, 'What PayPal changed'),
       writesList(call),
       el('h3', null, 'Every sentence the line said'),
-      el('p', 'hint', 'Proven means each amount, date and status in it matches a PayPal read earlier in the call, and each claim is backed by what PayPal returned. Plain means it states no fact. Blocked means the grader found a problem.'),
+      el('p', 'hint', 'Proven means each amount, date and status matched what PayPal sent earlier in the call. Anything it says happened also shows in the call\'s record. Plain means there was nothing to check. Blocked means the check failed, so look at those first.'),
       ...call.receipts.map((receipt) => turnBlock(receipt, heardByTurn)),
     ];
     els.detailBody.replaceChildren(...body);
@@ -385,7 +391,7 @@
     els.board.classList.add('with-detail');
     fitColumns();
     els.detailTitle.textContent = 'Loading the call';
-    els.detailBody.replaceChildren(el('p', 'hint', 'Reading the record.'));
+    els.detailBody.replaceChildren(el('p', 'hint', 'One moment.'));
     els.detail.focus();
     try {
       const { call } = await staffGet(`/api/staff/calls/${encodeURIComponent(callId)}`);
@@ -423,7 +429,7 @@
     const value = els.keyInput.value.trim();
     if (value.length < 16) {
       els.keyError.hidden = false;
-      els.keyError.textContent = 'The staff key is at least 16 characters.';
+      els.keyError.textContent = 'The staff key is at least 16 characters long.';
       return;
     }
     state.key = value;
@@ -442,7 +448,7 @@
 
   if (!window.agGrid) {
     els.keyError.hidden = false;
-    els.keyError.textContent = 'The grid could not load. Reload the page.';
+    els.keyError.textContent = 'The table didn\'t load. Please reload the page.';
     return;
   }
   state.key = readKey();
