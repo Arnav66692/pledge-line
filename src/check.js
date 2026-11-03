@@ -474,7 +474,7 @@ const lastBefore = (list, seq, pred) => list.filter((e) => e.seq < seq && pred(e
 function checkTarget(write, proposed, list, readId) {
   const problems = [];
   const read = lastBefore(list, proposed.seq, (e) => e.type === 'read' && e.what === WRITE_READS[write.kind]);
-  if (!read || read.id !== readId) problems.push(violation(write, 'writes', `the ${write.kind} proposal was not read back from ${write.targetId}`));
+  if (!read || read.id !== readId) problems.push(violation(write, 'writes', `the ${write.kind} proposal was not read back from ${readId}`));
   const made = list.some((e) => e.type === 'staging_write' && e.kind === 'create_draft' && e.ok && e.id === write.targetId && e.seq < proposed.seq);
   if (write.kind === 'send_invoice' && !made) problems.push(violation(write, 'writes', `the invoice sent, ${write.targetId}, is not a draft this call made`));
   return problems;
