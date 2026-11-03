@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, PILOT_LEDGER } from '../src/config.js';
 import { AUDIT_CALLS, runPledgeLineCall, runBaselineCall, ModelRateLimited } from '../src/claim-arms.js';
 import { createScriptedModel } from '../src/claim-fake-model.js';
 import { auditCall, totalsOf } from '../src/claim-audit.js';
@@ -29,16 +29,13 @@ function readFlags(argv) {
   return { fake: argv.includes('--fake') };
 }
 
-// The main checkout's .pilot holds the graded pilot ledger, so the audit runs only from a git worktree,
-// where .git is a file, never from the main checkout, where it is a folder.
-function refuseMainCheckout() {
-  let gitIsFolder = false;
-  try {
-    gitIsFolder = fs.statSync(path.join(ROOT, '.git')).isDirectory();
-  } catch {
-    gitIsFolder = false;
+// The audit writes only inside .pilot/claim-audit/, so it runs from any checkout and never touches the pilot ledger.
+function refuseOutsideOutDir(file) {
+  const target = path.resolve(file);
+  if (target === path.resolve(ROOT, PILOT_LEDGER) || path.dirname(target) !== OUT_DIR) {
+    throw new Error(`The audit writes only inside ${OUT_DIR}, never ${PILOT_LEDGER}, so it refused ${target}.`);
   }
-  if (gitIsFolder) throw new Error('This is the main checkout. Run the audit from a git worktree, so nothing lands beside the pilot ledger.');
+  return target;
 }
 
 /** Gemini parts for the neutral messages. A model turn goes back with its own raw parts, thought signatures kept. */
@@ -102,7 +99,9 @@ function problemLines(audits) {
       const why = [!c.backed ? `unbacked, ${c.reason}` : null, c.neverShown ? 'a status PayPal never showed' : null, c.echo ? 'echoes the donor' : null].filter(Boolean).join(', ');
       lines.push(`- Arm ${a.arm}, ${a.id}, turn ${c.turn}, ${c.kind} "${c.said}", ${why}. Said in "${c.sentence}"`);
     }
-    for (const w of a.writes.filter((x) => !x.hasYes)) lines.push(`- Arm ${a.arm}, ${a.id}, turn ${w.turn}, ${w.kind} with no yes in the line before, PayPal ${w.ok ? 'accepted' : 'refused'} it.`);
+    for (const w of a.writes.filter((x) => !x.hasYes)) {
+      lines.push(`- Arm ${a.arm}, ${a.id}, turn ${w.turn}, ${w.kind} with no yes in the line before, PayPal ${w.ok ? 'accepted' : 'refused'} it. The line asked "${w.replyBefore ?? ''}" and the donor said "${w.donor ?? ''}"`);
+    }
   }
   return lines;
 }
@@ -124,7 +123,7 @@ function markdown({ label, modelName, a, b, totals }) {
 }
 
 async function runArms(model) {
-  const ledgerPath = path.join(OUT_DIR, `arm-a-ledger-${stampPT()}.jsonl`);
+  const ledgerPath = refuseOutsideOutDir(path.join(OUT_DIR, `arm-a-ledger-${stampPT()}.jsonl`));
   const a = [];
   const b = [];
   for (const call of AUDIT_CALLS) {
@@ -144,7 +143,6 @@ async function runArms(model) {
 
 async function main() {
   const { fake } = readFlags(process.argv.slice(2));
-  refuseMainCheckout();
   const model = fake ? createScriptedModel({ timeZone: TIME_ZONE }) : realModel();
   let label = fake ? FAKE_LABEL : `Real run, ${new Date().toISOString()}.`;
   out(label);
@@ -157,6 +155,7 @@ async function main() {
   }
   const totals = { A: totalsOf(a), B: totalsOf(b) };
   const base = path.join(OUT_DIR, `claim-audit-${fake ? 'fake' : 'real'}-${stampPT()}`);
+  for (const file of [`${base}.md`, `${base}.json`]) refuseOutsideOutDir(file);
   const table = markdown({ label, modelName: model.name, a, b, totals });
   fs.writeFileSync(`${base}.md`, table);
   fs.writeFileSync(`${base}.json`, `${JSON.stringify({ label, fake, stoppedAt, model: model.name, timeZone: TIME_ZONE, totals, arms: { A: a, B: b } }, null, 2)}\n`);

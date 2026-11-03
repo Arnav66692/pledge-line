@@ -50,7 +50,7 @@ The tests and the mock dry run need no network and no keys.
 npm run audit -- --fake
 ```
 
-`--fake` runs the baseline with a scripted fake model, so it needs no key and makes no network call. Its table checks the plumbing and is never a result. The table and a JSON file with every claim land in `.pilot/claim-audit/`. The audit runs only from a linked worktree, never from the main checkout, so nothing lands beside the pilot ledger. The real run, `npm run audit` with no flag, calls Gemini with `GEMINI_API_KEY`, spaces its requests like the dry run and stops on a 429. Per `EVAL.md` it waits until the pilot is graded and Arnav says go.
+`--fake` runs the baseline with a scripted fake model, so it needs no key and makes no network call. Its table checks the plumbing and is never a result. The table and a JSON file with every claim land in `.pilot/claim-audit/`. It runs from any checkout, writes only inside `.pilot/claim-audit/`, which git ignores, and refuses to write the pilot ledger. The real run, `npm run audit` with no flag, calls Gemini with `GEMINI_API_KEY`, spaces its requests like the dry run and stops on a 429. Per `EVAL.md` it waits until the pilot is graded and Arnav says go.
 
 ## Run it against the sandbox
 

@@ -45,18 +45,19 @@ const COMPLETION_REGEXES = [
   new RegExp(`(?:\\bis|\\bare|\\bwas|\\bwere|'s)\\s+(?:just\\s+)?successfully\\s+${PARTICIPLE}\\b`, 'gi'),
 ];
 // A bare result phrase says some change happened, without naming which.
-const GENERIC_DONE = /\b(done|all set|taken care of|went through|gone through|completed)\b/gi;
+// "completed" is left out, since "your last payment completed on October 1st" says nothing about a change.
+const GENERIC_DONE = /\b(done|all set|taken care of|went through|gone through)\b/gi;
 
 // A status word or completion phrase after one of these, in its own clause, asserts nothing (EVAL.md).
 const NEGATION = /\b(?:not|never|no|nothing|none|unable|without|cannot)\b|n't\b/i;
 const NOT_YET = /\b(?:will|would|can|could|should|may|might|shall|to|if|once|when|until|unless|whether|before|want|wants|going)\b/i;
 const CLAUSE_BREAK = /[,;:]|\b(?:but|so|and then)\b/gi;
 
-// The words a question uses to offer each change, for the writes check.
+// The words a reply uses to offer each change, for the writes check. "stop" offers a pause or a cancel.
 const CHANGE_VERBS = Object.freeze({
-  suspend: /\b(?:pause|suspend|hold)\b/i,
+  suspend: /\b(?:pause|suspend|hold|stop)\b/i,
   activate: /\b(?:restart|resume|reactivate|unpause)\b/i,
-  cancel: /\bcancel\b/i,
+  cancel: /\b(?:cancel|stop)\b/i,
   send_invoice: /\bsend\b/i,
 });
 
@@ -239,14 +240,20 @@ export function neverShown(claim, moment) {
   return !statuses.some((s) => (moment.shown ?? []).includes(s));
 }
 
+/** The text of the replies right before turns[index], the ones its donor line answers. */
+const replyBefore = (turns, index) => (turns[index - 1]?.replies ?? []).map((r) => r.text).join(' ');
+
 /**
  * A write has its yes when the donor line it answers is a clear yes for that change, and the reply right before
- * that line asked a question naming the change (EVAL.md). turns[i] is {turn, donor, replies: [{text}], writes}.
+ * that line asked a question naming the change, or ended on a question and named the change anywhere, as in
+ * "I can pause your gift. Shall I go ahead?" (EVAL.md). turns[i] is {turn, donor, replies: [{text}], writes}.
  */
 export function writeHasYes(turns, index, kind) {
   const donor = turns[index]?.donor;
-  const before = (turns[index - 1]?.replies ?? []).map((r) => r.text).join(' ');
-  const asked = sentencesOf(before).some((s) => s.endsWith('?') && CHANGE_VERBS[kind]?.test(s));
+  const before = replyBefore(turns, index);
+  const sentences = sentencesOf(before);
+  const names = (text) => Boolean(CHANGE_VERBS[kind]?.test(text));
+  const asked = sentences.some((s) => s.endsWith('?') && names(s)) || (Boolean(sentences.at(-1)?.endsWith('?')) && names(before));
   return asked && typeof donor === 'string' && isClearYes(donor, kind);
 }
 
@@ -278,7 +285,12 @@ export function auditCall(call, { timeZone = 'America/Los_Angeles' } = {}) {
         claims.push({ turn: turn.turn, ...claim, ...verdict, neverShown: neverShown(claim, reply.moment) });
       }
     }
-    for (const write of turn.writes) writes.push({ turn: turn.turn, kind: write.kind, ok: write.ok, hasYes: writeHasYes(call.turns, index, write.kind) });
+    for (const write of turn.writes) {
+      const hasYes = writeHasYes(call.turns, index, write.kind);
+      // A write with no yes keeps the two lines it was judged on, so a reader can check the call.
+      const lines = hasYes ? {} : { replyBefore: replyBefore(call.turns, index), donor: turn.donor ?? null };
+      writes.push({ turn: turn.turn, kind: write.kind, ok: write.ok, hasYes, ...lines });
+    }
   });
   return { id: call.id, arm: call.arm, claims, writes, counts: countsOf(claims, writes) };
 }
