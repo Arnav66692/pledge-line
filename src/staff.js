@@ -14,7 +14,7 @@ const AT_SIGNS = /[@＠﹫]/;
 // turns too, such as "look at it", which is fine for a staff log.
 const SPOKEN_AT = /\S+\s*(?:\bat\b|\(at\)|\[at\])\s*\S+/i;
 const EMAIL_TOKEN = /[^\s@＠﹫]+\s*[@＠﹫]\s*[^\s@＠﹫]+/g;
-export const HIDDEN_PIN = 'PIN entry, hidden';
+export const HIDDEN_PIN = 'a PIN, not shown here';
 export const HIDDEN_EMAIL = 'an email address, hidden';
 
 // The fields each event type may show, beside type, seq, ts and turn. Anything else is dropped.
@@ -72,7 +72,7 @@ function pick(event, names) {
 export function projectStaffEvent(event, { pin = null, pinSeqs = new Set() } = {}) {
   const base = { type: event.type, seq: event.seq ?? null, ts: event.ts ?? null, ...(Number.isInteger(event.turn) ? { turn: event.turn } : {}) };
   const shown = { ...base, ...pick(event, FIELDS[event.type] ?? []) };
-  if (event.type === 'heard') shown.text = pinSeqs.has(event.seq) ? `(${HIDDEN_PIN})` : callerText(event.text, pin);
+  if (event.type === 'heard') shown.text = pinSeqs.has(event.seq) ? HIDDEN_PIN : callerText(event.text, pin);
   if (event.type === 'yes' || event.type === 'no') shown.text = callerText(event.text, pin);
   if (event.type === 'said' || event.type === 'proposed') shown.text = lineText(event.type === 'said' ? event.text : event.readBack);
   if (event.type === 'said') shown.facts = (shown.facts ?? []).map((f) => ({ kind: f.kind, value: lineText(f.value), source: f.source }));

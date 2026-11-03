@@ -47,7 +47,7 @@ html[data-page="staff"]:not(.has-gl) body { background: var(--night); }
 .case-title { margin: 0; font-size: 10.5rem; line-height: 0.9; font-weight: 400; letter-spacing: -0.05em; }
 .case-title__a { font-family: var(--serif); font-style: italic; letter-spacing: -0.035em; }
 .case-kicker { margin: 2.4rem auto 0; max-width: 42rem; font-size: 1.55rem; line-height: 1.3; letter-spacing: -0.01em; color: #d9d4d1; }
-.case-note { margin: 1.2rem auto 0; max-width: 40rem; font-size: 0.8rem; line-height: 1.5; text-transform: uppercase; color: var(--muted); }
+.case-note { margin: 1.2rem auto 0; max-width: 40rem; font-size: 0.95rem; line-height: 1.5; color: var(--muted); }
 
 .hint { margin: 0.4rem 0; font-size: 1.02rem; line-height: 1.45; color: var(--muted); }
 .field-label { display: block; margin: 0 0 0.45rem; font-size: 0.8rem; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }

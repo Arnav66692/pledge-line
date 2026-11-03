@@ -137,7 +137,7 @@ test('the detail adds receipts built from the same events pilot-check grades, an
   assert.ok(fact.proof.debugId && fact.proof.ts && fact.proof.what);
   assert.ok(sentences.some((s) => s.claims.some((c) => c.proven && typeof c.meaning === 'string')), 'a proven claim with its meaning');
   const heard = call.events.filter((e) => e.type === 'heard');
-  assert.equal(heard[0].text, `(${HIDDEN_PIN})`, 'the PIN turn is hidden');
+  assert.equal(heard[0].text, HIDDEN_PIN, 'the PIN turn is hidden');
   assert.ok(heard.some((e) => e.text === `(${HIDDEN_EMAIL})`), 'the new email turn is hidden');
   assert.ok(heard.some((e) => e.text === 'How much is my monthly gift?'), 'plain words stay');
 

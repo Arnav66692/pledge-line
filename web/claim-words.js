@@ -1,0 +1,42 @@
+'use strict';
+
+// What each claim the grader checks means, in plain words for the donor page's chip titles and the staff view's details.
+// The grader's own wording lives in src/check.js. Each line here says the same thing the way a person would, and a
+// claim missing here falls back to the grader's wording. Keyed by claim name, like CLAIM_LABELS in app.js.
+window.PledgeClaimWords = Object.freeze({
+  pin_ok: 'the PIN matched on this reply',
+  pin_bad: 'a wrong PIN came in on this reply',
+  tries_left: 'a wrong PIN on this reply left that many tries',
+  pin_locked: 'the call locked on this reply',
+  pin_limit: 'the line turned this down after too many wrong PINs from here',
+  not_verified: 'no PIN had matched yet',
+  wrote: 'PayPal accepted a change on this reply',
+  wrote_suspend: 'PayPal accepted a pause on this reply',
+  wrote_activate: 'PayPal accepted a restart on this reply',
+  wrote_cancel: 'PayPal accepted a cancellation on this reply',
+  wrote_send_invoice: 'PayPal agreed to send the invoice on this reply',
+  write_failed: 'PayPal turned down a change to the gift on this reply',
+  send_failed: 'PayPal turned down sending the invoice on this reply',
+  write_unclear: 'PayPal gave no clear answer to a request on this reply, and the line checked again after it',
+  gift_unread: "the line checked after a request on this reply, and PayPal didn't return the gift",
+  invoice_unread: "the line checked after a send request on this reply, and PayPal didn't return the invoice",
+  draft_deleted: 'the line deleted its own draft on this reply, PayPal no longer finds it, and it was never sent',
+  draft_kept: 'the line asked PayPal to delete its draft on this reply, and PayPal still finds it',
+  no_gift: 'the line checked on this reply, and PayPal found no monthly gift',
+  no_email: 'the line checked on this reply, and PayPal has no email on file for the gift',
+  paypal_unclear: "a PayPal step on this reply didn't give a clear answer, and PayPal accepted no change",
+  unchanged: 'PayPal accepted no change on this reply',
+  no_pause: 'the donor said no to a pause on this reply, and nothing changed',
+  email_refused: 'the line turned down a new email address on this reply',
+  set_aside: 'a request was set aside on this reply, and nothing changed',
+  callback_noted: 'a call back from staff was noted on this reply',
+  turn_limit: 'the call reached its limit on this reply',
+  timed_out: 'a request ran out of time, and nothing changed',
+  nothing_pending: 'nothing was waiting for a yes',
+  call_ended: 'the call had already ended',
+  gift_read: 'the line checked the gift in PayPal, and PayPal returned it',
+  gift_active: 'PayPal showed the gift as active',
+  nothing_to: "PayPal showed the gift in a state that change can't act on",
+  invoice_read: 'the line checked its draft in PayPal, and PayPal returned it',
+  gift_rechecked: 'the line checked the gift in PayPal again on this reply, and PayPal returned it',
+});

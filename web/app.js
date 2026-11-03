@@ -25,30 +25,52 @@
   // Read times show in Pacific time, the line's own zone, whatever zone the viewer's computer is in.
   const READ_ZONE = 'America/Los_Angeles';
   const DEMO_OPEN_KEY = 'pledge-line.demo-open';
-  const STATUS_WORDS = { ACTIVE: 'Active', SUSPENDED: 'Suspended', CANCELLED: 'Cancelled', EXPIRED: 'Expired', APPROVAL_PENDING: 'Waiting for approval' };
+  const STATUS_WORDS = { ACTIVE: 'Active', SUSPENDED: 'Paused', CANCELLED: 'Cancelled', EXPIRED: 'Expired', APPROVAL_PENDING: 'Waiting for approval' };
+  // The line says "suspended", PayPal's word, so the card says once that it is the same thing as paused.
+  const STATUS_NOTES = { SUSPENDED: " PayPal's word for a pause is suspended." };
+  // What a change the card marks did, in the donor's words.
+  const CHANGE_WORDS = { SUSPENDED: 'Paused', ACTIVE: 'Restarted' };
   // The statuses a change's read-back can land on that the gift card marks, a pause and a restart.
   const MARKED_CHANGES = new Set(['SUSPENDED', 'ACTIVE']);
   const clockFormat = new Intl.DateTimeFormat('en-US', { timeZone: READ_ZONE, hour: 'numeric', minute: '2-digit' });
   // PayPal read times show to the second, so a read-back after a change reads as later than the read before it.
   const secondsFormat = new Intl.DateTimeFormat('en-US', { timeZone: READ_ZONE, hour: 'numeric', minute: '2-digit', second: '2-digit' });
-  // Plain words for the claims a chip shows, with the grader's own meaning as its title. A claim not named here shows that meaning.
+  // Plain words for the claims a chip shows. Its title says what backs it, from claim-words.js. A claim not named here shows the grader's meaning.
   const CLAIM_LABELS = {
-    pin_ok: 'PIN accepted', pin_bad: 'That PIN didn\'t match', tries_left: 'Tries left, counted on this call', pin_locked: 'Call locked after wrong PINs',
+    pin_ok: 'PIN accepted', pin_bad: 'Checked against your PIN', tries_left: 'Counted on this call', pin_locked: 'Call locked after wrong PINs',
     pin_limit: 'Too many wrong PINs from here', not_verified: 'No PIN yet',
-    wrote: 'PayPal confirmed the change', wrote_suspend: 'PayPal confirmed the pause', wrote_activate: 'PayPal confirmed the restart',
-    wrote_cancel: 'PayPal confirmed the cancel', wrote_send_invoice: 'PayPal confirmed it sent',
+    wrote: 'PayPal accepted the change', wrote_suspend: 'PayPal took it as a pause, not a cancel', wrote_activate: 'PayPal accepted the restart',
+    wrote_cancel: 'PayPal accepted the cancellation', wrote_send_invoice: 'PayPal agreed to send it',
     write_failed: 'PayPal turned down the change', send_failed: 'PayPal turned down the send', write_unclear: 'PayPal gave no clear answer',
-    gift_unread: 'PayPal found no gift after the change', invoice_unread: 'PayPal found no invoice after the send',
+    gift_unread: 'PayPal didn\'t return the gift after the request', invoice_unread: 'PayPal didn\'t return the invoice after the request',
     draft_deleted: 'Draft deleted, PayPal no longer finds it', draft_kept: 'The draft is still in PayPal',
-    no_gift: 'PayPal found no monthly gift', no_email: 'PayPal has no email on file', paypal_unclear: 'A PayPal step didn\'t go through',
+    no_gift: 'PayPal found no monthly gift', no_email: 'PayPal has no email on file', paypal_unclear: 'No clear answer from PayPal',
     unchanged: 'Nothing changed in PayPal', no_pause: 'You said no, nothing changed', email_refused: 'New email turned down',
     set_aside: 'Set aside, nothing changed', callback_noted: 'Call back noted for staff', turn_limit: 'The call reached its limit',
     timed_out: 'Timed out, nothing changed', nothing_pending: 'Nothing waiting for a yes', call_ended: 'The call had ended',
-    gift_read: 'Read your gift from PayPal', gift_active: 'PayPal shows the gift active', nothing_to: 'PayPal shows nothing to change',
-    invoice_read: 'Read the draft from PayPal', gift_rechecked: 'Read PayPal again for this answer',
+    gift_read: 'Checked your gift in PayPal', gift_active: 'PayPal shows the gift active', nothing_to: 'PayPal shows nothing to change',
+    invoice_read: 'Checked the draft in PayPal', gift_rechecked: 'Checked PayPal again for this answer',
   };
 
   const LABELS = { suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending the one-time gift invoice' };
+  // The same changes as a request, for the event log's "PayPal accepted the request to ...".
+  const REQUESTS = { suspend: 'pause the monthly gift', activate: 'restart the monthly gift', cancel: 'cancel the monthly gift', send_invoice: 'send the one-time gift invoice' };
+  const CLAIM_WORDS = window.PledgeClaimWords || {};
+  const READ_NAMES = { subscription: 'the gift', plan: 'the gift amount', invoice: 'the invoice' };
+  // How the event log says what the line took each request to be.
+  const INTENT_WORDS = {
+    gift_status: 'Took that as asking about the gift.', stop_gift: 'Took that as a request to stop the gift.',
+    cancel_now: 'Took that as a request to cancel now.', pause_gift: 'Took that as a request to pause the gift.',
+    resume_gift: 'Took that as a request to restart the gift.', one_time_gift: 'Took that as asking to give once.',
+    other_email: 'Took that as a new email address.', how_do_you_know: 'Took that as asking how the line knows.',
+    repeat: 'Took that as asking to hear it again.', help: 'Took that as asking for help.',
+    staff_callback: 'Took that as asking for a call back.', goodbye: 'Took that as goodbye.',
+    unclear: 'That wasn\'t a request on its own.',
+  };
+  const END_WORDS = {
+    goodbye: 'Call ended after you said goodbye.', locked: 'Call ended, locked after wrong PINs.',
+    idle: 'Call ended after a long quiet.', client: 'Call ended when the page closed.',
+  };
   const REASONS = {
     other_email: 'the line only sends to the email on file', locked: 'the call is locked', ended: 'the call has ended',
     not_verified: 'the PIN comes first', amount_out_of_range: 'that amount is outside the limits', no_subscription: 'no monthly gift was found',
@@ -108,7 +130,7 @@
     if (script) {
       const item = document.createElement('li');
       item.className = 'expected';
-      item.textContent = `What should happen. ${script.expected}.`;
+      item.textContent = `This script should end like this. ${script.expected}.`;
       els.lines.append(item);
     }
   }
@@ -175,7 +197,7 @@
   function renderGiftRead(ts, rawStatus) {
     const time = clockTime(ts, { seconds: true });
     if (!time) return;
-    els.subRead.textContent = rawStatus ? `Read from PayPal at ${time}, status ${rawStatus}.` : `Read from PayPal at ${time}.`;
+    els.subRead.textContent = `Checked with PayPal at ${time}.${STATUS_NOTES[rawStatus] ?? ''}`;
   }
 
   function clearGiftChange() {
@@ -192,7 +214,7 @@
     void els.gift.offsetWidth;
     els.gift.classList.add('flash');
     const word = (status) => STATUS_WORDS[status] ?? status;
-    els.subChange.textContent = `Changed on this call, from ${word(from)} to ${word(to)}.`;
+    els.subChange.textContent = `${CHANGE_WORDS[to] ?? word(to)} on this call. It was ${word(from).toLowerCase()} before.`;
     els.subChange.hidden = false;
   }
 
@@ -202,7 +224,7 @@
     if (!sub) {
       state.giftStatus = null;
       clearGiftChange();
-      els.subRead.textContent = 'Not read from PayPal yet.';
+      els.subRead.textContent = 'Not checked with PayPal yet.';
       return;
     }
     if (state.giftStatus && status && status !== state.giftStatus && MARKED_CHANGES.has(status)) markGiftChange(state.giftStatus, status);
@@ -214,13 +236,14 @@
     trackGiftStatus(sub);
     els.gift.dataset.status = sub && !sub.notFound ? String(sub.status ?? '') : '';
     const shown = sub && !sub.notFound && sub.status ? STATUS_WORDS[sub.status] ?? sub.status : null;
-    setText(els.subStatus, sub?.notFound ? 'Not found' : shown, 'not read yet');
-    setText(els.subAmount, sub?.amount, 'not read yet');
-    setText(els.subNext, sub?.status === 'ACTIVE' ? sub?.nextDate : null, sub ? 'none' : 'not read yet');
+    setText(els.subStatus, sub?.notFound ? 'Not found' : shown, 'not checked yet');
+    setText(els.subAmount, sub?.amount, 'not checked yet');
+    setText(els.subNext, sub?.status === 'ACTIVE' ? sub?.nextDate : null, sub ? 'Nothing scheduled' : 'not checked yet');
     setText(els.subDebug, sub?.debugId, 'none');
     const inv = record?.invoice;
-    setText(els.invNumber, inv?.number, 'none');
-    setText(els.invStatus, inv?.status === 'NOT_FOUND' ? 'not found, deleted' : inv?.status, 'none');
+    // Left empty with no invoice, so style.css shows the card's one line, "No one-time gift on this call.", instead.
+    setText(els.invNumber, inv?.number, '');
+    setText(els.invStatus, inv?.status === 'NOT_FOUND' ? 'not found, deleted' : inv?.status, '');
     setText(els.invAmount, inv?.amount, 'none');
     setText(els.invDebug, inv?.debugId, 'none');
     els.invLink.replaceChildren();
@@ -241,7 +264,7 @@
     if (!pending) return;
     els.pendingLabel.textContent = `${pending.label}. Nothing changes in PayPal until you say yes.`;
     const time = clockTime(pending.expiresAt);
-    els.pendingExpiry.textContent = time ? `It waits for your answer until ${time}.` : 'It waits a little while for your answer.';
+    els.pendingExpiry.textContent = time ? `The line will wait for your yes or no until ${time}.` : 'The line will wait a few minutes for your yes or no.';
   }
 
   // ---- Receipts, every sentence the line said beside the PayPal read behind it ----
@@ -273,12 +296,15 @@
     const reads = [...groups.values()].map(({ key, proofs, values }) => {
       if (key === 'config') return { text: `The line's own limit, ${values.join(', ')}`, title: '' };
       const seen = [...new Map(proofs.map((p) => [p.seq, p])).values()];
-      const title = seen.map((p) => `Read of PayPal ${p.what} ${p.id ?? ''}, debug id ${p.debugId ?? 'none'}`.replace(/\s+/g, ' ')).join('. ');
+      const title = seen.map((p) => `Checked ${READ_NAMES[p.what] ?? p.what} in PayPal, reference ${p.debugId ?? 'none'}`).join('. ');
       return { text: `From PayPal ${key}, ${values.join(', ')}`, title };
     });
     const claims = listOf(sentence.claims).filter((c) => c.proven).map((c) => {
-      const label = CLAIM_LABELS[String(c.name).split('=')[0]];
-      return label ? { text: label, title: `Backed by ${c.meaning ?? c.name}` } : { text: `Backed by ${c.meaning ?? c.name}`, title: '' };
+      const name = String(c.name).split('=')[0];
+      const label = CLAIM_LABELS[name];
+      const words = CLAIM_WORDS[name];
+      const backing = words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}.` : `Backed by ${c.meaning ?? c.name}`;
+      return label ? { text: label, title: backing } : { text: backing, title: '' };
     });
     return [...reads, ...claims];
   }
@@ -297,7 +323,7 @@
       item.append(chips);
     } else if (blocked) {
       // Never expected, since the line speaks only what it can prove. If it happens, say so plainly.
-      item.append(element('span', 'chip chip-blocked', 'Not backed by the record'));
+      item.append(element('span', 'chip chip-blocked', 'This didn\'t check out'));
       const problems = listOf(sentence.problems);
       if (problems.length > 0) {
         const list = element('ul', 'problems');
@@ -322,40 +348,56 @@
     els.receipts.replaceChildren(...receipts.map(receiptItem));
     const sentences = receipts.flatMap((r) => listOf(r.sentences));
     const count = (verdict) => sentences.filter((s) => s.verdict === verdict).length;
-    els.receiptsSummary.textContent = sentences.length === 0
-      ? 'Nothing said yet.'
-      : `${plural(sentences.length, 'sentence', 'sentences')} so far. ${count('proven')} backed by the record, ${count('plain')} with nothing to check, ${count('blocked')} not backed.`;
+    const checked = count('proven') + count('blocked');
+    const said = `The line has said ${plural(sentences.length, 'sentence', 'sentences')}.`;
+    const outcome = count('blocked') > 0 ? `${count('blocked')} didn't check out. Those are marked in red.`
+      : checked === 1 ? 'It checked out.' : `All ${checked} checked out.`;
+    els.receiptsSummary.textContent = sentences.length === 0 ? 'Nothing said yet.'
+      : checked === 0 ? `${said} None had anything to check yet.`
+        : `${said} ${checked} had something to check. ${outcome}`;
     els.receiptsScroll.scrollTop = els.receiptsScroll.scrollHeight;
     const lastGiftRead = receipts.flatMap((r) => listOf(r.sentences)).flatMap((s) => listOf(s.facts))
       .map((f) => f.proof).filter((p) => p && p.what === 'subscription').sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)).at(-1);
     if (lastGiftRead && state.giftShown) renderGiftRead(lastGiftRead.ts, lastGiftRead.status);
   }
 
+  const statusText = (status) => String(STATUS_WORDS[status] ?? status).replace(/_/g, ' ').toLowerCase();
+  // A PIN turn reaches the page with its numbers hidden as #, so the log says a PIN came in rather than quote the marks.
+  const isHiddenPin = (text) => /^[#\s]+$/.test(String(text ?? ''));
+
   function describe(e) {
     const what = LABELS[e.kind] || e.kind;
+    const request = REQUESTS[e.kind] || e.kind;
+    const readName = READ_NAMES[e.what] || `the ${e.what}`;
     switch (e.type) {
       case 'call_start': return 'Call started.';
-      case 'heard': return `Heard "${e.text}", ${e.source}.`;
+      case 'heard':
+        if (e.source === 'keypad') return 'Got a PIN from the keypad.';
+        if (isHiddenPin(e.text)) return e.source === 'voice' ? 'Heard a PIN.' : 'Got a typed PIN.';
+        // "You typed "Yes."" ends on the caller's own stop, so the log adds one only when they left it off.
+        return `${e.source === 'voice' ? 'You said' : 'You typed'} "${e.text}"${/[.?!]$/.test(String(e.text)) ? '' : '.'}`;
       case 'pin_ok': return 'PIN accepted.';
       case 'pin_bad': return 'Wrong PIN.';
       case 'pin_locked': return 'Too many wrong PINs. The call is locked.';
-      case 'route': return `Understood as ${String(e.intent).replace(/_/g, ' ')}.`;
+      case 'route': return INTENT_WORDS[e.intent] ?? `Took that as ${String(e.intent).replace(/_/g, ' ')}.`;
       case 'read':
-        if (e.notFound) return `Asked PayPal for the ${e.what}. PayPal couldn't find it.`;
-        if (e.error) return `Couldn't read the ${e.what} from PayPal, ${e.error}.`;
-        return `Read the ${e.what} from PayPal${e.status ? `, status ${e.status}` : ''}, debug id ${e.debugId || 'none'}.`;
-      case 'proposed': return `Asked for a yes before ${what}.`;
-      case 'yes': return 'Heard a clear yes on its own, so the line may make this one change.';
-      case 'no': return 'Heard a no.';
-      case 'write': return e.ok ? `PayPal said yes to ${what}, debug id ${e.debugId || 'none'}.` : `PayPal turned down ${what}, ${e.error || 'error'}.`;
+        if (e.notFound) return `Asked PayPal for ${readName}. PayPal couldn't find it.`;
+        if (e.error) return `Couldn't check ${readName} in PayPal, ${e.error}.`;
+        return e.status
+          ? `Checked ${readName} in PayPal. It shows ${statusText(e.status)}, reference ${e.debugId || 'none'}.`
+          : `Checked ${readName} in PayPal, reference ${e.debugId || 'none'}.`;
+      case 'proposed': return `Asked for your yes before ${what}.`;
+      case 'yes': return 'You said yes, so the line can make this one change.';
+      case 'no': return 'You said no.';
+      case 'write': return e.ok ? `PayPal accepted the request to ${request}, reference ${e.debugId || 'none'}.` : `PayPal turned down the request to ${request}, ${e.error || 'error'}.`;
       case 'staging_write':
         if (e.kind === 'create_draft') return e.ok ? `Made a draft invoice, ${e.id}. It isn't sent.` : 'Couldn\'t make a draft invoice.';
         return e.ok ? `Deleted the draft invoice ${e.id}.` : `Couldn't delete the draft invoice ${e.id}.`;
-      case 'refused': return `Turned down, ${REASONS[e.reason] || e.reason}.`;
+      case 'refused': return `Turned that down because ${REASONS[e.reason] || e.reason}.`;
       case 'expired': return 'No answer in time, so nothing changed.';
       case 'withdrawn': return 'The request was set aside.';
       case 'staff_callback': return 'Noted that you want a call back from staff.';
-      case 'call_end': return `Call ended, ${e.reason}.`;
+      case 'call_end': return END_WORDS[e.reason] ?? `Call ended, ${e.reason}.`;
       default: return null;
     }
   }
@@ -405,7 +447,7 @@
     if (s.locked) els.status.textContent = 'This call is locked after too many wrong PINs.';
     else if (s.ended) els.status.textContent = 'Call ended. Press Start call for a new one.';
     else if (!s.verified) els.status.textContent = 'Enter your PIN on the keypad, or say the numbers.';
-    else els.status.textContent = s.script ? `PIN accepted. Running script ${s.script}.` : 'PIN accepted. Go ahead and ask about your monthly gift.';
+    else els.status.textContent = s.script ? `PIN accepted. Say the next line from Script ${s.script} once the line stops talking.` : 'PIN accepted. Go ahead and ask about your monthly gift.';
     renderPending(s.pending);
     renderRecord(s.record);
     renderReceipts(s.receipts);
@@ -441,7 +483,7 @@
     els.gapLast.textContent = `${seconds(gapMs)}${muted ? ', muted' : played ? '' : ', the reply didn\'t play'}`;
     if (source === 'voice' && !muted && played) {
       state.voiceGaps.push(gapMs);
-      els.gapMedian.textContent = `${seconds(median(state.voiceGaps))} over ${state.voiceGaps.length} ${state.voiceGaps.length === 1 ? 'turn' : 'turns'}`;
+      els.gapMedian.textContent = `${seconds(median(state.voiceGaps))} over ${state.voiceGaps.length} ${state.voiceGaps.length === 1 ? 'reply' : 'replies'}`;
     }
     api(`/api/calls/${callId}/gap`, { turn, gapMs, source, muted, played }).catch(() => {});
   }
@@ -456,7 +498,7 @@
       state.lastTurn = data.turn;
       state.pin = '';
       renderPin();
-      // The picker goes back to Free call, so a stray second call is never filed under this script.
+      // The picker goes back to No script, so a stray second call is never filed under this script.
       // The lines of the running script stay on screen.
       els.script.value = '';
       renderLines(script ?? '');

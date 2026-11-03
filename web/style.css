@@ -24,7 +24,7 @@ html[data-mode="call"] .corner { opacity: 0; visibility: hidden; pointer-events:
 .hero__cta { margin-top: 1.7rem; }
 .hero__note {
   position: absolute; left: 0; right: 0; bottom: 6.2rem; margin: 0 auto; max-width: 44rem;
-  font-size: 0.8rem; line-height: 1.4; text-transform: uppercase; letter-spacing: 0.01em; color: var(--scene-ink);
+  font-size: 0.95rem; line-height: 1.4; color: var(--scene-ink);
 }
 .hero .btn { font-size: 1.05rem; }
 
@@ -223,6 +223,10 @@ button:disabled { cursor: not-allowed; }
 .gift[data-status="SUSPENDED"] .gift-status { color: var(--warn); }
 .gift-read { margin: 0.5rem 0 0.9rem; color: var(--muted); font-size: 1.02rem; }
 .gift-change { margin: -0.4rem 0 0.9rem; font-size: 1.05rem; }
+/* With no invoice on the call, app.js leaves its number and status empty, and the card shows one line instead of empty rows. */
+.invoice-none { display: none; margin: 0; font-size: 1.05rem; color: var(--muted); }
+.invoice:has(#inv-number:empty):has(#inv-status:empty) .invoice-none { display: block; }
+.invoice:has(#inv-number:empty):has(#inv-status:empty) .facts { display: none; }
 
 /* The moment a change's read-back lands. The border takes the new status's colour and stays for the rest of the call,
    the status word sits on its own tint, underlined, and it pops once as it lands. */
