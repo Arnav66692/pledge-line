@@ -9,7 +9,8 @@
 // 2. A sha256 chain runs from the call details through every sentence in order, so a sentence taken out, added,
 //    moved or copied in from another receipt breaks the chain at that sentence.
 // 3. The file has one exact layout, so an edit that keeps the same JSON values, such as a changed space or line
-//    ending, still shows. Any edited byte fails the check.
+//    ending, still shows. The top line may hold only the keys the seal covers, so nothing unsigned rides along.
+//    Any edited byte fails the check.
 import { createHash, createPrivateKey, createPublicKey, createHmac, sign, verify, timingSafeEqual } from 'node:crypto';
 
 export const RECEIPT_FORMAT = 'pledge-line-receipt';
@@ -150,16 +151,33 @@ const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const isText = (v) => typeof v === 'string';
 const isWhole = (v) => Number.isSafeInteger(v) && v >= 0;
 const isTextList = (v) => Array.isArray(v) && v.every(isText);
+// The seal and the chain's start cover only these keys, so a key outside them would ride along unsigned. None is allowed.
+const keysAre = (v, keys) => Object.keys(v).sort().join(',') === keys;
+const HEAD_KEYS = 'about,call,chain,format,signature,version';
+const CHAIN_KEYS = 'count,head,start';
+const SIGNATURE_KEYS = 'alg,keyId,value';
+
+/** Whether the line could have written this value. A decimal, a huge number or deep nesting can't be signed, so it can't be read. */
+function canonicalOk(value) {
+  try {
+    canonical(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function headShapeOk(head) {
-  return isObject(head) && head.format === RECEIPT_FORMAT && head.version === RECEIPT_VERSION && isText(head.about) && isObject(head.call)
-    && isText(head.call.id) && isObject(head.chain) && isWhole(head.chain.count) && HASH_HEX.test(String(head.chain.head)) && HASH_HEX.test(String(head.chain.start))
-    && isObject(head.signature) && head.signature.alg === RECEIPT_ALG && KEY_ID_HEX.test(String(head.signature.keyId)) && SIG_HEX.test(String(head.signature.value));
+  return isObject(head) && keysAre(head, HEAD_KEYS) && head.format === RECEIPT_FORMAT && head.version === RECEIPT_VERSION && isText(head.about) && isObject(head.call)
+    && isText(head.call.id) && isObject(head.chain) && keysAre(head.chain, CHAIN_KEYS) && isWhole(head.chain.count) && HASH_HEX.test(String(head.chain.head)) && HASH_HEX.test(String(head.chain.start))
+    && isObject(head.signature) && keysAre(head.signature, SIGNATURE_KEYS) && head.signature.alg === RECEIPT_ALG && KEY_ID_HEX.test(String(head.signature.keyId)) && SIG_HEX.test(String(head.signature.value))
+    && canonicalOk(head);
 }
 
 function sentenceShapeOk(s) {
   return isObject(s) && isWhole(s.n) && s.n >= 1 && isText(s.text) && VERDICTS.has(s.verdict) && Array.isArray(s.facts) && Array.isArray(s.claims)
-    && isTextList(s.problems) && (s.note === null || isText(s.note)) && HASH_HEX.test(String(s.link)) && SIG_HEX.test(String(s.sig));
+    && isTextList(s.problems) && (s.note === null || isText(s.note)) && HASH_HEX.test(String(s.link)) && SIG_HEX.test(String(s.sig))
+    && canonicalOk(s);
 }
 
 const decoder = new TextDecoder('utf-8', { fatal: true });

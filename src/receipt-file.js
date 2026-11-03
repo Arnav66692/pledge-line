@@ -9,7 +9,7 @@ export const RECEIPT_ABOUT = 'A receipt from the Pledge Line donor line. It list
   + 'with the PayPal read behind each fact. The line signed it, so it is tamper-evident. Any edit to this file can be detected. '
   + 'Check it on the line at /check, or offline with scripts/check-receipt.js and the public key from /receipt-key. Times are in UTC.';
 // What the receipt says beside a sentence that had nothing to check, and beside one that didn't check out.
-export const PLAIN_NOTE = 'Nothing to check. This sentence names no amount, date or status, and says nothing about what PayPal or the line did.';
+export const PLAIN_NOTE = 'Nothing to check.';
 export const BLOCKED_NOTE = "This sentence didn't check out against the call's PayPal reads. The reasons are listed.";
 
 // An email written out in full, which the line never says, since it reads the email on file masked. Hidden anyway.

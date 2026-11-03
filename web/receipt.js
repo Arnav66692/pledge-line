@@ -32,11 +32,10 @@
     return el;
   }
 
-  /** The link's fragment, kept for this tab only so a reload still works, then taken out of the address bar. */
+  /** The link's fragment, taken out of the address bar. Once the line accepts it, load() keeps it for this tab so a reload still works. */
   function linkParts() {
     const fromHash = window.location.hash.slice(1);
     if (LINK.test(fromHash)) {
-      try { window.sessionStorage.setItem(SESSION_KEY, fromHash); } catch { /* A reload then needs the link again. */ }
       window.history.replaceState(null, '', '/receipt');
       return fromHash.match(LINK);
     }
@@ -122,13 +121,12 @@
     els.org.textContent = String(call.org ?? '');
     els.when.textContent = whenText(call);
     els.id.textContent = String(call.id ?? '');
-    els.practice.textContent = call.practice
+    els.practice.textContent = call.paypal === 'mock'
       ? 'This was a practice call on a fake PayPal, so it touched no PayPal account.'
       : "This call ran on PayPal's test system, so no real money moved.";
     els.list.replaceChildren(...sentences.map(sentenceItem));
     const checked = sentences.filter((s) => s.verdict !== 'plain').length;
-    const head = String(receipt.chain?.head ?? '');
-    els.seal.textContent = `${sentences.length} sentences, ${checked} with something to check. Sealed with the line's key ${receipt.signature?.keyId ?? 'unknown'}, chain ending ${head.slice(0, 16)}.`;
+    els.seal.textContent = `${sentences.length} sentences, ${checked} with something to check. Signed by the line, key ${receipt.signature?.keyId ?? 'unknown'}. Check the file at ${window.location.origin}/check.`;
     offerDownload(text, call);
     els.print.addEventListener('click', () => window.print());
     els.status.textContent = `The line said ${sentences.length} sentences on this call. Each one is below.`;
@@ -155,11 +153,14 @@
         els.status.textContent = MESSAGES[res.status] ?? "The line didn't answer. Please reload in a moment.";
         return;
       }
+      try { window.sessionStorage.setItem(SESSION_KEY, parts[0]); } catch { /* A reload then needs the link again. */ }
       render(text);
     } catch {
       els.status.textContent = "The line didn't answer. Please reload in a moment.";
     }
   }
 
+  // A new link pasted into this tab is another call, so start over with it.
+  window.addEventListener('hashchange', () => window.location.reload());
   load();
 })();
