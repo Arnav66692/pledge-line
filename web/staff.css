@@ -13,19 +13,22 @@
   --proven: var(--talk);
   --blocked: var(--error);
   --plain: var(--muted);
-  --callback: var(--warn-text);
+  --callback: var(--warn-ink);
   --callback-bg: var(--warn-bg);
 }
 
 .staff-page .top, .staff, .staff-page .foot { max-width: 1440px; }
 
-.eyebrow { margin: 0 0 4px; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+/* The header stacks, since the donor page's header row would push the title to the far right. */
+.staff-page .top { display: block; }
+.staff-page .top .note { margin-top: 8px; max-width: none; }
+.eyebrow { margin: 0 0 4px; font-size: 0.95rem; color: var(--muted); }
 
 .staff { margin: 0 auto; padding: 16px var(--gutter) 24px; }
 
 .key-card { max-width: 560px; }
 .key-form { margin-top: 12px; }
-.key-open { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; white-space: nowrap; }
+.key-open { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; white-space: nowrap; }
 input[type="password"], input[type="search"] {
   width: 100%;
   font: inherit;
@@ -33,7 +36,7 @@ input[type="password"], input[type="search"] {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
 }
 input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
 
@@ -47,7 +50,7 @@ input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
 .tile-value { display: block; font-size: 1.6rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .tile-label { display: block; color: var(--muted); font-size: 0.85rem; }
 .tile-proven .tile-value { color: var(--proven); }
-.tile-blocked .tile-value { color: var(--blocked); }
+.tile-blocked.has-blocked .tile-value { color: var(--blocked); }
 .tile-callback .tile-value { color: var(--callback); }
 
 .toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin-bottom: 4px; }
@@ -61,10 +64,10 @@ input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
 .ag-theme-quartz.pl-grid {
   --ag-font-family: inherit;
   --ag-font-size: 15px;
-  --ag-foreground-color: var(--text);
+  --ag-foreground-color: var(--ink);
   --ag-secondary-foreground-color: var(--muted);
-  --ag-data-color: var(--text);
-  --ag-header-foreground-color: var(--text);
+  --ag-data-color: var(--ink);
+  --ag-header-foreground-color: var(--ink);
   --ag-background-color: var(--surface);
   --ag-odd-row-background-color: var(--surface);
   --ag-header-background-color: var(--bg);
@@ -100,6 +103,9 @@ input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
 .receipt-cell { display: inline-flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
 .chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 0 8px; border: 1px solid currentColor; border-radius: 999px; line-height: 1.6; font-size: 0.85rem; white-space: nowrap; }
 .chip-count { font-weight: 700; font-variant-numeric: tabular-nums; }
+/* The donor page's chip fills and check mark stay on the donor page, so a "0 blocked" never reads as an alarm. */
+.receipt-cell .chip { margin: 0; background: transparent; border: 1px solid currentColor; }
+.receipt-cell .chip::before { content: none; }
 .chip-proven { color: var(--proven); }
 .chip-plain { color: var(--plain); }
 .chip-blocked { color: var(--plain); }
@@ -148,7 +154,7 @@ input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
 .proofs { list-style: none; margin: 6px 0 0; padding: 0 0 0 calc(5.2em + 10px); font-size: 0.9rem; }
 .proof { margin: 4px 0; overflow-wrap: anywhere; }
 .proof-value { font-weight: 700; }
-.proof-from { color: var(--text); }
+.proof-from { color: var(--ink); }
 .proof-meta { display: block; color: var(--muted); font-size: 0.85rem; }
 .claim-unproven .proof-value, .problem { color: var(--blocked); }
 .problem { font-weight: 600; }

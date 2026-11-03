@@ -157,7 +157,7 @@
       { colId: 'wanted', headerName: 'The donor wanted', minWidth: 170, flex: 1.4, valueGetter: (p) => wanted(p.data), tooltipValueGetter: (p) => wanted(p.data) },
       { colId: 'changed', headerName: 'PayPal changed', minWidth: 170, flex: 1.4, valueGetter: (p) => changed(p.data), tooltipValueGetter: (p) => changed(p.data) },
       { colId: 'now', headerName: 'PayPal now', minWidth: 150, flex: 1.1, valueGetter: (p) => paypalNow(p.data) },
-      { colId: 'receipts', headerName: narrow ? 'Proven, plain, blocked' : 'Receipts', minWidth: narrow ? 120 : 280, flex: narrow ? 1.3 : 1.9,
+      { colId: 'receipts', headerName: 'Receipts', minWidth: narrow ? 120 : 280, flex: narrow ? 1.3 : 1.9,
         cellRenderer: ReceiptCell, valueGetter: (p) => countsText(p.data.counts), headerTooltip: 'Sentences proven, plain and blocked',
         // Blocked first, then the most proven, so the calls that need a look sort to the top.
         comparator: (_a, _b, a, b) => (a.data.counts.blocked - b.data.counts.blocked) || (a.data.counts.proven - b.data.counts.proven) },
@@ -199,7 +199,9 @@
     els.tiles.calls.textContent = String(rows.length);
     els.tiles.proven.textContent = String(sum((r) => r.counts.proven));
     els.tiles.plain.textContent = String(sum((r) => r.counts.plain));
-    els.tiles.blocked.textContent = String(sum((r) => r.counts.blocked));
+    const blocked = sum((r) => r.counts.blocked);
+    els.tiles.blocked.textContent = String(blocked);
+    els.tiles.blocked.parentElement.classList.toggle('has-blocked', blocked > 0);
     els.tiles.changes.textContent = String(sum((r) => r.writes.filter((w) => w.ok).length));
     els.tiles.callbacks.textContent = String(sum((r) => (r.callback ? 1 : 0)));
   }
@@ -434,6 +436,9 @@
   els.forget.addEventListener('click', () => showKeyPrompt(''));
   els.detailClose.addEventListener('click', closeDetail);
   els.detail.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDetail(); });
+  // AG Grid keeps focus on the cell after a row opens the panel, and it takes Escape for itself, so the grid's
+  // container hears Escape first and closes the panel too.
+  els.grid.addEventListener('keydown', (event) => { if (event.key === 'Escape' && state.selected) closeDetail(); }, true);
 
   if (!window.agGrid) {
     els.keyError.hidden = false;
