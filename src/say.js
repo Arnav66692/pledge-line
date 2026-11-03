@@ -169,11 +169,16 @@ export function nothingTo(kind, sub, plan) {
   return combine(shows(sub, plan, 'PayPal shows', `, so there is nothing to ${VERBS[kind]} right now.`, [`nothing_to=${kind}`]), ANYTHING_ELSE);
 }
 
-export function invoiceConfirm(inv, orgName) {
+/** The draft's number, amount and status as PayPal's latest read gives them. */
+function invoiceShows(inv) {
   const phrase = invoicePhrase(inv);
+  return part(`PayPal shows a one-time gift ${phrase.text}.`, phrase.facts, readClaims(phrase.facts, 'invoice_read'));
+}
+
+export function invoiceConfirm(inv, orgName) {
   const email = derived('invoice.recipient_email', inv, 'email');
   const to = email ? part(`It would go to the email on file, ${email.value}.`, [email]) : claim('It would go to the email on file.', 'invoice_read');
-  return combine(part(`PayPal shows a one-time gift ${phrase.text}.`, phrase.facts, readClaims(phrase.facts, 'invoice_read')), to,
+  return combine(invoiceShows(inv), to,
     `The email comes from PayPal, shows ${orgName}, and has a link to pay. It never asks you to call a number. Should I send it?`, YES_OR_NO);
 }
 
@@ -242,6 +247,18 @@ export const tooLong = () => part('Sorry, that was a lot at once. Please say it 
 export const turnLimit = () => combine(claim('This call has reached its limit.', 'turn_limit'), 'Please start a new call. Goodbye.');
 export const expiredNotice = () => claim("That earlier request timed out, so I didn't change anything.", 'timed_out');
 export const setAside = () => claim("I've set that earlier request aside, so nothing changed.", 'set_aside');
+// The answer to "How do you know?". The line has just read the gift again, so the sentence claims a read in that turn,
+// and the gift's amount and status, and the call's own draft when there is one, are read aloud from those fresh reads.
+const RECHECKED = "I just checked PayPal's record again.";
+export const rechecked = () => claim(RECHECKED, 'gift_rechecked');
+/**
+ * draftGone is a draft the call made that PayPal no longer returns, said with the line's not-found wording. close
+ * false leaves the reply open, so call.js can speak a proposal still waiting for a yes after it.
+ */
+export function recheck(sub, plan, inv = null, { draftGone = false, close = true } = {}) {
+  const end = draftGone ? paypalProblem() : close ? part(ANYTHING_ELSE) : null;
+  return combine(rechecked(), shows(sub, plan), inv ? invoiceShows(inv) : null, end);
+}
 export const pinLimit = () => combine(claim("There have been too many wrong PINs from here, so I can't check a PIN right now.", 'pin_limit'), 'Please try again later.');
 
 /**

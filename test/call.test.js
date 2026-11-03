@@ -769,3 +769,88 @@ test('a write PayPal makes but whose answer is lost is read again and said as un
   assert.deepEqual(eventsOf(send, gift.callId, 'staging_write').map((e) => e.kind), ['create_draft']);
   assert.deepEqual(checkFacts(send.ledger.byCall(gift.callId)), []);
 });
+
+// ---- "How do you know?" (proof) ----
+
+const RECHECKED = "I just checked PayPal's record again.";
+const graded = (stack, callId) => gradeCall(stack.ledger.byCall(callId), null, { orgName: stack.config.orgName, subscriptionId: stack.config.demoSubscriptionId });
+
+test('how_do_you_know before the PIN, or on a locked call, reads nothing and routes nothing', async () => {
+  const stack = buildStack();
+  const { callId } = stack.calls.start({ script: null, userAgent: 'node-test' });
+  const early = await say(stack, callId, 'How do you know?');
+  assert.match(early.reply, /^I need your PIN first\./);
+  assert.ok(!early.reply.includes(RECHECKED));
+  for (const pin of ['1111', '2222', '3333']) await say(stack, callId, pin, 'keypad');
+  const locked = await say(stack, callId, 'Are you sure?');
+  assert.match(locked.reply, /^This call has ended\./);
+  assert.deepEqual(eventsOf(stack, callId).filter((e) => ['read', 'route', 'write', 'staging_write'].includes(e.type)), []);
+  assert.deepEqual(eventsOf(stack, callId, 'refused').map((e) => e.reason), ['not_verified', 'locked']);
+  assert.equal(graded(stack, callId).passed, true);
+});
+
+test('how_do_you_know reads the gift again with a fresh GET in that turn and says what it shows, and checkFacts passes it', async () => {
+  const stack = buildStack();
+  const callId = await verifiedCall(stack);
+  await say(stack, callId, 'How much is my monthly gift?');
+  const before = eventsOf(stack, callId, 'read').filter((e) => e.what === 'subscription').length;
+  const proof = await say(stack, callId, 'How do you know?');
+  assert.equal(proof.reply, `${RECHECKED} PayPal shows your monthly gift of $25.00 as active. What else can I help with?`);
+  const fresh = eventsOf(stack, callId, 'read').filter((e) => e.what === 'subscription' && e.turn === proof.turn);
+  assert.equal(fresh.length, 1);
+  assert.equal(eventsOf(stack, callId, 'read').filter((e) => e.what === 'subscription').length, before + 1);
+  const said = eventsOf(stack, callId, 'said').find((e) => e.turn === proof.turn);
+  assert.ok(said.seq > fresh[0].seq);
+  assert.deepEqual(said.claims, [{ claim: 'gift_rechecked', sentence: RECHECKED }]);
+  assert.deepEqual(graded(stack, callId), { facts: [], writes: [], safety: [], behavior: [], passed: true });
+  // The sentence needs that read in its own turn. The same words after an older read fail the facts check.
+  const list = stack.ledger.byCall(callId);
+  const stale = list.filter((e) => !(e.type === 'read' && e.turn === proof.turn));
+  assert.match(checkFacts(stale).map((v) => v.message).join('\n'), /claims a read of the call's own subscription in that turn that returned it/);
+  const turn = stack.calls.get(callId).receipts.find((r) => r.turn === proof.turn);
+  assert.deepEqual(turn.sentences.map((s) => s.verdict), ['proven', 'proven', 'plain']);
+});
+
+test('how_do_you_know reads the call\'s own draft again too, and while a change waits it keeps it open so a yes still counts', async () => {
+  const stack = buildStack();
+  const callId = await verifiedCall(stack);
+  await say(stack, callId, 'I want to stop my monthly gift.');
+  const sure = await say(stack, callId, 'Are you sure?');
+  assert.match(sure.reply, /^I just checked PayPal's record again\. PayPal shows your monthly gift of \$25\.00 as active\. Before you stop it/);
+  assert.match(sure.reply, /Would you like me to pause it\? Please say yes or no\.$/);
+  const yes = await say(stack, callId, 'Yes.');
+  assert.match(yes.reply, /^Done\. PayPal now shows your monthly gift of \$25\.00 as suspended\./);
+  const gift = await say(stack, callId, 'Give fifty dollars once.');
+  assert.match(gift.reply, /Should I send it\?/);
+  const prove = await say(stack, callId, 'Prove it.');
+  assert.match(prove.reply, /^I just checked PayPal's record again\. PayPal shows your monthly gift of \$25\.00 as suspended\. PayPal shows a one-time gift invoice ending in 0001, for \$50\.00, with the status draft\./);
+  const reads = eventsOf(stack, callId, 'read').filter((e) => e.turn === prove.turn).map((e) => e.what);
+  assert.deepEqual(reads.filter((w) => w !== 'plan'), ['subscription', 'invoice']);
+  await say(stack, callId, 'Yes.');
+  const after = await say(stack, callId, 'Says who?');
+  assert.match(after.reply, /PayPal shows a one-time gift invoice ending in 0001, for \$50\.00, with the status sent\./);
+  assert.deepEqual(eventsOf(stack, callId, 'write').map((e) => [e.kind, e.ok]), [['suspend', true], ['send_invoice', true]]);
+  assert.deepEqual(graded(stack, callId), { facts: [], writes: [], safety: [], behavior: [], passed: true });
+});
+
+test('how_do_you_know says the not-found wording when PayPal returns nothing, and sets aside a change PayPal no longer backs', async () => {
+  const missing = buildStack({ env: { DEMO_SUBSCRIPTION_ID: 'I-NOT-THERE' } });
+  const lost = await verifiedCall(missing);
+  const none = await say(missing, lost, 'How do you know?');
+  assert.match(none.reply, /^I couldn't find a monthly gift in PayPal for this line\./);
+  assert.ok(!none.reply.includes(RECHECKED));
+  assert.deepEqual(checkFacts(missing.ledger.byCall(lost), { subscriptionId: 'I-NOT-THERE' }), []);
+  // The draft waiting for a yes vanished from PayPal, so the line sets the send aside and reads only the gift.
+  const stack = buildStack();
+  const callId = await verifiedCall(stack);
+  await say(stack, callId, 'Give fifty dollars once.');
+  const draftId = eventsOf(stack, callId, 'staging_write')[0].id;
+  await stack.paypal.deleteDraftInvoice(draftId);
+  const reply = await say(stack, callId, 'How can I be sure that\'s right?');
+  assert.equal(reply.reply, `I've set that earlier request aside, so nothing changed. ${RECHECKED} PayPal shows your monthly gift of $25.00 as active. What else can I help with?`);
+  assert.equal(stack.calls.get(callId).pending, null);
+  const late = await say(stack, callId, 'Yes.');
+  assert.match(late.reply, /^There's nothing waiting for a yes or no right now\./);
+  assert.equal(eventsOf(stack, callId, 'write').length, 0);
+  assert.deepEqual(checkFacts(stack.ledger.byCall(callId), { orgName: stack.config.orgName, subscriptionId: stack.config.demoSubscriptionId }), []);
+});

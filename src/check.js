@@ -247,10 +247,18 @@ const CLAIMS = Object.freeze({
   gift_active: ["a read of the call's own subscription that shows it active", (s) => s.gift?.snapshot?.status === 'ACTIVE'],
   nothing_to: ["a read of the call's own subscription whose status that change can't act on", (s, kind) => nothingToDo(s, kind)],
   invoice_read: ["a read of this call's own draft that returned it", (s) => Boolean(s.draft?.snapshot)],
+  // "I just checked PayPal's record again." says the line read the gift afresh, so it needs a read in that very turn.
+  gift_rechecked: ["a read of the call's own subscription in that turn that returned it", (s) => giftInTurn(s) && Boolean(s.gift.snapshot)],
 });
 
 /** The claims the grader can prove. A template claim the grader does not know fails the vocabulary test (R4-1). */
 export const CLAIM_NAMES = Object.freeze(Object.keys(CLAIMS));
+
+/** What each claim means, in the grader's own words, so a receipt shows the donor what a sentence claims. */
+export const CLAIM_MEANINGS = Object.freeze(Object.fromEntries(Object.entries(CLAIMS).map(([name, [meaning]]) => [name, meaning])));
+
+/** Which read each fact source comes from, plan, subscription or invoice. A config source has none. */
+export const FACT_READS = SOURCE_WHAT;
 
 /** The call's events before a reply, those of its turn, the drafts it made, and its latest reads of its own subscription and draft. */
 function claimScope(list, said, subId) {
@@ -373,6 +381,34 @@ export function checkFacts(events, { orgName = null, subscriptionId = null, hist
     }
   }
   return problems;
+}
+
+// ---- The same checks, one reply at a time, for the receipts the page shows. checkFacts never calls these. ----
+
+/**
+ * The reads a fact in this reply may come from, as checkFacts sees them at that reply: the latest earlier read of the
+ * call's own subscription, of that subscription's plan, and of the call's latest draft (R3-7).
+ */
+export function readsBehind(list, said, { subscriptionId = null } = {}) {
+  const sorted = [...list].sort(bySeq);
+  const subId = callSubscription(sorted, subscriptionId);
+  const reads = new Map();
+  let draftId = null;
+  for (const event of sorted.filter((e) => e.seq < said.seq)) {
+    if (event.type === 'read') reads.set(`${event.what} ${event.id}`, event);
+    if (event.type === 'staging_write' && event.kind === 'create_draft' && event.ok) draftId = event.id;
+  }
+  return ownReads(reads, subId, draftId);
+}
+
+/** Why a declared fact does not match its PayPal read or the config, or null when it does, in checkFacts' own words. */
+export const factProblem = (f, said, latest, timeZone = DEFAULT_TIME_ZONE) => declaredProblem(f, said, latest, timeZone);
+
+/** True when the call's events back the claim at this reply, or at the reply it repeats, as checkFacts proves it. */
+export function claimBacked(list, said, c, { subscriptionId = null } = {}) {
+  const sorted = [...list].sort(bySeq);
+  const original = Number.isInteger(said.repeats) ? repeatedReply(said, sorted) : null;
+  return unbackedClaim(c, said, original, { list: sorted, subId: callSubscription(sorted, subscriptionId) }) === null;
 }
 
 const hasToken = (event) => typeof event.tokenId === 'string' && event.tokenId !== '';

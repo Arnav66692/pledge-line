@@ -5,6 +5,7 @@ import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
 import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } from './gate.js';
 import { toSnapshot, PayPalError } from './paypal.js';
 import { liveTemplates } from './vocabulary.js';
+import { buildReceipts } from './receipt.js';
 
 export { maskPinText };
 
@@ -238,6 +239,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       ended: call.ended,
       pending: p ? { kind: p.kind, label: PENDING_LABELS[p.kind], expiresAt: new Date(p.expiresAt).toISOString() } : null,
       record: formatRecord(call, config.timeZone),
+      // Built from the same ledger events, with the same orgName and subscription, that pilot-check grades.
+      receipts: buildReceipts(ledger.byCall(call.id), { orgName: config.orgName, subscriptionId: config.demoSubscriptionId ?? null, timeZone: config.timeZone }),
     };
   }
 
@@ -298,6 +301,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       const res = await timed(ctx, () => paypal.createDraftInvoice({ recipientEmail: email, amountValue: amount.toFixed(2), currency: config.currency, orgName: config.orgName }));
       log(ctx.call, { ...base, id: res.id, ok: true, debugId: res.debugId ?? null, ms: res.ms ?? 0 });
       ctx.call.openDraftId = res.id;
+      ctx.call.lastDraftId = res.id;
       return res.id;
     } catch (error) {
       log(ctx.call, { ...base, id: null, ok: false, debugId: error?.debugId ?? null, ms: Math.round(performance.now() - started), error: describeError(error) });
@@ -312,6 +316,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       const res = await timed(ctx, () => paypal.deleteDraftInvoice(id));
       log(ctx.call, { ...base, ok: true, debugId: res.debugId ?? null, ms: res.ms ?? 0 });
       if (ctx.call.openDraftId === id) ctx.call.openDraftId = null;
+      // The line already said PayPal no longer shows a draft it deleted, so "How do you know?" doesn't read it again.
+      if (ctx.call.lastDraftId === id) ctx.call.lastDraftId = null;
       return true;
     } catch (error) {
       log(ctx.call, { ...base, ok: false, debugId: error?.debugId ?? null, ms: Math.round(performance.now() - started), error: describeError(error) });
@@ -421,6 +427,46 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return say.combine(say.otherEmail(), await oneTimeTurn(ctx, amount));
   }
 
+  // ---- "How do you know?" (proof) ----
+
+  // The values a proposal's read-back said, still what PayPal's fresh reads give, so speaking it again stays true.
+  const stillAsRead = (pending, snapshots) => (pending.readBack.facts ?? []).every((f) => {
+    const snapshot = snapshots[String(f.source).split('.')[0]];
+    return Boolean(snapshot) && Object.hasOwn(say.FACT_SOURCES, f.source) && say.FACT_SOURCES[f.source](snapshot, config.timeZone) === f.value;
+  });
+
+  /** The proposal still waiting, spoken again after the fresh reads, so a yes in the next turn answers it (I1, I6). */
+  function proofWhilePending(ctx, sub, plan) {
+    const { pending } = ctx.call;
+    gate.reask(ctx.call, ctx.turn);
+    // A send's read-back names the draft, so the gift is read aloud first. A gift change's read-back opens with the gift.
+    const lead = pending.kind === 'send_invoice' ? say.recheck(sub, plan, null, { close: false }) : say.rechecked();
+    return say.combine(lead, pending.readBack);
+  }
+
+  /**
+   * After the PIN, read the call's own subscription again with a fresh GET, and the call's own draft when it made one
+   * it has not deleted, then say what those reads show. A proposal still waiting stays open only when the fresh reads
+   * match what its read-back said, else it is set aside and the line says what PayPal shows now (I3, I8).
+   */
+  async function proofTurn(ctx) {
+    const { call } = ctx;
+    const waiting = call.pending;
+    const draftId = waiting?.kind === 'send_invoice' ? waiting.targetId : call.lastDraftId;
+    const { sub, plan } = await readGift(ctx);
+    const inv = sub && draftId ? await timed(ctx, () => readSnapshot(ctx, 'invoice', draftId)) : undefined;
+    if (waiting && sub && stillAsRead(waiting, { subscription: sub, plan, invoice: inv ?? null })) return proofWhilePending(ctx, sub, plan);
+    const dropped = waiting ? await dropPending(ctx) : null;
+    const lead = dropped ? say.setAside() : null;
+    if (!sub) {
+      refused(ctx, 'no_subscription');
+      return say.combine(lead, say.noSubscription());
+    }
+    // A draft just deleted with the proposal it belonged to is not read aloud as if it were still there.
+    if (dropped?.kind === 'send_invoice' || inv === undefined) return say.combine(lead, say.recheck(sub, plan));
+    return say.combine(lead, say.recheck(sub, plan, inv, { draftGone: inv === null }));
+  }
+
   // ---- Routing ----
 
   async function routeTurn(ctx, text) {
@@ -461,6 +507,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       case 'one_time_gift': return oneTimeTurn(ctx, routedAmount(routed, text));
       case 'other_email': return otherEmailTurn(ctx, text, routedAmount(routed, stripEmails(text)));
       case 'help': return say.help();
+      case 'how_do_you_know': return proofTurn(ctx);
       case 'repeat': return repeatLast(ctx);
       case 'staff_callback':
         log(call, { type: 'staff_callback', turn: ctx.turn });
@@ -578,6 +625,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       return askAgain(ctx, say.otherEmail());
     }
     if (routed.intent === 'repeat' || routed.intent === 'unclear') return askAgain(ctx);
+    // "Are you sure?" while a change waits reads PayPal again and keeps the change open when PayPal still agrees.
+    if (routed.intent === 'how_do_you_know') return proofTurn(ctx);
     // Anything else moves past the proposal, so it is dropped and a later yes can never approve it.
     await dropPending(ctx);
     const reply = await handleIntent(ctx, routed, text);
@@ -668,7 +717,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const call = {
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
       id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
-      pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
+      pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
       noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null }, queue: Promise.resolve(),
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
       lastFinishedTurn: 0, lastFinishedAt: performance.now(), gapTurns: new Set(),
@@ -736,7 +785,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     end: async (callId, reason = 'client') => {
       const call = getCall(callId);
       await enqueue(call, () => endCall(call, reason));
-      return { ok: true };
+      return { ok: true, state: stateFor(call) };
     },
     get: (callId) => {
       const call = getCall(callId);

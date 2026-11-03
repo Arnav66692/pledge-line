@@ -11,12 +11,13 @@ export const TEMPLATE_WORDS = Object.freeze([
   'it', 'its', 'just', 'keep', 'keypad', 'later', 'like', 'limit', 'line', 'link', 'locked', 'longer', 'lot',
   'many', 'match', 'me', 'means', 'minute', 'money', 'month', 'monthly', 'more', 'moves', 'much', 'need',
   'never', 'new', 'next', 'no', 'noted', 'nothing', 'now', 'number', 'of', 'ok', 'on', 'once', 'only', 'open',
-  'or', 'out', 'pause', 'pausing', 'pay', 'paypal', 'pin', 'pins', 'please', 'reached', 'read', 'real',
-  'request', 'restart', 'restarting', 'return', 'right', 'safe', 'safety', 'sandbox', 'say', 'send', 'set',
-  'shorter', 'should', 'shows', 'so', 'sorry', 'staff', 'start', 'status', 'stays', 'still', 'stop', 'take',
-  'taken', 'tell', 'thank', 'thanks', 'that', 'the', 'there', "there's", 'this', 'time', 'timed', 'times',
-  'to', 'too', 'try', 'understand', 'undone', 'until', 'up', 'update', 'use', 'verified', 'waiting', 'want',
-  'was', 'way', 'went', 'what', 'will', 'with', "won't", 'would', 'wrong', 'yes', 'you', "you'd", 'your',
+  'or', 'out', 'pause', 'pausing', 'pay', 'paypal', "paypal's", 'pin', 'pins', 'please', 'reached', 'read',
+  'real', 'record', 'request', 'restart', 'restarting', 'return', 'right', 'safe', 'safety', 'sandbox', 'say',
+  'send', 'set', 'shorter', 'should', 'shows', 'so', 'sorry', 'staff', 'start', 'status', 'stays', 'still',
+  'stop', 'take', 'taken', 'tell', 'thank', 'thanks', 'that', 'the', 'there', "there's", 'this', 'time',
+  'timed', 'times', 'to', 'too', 'try', 'understand', 'undone', 'until', 'up', 'update', 'use', 'verified',
+  'waiting', 'want', 'was', 'way', 'went', 'what', 'will', 'with', "won't", 'would', 'wrong', 'yes', 'you',
+  "you'd", 'your',
 ]);
 
 // Each sentence the templates speak, with the org name and each fact as a slot named for its source.
@@ -41,6 +42,7 @@ export const TEMPLATE_SENTENCES = Object.freeze([
   'I can set up a one-time gift from one dollar to five hundred dollars.',
   "I can't find that invoice in PayPal now, so I can't confirm it went out.",
   "I couldn't find a monthly gift in PayPal for this line.",
+  "I just checked PayPal's record again.",
   'I need a clear yes or no before I change anything.',
   'I need your PIN first.',
   'I understand.',
@@ -152,6 +154,7 @@ export const TEMPLATE_CLAIMS = Object.freeze({
   'I asked PayPal to send it.': Object.freeze(['wrote_send_invoice']),
   "I can't find that invoice in PayPal now, so I can't confirm it went out.": Object.freeze(['invoice_unread']),
   "I couldn't find a monthly gift in PayPal for this line.": Object.freeze(['no_gift']),
+  "I just checked PayPal's record again.": Object.freeze(['gift_rechecked']),
   'I need a clear yes or no before I change anything.': Object.freeze(['unchanged']),
   'I need your PIN first.': Object.freeze(['not_verified']),
   "I've set that earlier request aside, so nothing changed.": Object.freeze(['set_aside']),
@@ -200,4 +203,4 @@ export const TEMPLATE_CLAIMS = Object.freeze({
 });
 
 // The hash call_start logs, so pilot-check holds each call to the list it was spoken with (R4-2).
-export const TEMPLATE_HASH = '9c001129d6bc';
+export const TEMPLATE_HASH = 'ca47279c038f';
