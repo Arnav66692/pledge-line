@@ -24,7 +24,7 @@ The donor, Maria, and the nonprofit, Sunny Hollow Pantry, are fictional.
 
 ## Run it in mock mode
 
-Node 22.12 or later. Nothing else to set up.
+Node 22.12 up to 24. Nothing else to set up.
 
 ```
 npm install

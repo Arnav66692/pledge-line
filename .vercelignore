@@ -1,0 +1,19 @@
+# The Vercel demo ships only what the function runs. Everything at the root is left out unless it is let back in
+# below, so .env, .env.example, .claude, .pilot, .gstack, test, scripts and every note stay on this computer.
+/*
+!/api
+!/src
+!/web
+!/package.json
+!/package-lock.json
+!/vercel.json
+
+# Code the line never loads at run time. The claim audit calls real model APIs.
+/src/claim-arms.js
+/src/claim-audit.js
+/src/claim-fake-model.js
+/src/hours-log.js
+/src/pilot-grade.js
+
+# Notes for people, not page files. The server never serves .md files.
+/web/**/README.md

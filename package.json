@@ -6,7 +6,7 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.12 <25"
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
