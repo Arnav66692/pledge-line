@@ -35,6 +35,8 @@ const STATIC_TYPES = Object.freeze({
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.glb': 'model/gltf-binary',
+  '.webp': 'image/webp',
   '.txt': 'text/plain; charset=utf-8',
 });
 const SECURITY_HEADERS = Object.freeze({

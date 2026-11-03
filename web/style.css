@@ -168,11 +168,18 @@ button:disabled { cursor: not-allowed; }
 .timing { margin: 1rem 0 0; color: var(--muted); font-size: 1.02rem; }
 
 /* ---- What the line said, with receipts ---- */
-.receipts-summary { margin: 0.4rem 0 1rem; font-size: 1.15rem; }
-.receipts-scroll { border-top: 1px solid var(--ink); }
+.receipts-summary { margin: 0.4rem 0 0; padding-bottom: 1rem; font-size: 1.15rem; border-bottom: 1px solid var(--ink); }
 @media (min-width: 768px) {
-  /* Short enough that the newest reply, at the box's bottom, stays on a 1280 by 800 screen. */
-  .receipts-scroll { max-height: max(320px, calc(100vh - 21rem)); overflow-y: auto; padding-right: 0.4rem; }
+  /* Short enough that the newest reply, at the box's bottom, stays on a 1280 by 800 screen. The list scrolls to its
+     newest reply, so an older line can stop part way up the box. The rule sits on the summary, a little above the box,
+     and the box's top fades out, so a line scrolling away dissolves before it reaches the rule instead of being cut by
+     it. The top padding keeps the first reply clear of the fade while the list is at its top. */
+  .receipts-scroll {
+    max-height: max(320px, calc(100vh - 21.5rem)); overflow-y: auto;
+    margin-top: 0.5rem; padding: 1.4rem 0.4rem 0 0;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 0.4rem, #000 2.6rem);
+    mask-image: linear-gradient(to bottom, transparent 0, transparent 0.4rem, #000 2.6rem);
+  }
 }
 .receipts { list-style: none; margin: 0; padding: 0; }
 .turn { padding: 1.2rem 0 1.3rem; border-bottom: 1px solid var(--line); }

@@ -109,15 +109,15 @@ sup { font-size: inherit; line-height: 0; }
 html:not(.has-gl) .gl { display: none; }
 html:not(.has-gl) body {
   background:
-    radial-gradient(30% 34% at 64% 40%, rgb(255 250 244 / 0.9) 0%, transparent 70%),
-    linear-gradient(180deg, #ece2da 0%, #e8ddd5 58%, #c9d8cf 60%, #b9cbc1 100%);
+    radial-gradient(30% 34% at 64% 40%, rgb(252 224 210 / 0.9) 0%, transparent 70%),
+    linear-gradient(180deg, #e7c3bd 0%, #e0b8b3 62%, #c4b4cf 64%, #d9cdd9 100%);
   background-attachment: fixed;
 }
 @media (prefers-color-scheme: dark) {
   html:not(.has-gl) body {
     background:
-      radial-gradient(30% 34% at 64% 40%, rgb(120 140 150 / 0.25) 0%, transparent 70%),
-      linear-gradient(180deg, #1c2322 0%, #1a201f 58%, #111716 60%, #0c1110 100%);
+      radial-gradient(30% 34% at 64% 40%, rgb(150 110 130 / 0.25) 0%, transparent 70%),
+      linear-gradient(180deg, #3f3446 0%, #382e41 62%, #221d2c 64%, #15121a 100%);
     background-attachment: fixed;
   }
 }
