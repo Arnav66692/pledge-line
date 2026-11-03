@@ -18,8 +18,8 @@
   };
 
   const INTENTS = {
-    gift_status: 'hear the gift', stop_gift: 'stop the gift', cancel_now: 'cancel now', pause_gift: 'pause the gift',
-    resume_gift: 'restart the gift', one_time_gift: 'one-time gift', other_email: 'a new email, refused', how_do_you_know: 'how do you know',
+    gift_status: 'check the gift', stop_gift: 'stop the gift', cancel_now: 'cancel now', pause_gift: 'pause the gift',
+    resume_gift: 'restart the gift', one_time_gift: 'one-time gift', other_email: 'a new email, turned down', how_do_you_know: 'how do you know',
     repeat: 'repeat', help: 'help', staff_callback: 'a call back', goodbye: 'goodbye', unclear: 'unclear',
   };
   const WRITES = {
@@ -32,7 +32,7 @@
   };
   const READS = { subscription: 'gift', plan: 'plan', invoice: 'invoice' };
   const VERDICTS = { proven: 'Proven', plain: 'Plain', blocked: 'Blocked' };
-  const END_REASONS = { goodbye: 'said goodbye', locked: 'locked after wrong PINs', idle: 'went idle', client: 'closed by the page' };
+  const END_REASONS = { goodbye: 'said goodbye', locked: 'locked after wrong PINs', idle: 'went idle', client: 'page closed' };
 
   const state = { key: null, api: null, rows: [], selected: null, loading: false };
 
@@ -69,7 +69,7 @@
 
   // ---- What each row says, in plain words ----
 
-  const callLabel = (row) => (row.kind === 'script' ? `Script ${row.script}` : 'Free call');
+  const callLabel = (row) => (row.kind === 'script' ? `Script ${row.script}` : 'No script');
   function wanted(row) {
     // A yes or a no routes as unclear, so unclear shows only when nothing else was heard.
     const routed = row.intents.length > 1 ? row.intents.filter((i) => i !== 'unclear') : row.intents;
@@ -175,9 +175,9 @@
   async function staffGet(path) {
     const res = await fetch(path, { headers: { 'x-staff-key': state.key }, cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401) throw new KeyRefused(data.error || 'That staff key is not right.');
+    if (res.status === 401) throw new KeyRefused(data.error || 'That staff key didn\'t work.');
     if (res.status === 404 && path === '/api/staff/calls') throw new KeyRefused('The staff view is off on this line. Set STAFF_KEY and restart it.');
-    if (!res.ok) throw new Error(data.error || 'The record could not load. Please try again.');
+    if (!res.ok) throw new Error(data.error || 'The calls didn\'t load. Please try again.');
     return data;
   }
 
@@ -247,7 +247,7 @@
       animateRows: false,
       ensureDomOrder: true,
       tooltipShowDelay: 400,
-      overlayNoRowsTemplate: '<span class="pl-empty">No calls in the record yet.</span>',
+      overlayNoRowsTemplate: '<span class="pl-empty">No calls yet.</span>',
       onSelectionChanged: () => {
         const [row] = state.api.getSelectedRows();
         if (row) openDetail(row.callId);
@@ -268,14 +268,14 @@
   async function loadCalls() {
     if (state.loading) return;
     state.loading = true;
-    els.status.textContent = 'Loading the record.';
+    els.status.textContent = 'Loading the calls.';
     try {
       const { calls } = await staffGet('/api/staff/calls');
       state.rows = calls;
       if (!state.api) makeGrid();
       state.api.setGridOption('rowData', calls);
       renderTiles(calls);
-      els.status.textContent = `${plural(calls.length, 'call', 'calls')} in the record, newest first. Loaded at ${clockPt(new Date().toISOString())}.`;
+      els.status.textContent = `${plural(calls.length, 'call', 'calls')}, newest first. Updated at ${clockPt(new Date().toISOString())}.`;
     } catch (error) {
       if (error instanceof KeyRefused) return showKeyPrompt(error.message);
       els.status.textContent = error.message;
@@ -290,13 +290,13 @@
     const item = el('li', 'proof');
     item.append(el('span', 'proof-value', fact.value));
     if (!fact.proof) {
-      item.append(el('span', 'proof-from', ` from the line's own limits, not a PayPal read (${fact.source})`));
+      item.append(el('span', 'proof-from', ` is the line's own limit, not a PayPal read, ${fact.source}`));
       return item;
     }
     const p = fact.proof;
     // A plan read has no status, so only a gift or invoice read names one.
     const status = p.status ? `, which showed ${statusWord(p.status)}` : '';
-    item.append(el('span', 'proof-from', ` from PayPal's ${READS[p.what] ?? p.what} read at ${clockPt(p.ts)}${status}`));
+    item.append(el('span', 'proof-from', ` from PayPal's ${READS[p.what] ?? p.what} record, read at ${clockPt(p.ts)}${status}`));
     const meta = el('span', 'proof-meta');
     meta.append(el('span', null, 'debug id '), el('code', 'mono', p.debugId ?? 'none'), el('span', null, ', '), el('span', null, fact.source));
     item.append(meta);
@@ -305,7 +305,7 @@
 
   function claimLine(claim) {
     const item = el('li', `proof claim ${claim.proven ? 'claim-proven' : 'claim-unproven'}`);
-    item.append(el('span', 'proof-value', claim.proven ? 'Claim proven' : 'Claim not proven'));
+    item.append(el('span', 'proof-value', claim.proven ? 'Backed by' : 'Not backed, it needs'));
     item.append(el('span', 'proof-from', ` ${claim.meaning ?? claim.name}`));
     return item;
   }
@@ -345,7 +345,7 @@
   }
 
   function writesList(call) {
-    if (call.writes.length === 0) return el('p', 'hint', 'PayPal changed nothing in this call.');
+    if (call.writes.length === 0) return el('p', 'hint', 'Nothing changed in PayPal on this call.');
     const list = el('ul', 'writes');
     for (const w of call.writes) {
       const item = el('li', w.ok ? 'write-ok' : 'write-refused');
@@ -373,7 +373,7 @@
       el('h3', null, 'What PayPal changed'),
       writesList(call),
       el('h3', null, 'Every sentence the line said'),
-      el('p', 'hint', 'Proven means each amount, date and status in it matches a PayPal read earlier in the call, and each claim is backed by what PayPal returned. Plain means it states no fact. Blocked means the grader found a problem.'),
+      el('p', 'hint', 'Proven means every amount, date and status in the sentence matches what PayPal returned earlier in the call, and anything it says happened, like a pause going through, shows in the call\'s record. Plain means there was nothing to check. Blocked means the check found a problem, so open those first.'),
       ...call.receipts.map((receipt) => turnBlock(receipt, heardByTurn)),
     ];
     els.detailBody.replaceChildren(...body);
@@ -385,7 +385,7 @@
     els.board.classList.add('with-detail');
     fitColumns();
     els.detailTitle.textContent = 'Loading the call';
-    els.detailBody.replaceChildren(el('p', 'hint', 'Reading the record.'));
+    els.detailBody.replaceChildren(el('p', 'hint', 'One moment.'));
     els.detail.focus();
     try {
       const { call } = await staffGet(`/api/staff/calls/${encodeURIComponent(callId)}`);
@@ -423,7 +423,7 @@
     const value = els.keyInput.value.trim();
     if (value.length < 16) {
       els.keyError.hidden = false;
-      els.keyError.textContent = 'The staff key is at least 16 characters.';
+      els.keyError.textContent = 'The staff key is at least 16 characters long.';
       return;
     }
     state.key = value;
@@ -442,7 +442,7 @@
 
   if (!window.agGrid) {
     els.keyError.hidden = false;
-    els.keyError.textContent = 'The grid could not load. Reload the page.';
+    els.keyError.textContent = 'The table didn\'t load. Please reload the page.';
     return;
   }
   state.key = readKey();

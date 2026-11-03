@@ -31,12 +31,21 @@
   const clockFormat = new Intl.DateTimeFormat('en-US', { timeZone: READ_ZONE, hour: 'numeric', minute: '2-digit' });
   // PayPal read times show to the second, so a read-back after a change reads as later than the read before it.
   const secondsFormat = new Intl.DateTimeFormat('en-US', { timeZone: READ_ZONE, hour: 'numeric', minute: '2-digit', second: '2-digit' });
-  // Plain words for the claims a chip shows. A claim not named here shows the grader's own meaning.
+  // Plain words for the claims a chip shows, with the grader's own meaning as its title. A claim not named here shows that meaning.
   const CLAIM_LABELS = {
-    pin_ok: 'PIN passed', wrote: 'PayPal accepted the change', wrote_suspend: 'PayPal accepted the pause',
-    wrote_activate: 'PayPal accepted the restart', wrote_cancel: 'PayPal accepted the cancel', wrote_send_invoice: 'PayPal accepted the send',
-    gift_rechecked: 'Fresh PayPal read in this reply', gift_read: 'PayPal read of your gift', invoice_read: 'PayPal read of the draft',
-    not_verified: 'No PIN yet', set_aside: 'Request set aside, nothing changed', unchanged: 'Nothing changed in PayPal',
+    pin_ok: 'PIN accepted', pin_bad: 'That PIN didn\'t match', tries_left: 'Tries left, counted on this call', pin_locked: 'Call locked after wrong PINs',
+    pin_limit: 'Too many wrong PINs from here', not_verified: 'No PIN yet',
+    wrote: 'PayPal confirmed the change', wrote_suspend: 'PayPal confirmed the pause', wrote_activate: 'PayPal confirmed the restart',
+    wrote_cancel: 'PayPal confirmed the cancel', wrote_send_invoice: 'PayPal confirmed it sent',
+    write_failed: 'PayPal turned down the change', send_failed: 'PayPal turned down the send', write_unclear: 'PayPal gave no clear answer',
+    gift_unread: 'PayPal found no gift after the change', invoice_unread: 'PayPal found no invoice after the send',
+    draft_deleted: 'Draft deleted, PayPal no longer finds it', draft_kept: 'The draft is still in PayPal',
+    no_gift: 'PayPal found no monthly gift', no_email: 'PayPal has no email on file', paypal_unclear: 'A PayPal step didn\'t go through',
+    unchanged: 'Nothing changed in PayPal', no_pause: 'You said no, nothing changed', email_refused: 'New email turned down',
+    set_aside: 'Set aside, nothing changed', callback_noted: 'Call back noted for staff', turn_limit: 'The call reached its limit',
+    timed_out: 'Timed out, nothing changed', nothing_pending: 'Nothing waiting for a yes', call_ended: 'The call had ended',
+    gift_read: 'Read your gift from PayPal', gift_active: 'PayPal shows the gift active', nothing_to: 'PayPal shows nothing to change',
+    invoice_read: 'Read the draft from PayPal', gift_rechecked: 'Read PayPal again for this answer',
   };
 
   const LABELS = { suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending the one-time gift invoice' };
@@ -51,7 +60,7 @@
       ? 'Speech input in Safari needs Siri. Turn on Siri in System Settings, then reload, or type instead.'
       : 'Speech input is turned off in this browser. Please type instead.',
     'no-speech': "I didn't hear anything. Hold the button while you speak, or type instead.",
-    network: 'Speech input needs a network connection. Try again, or type instead.',
+    network: 'Talking needs an internet connection. Try again, or type instead.',
     'audio-capture': 'No microphone was found. Please type instead.',
   };
 
@@ -66,7 +75,7 @@
     const init = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
     const res = await fetch(path, init);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'The line could not answer. Please try again.');
+    if (!res.ok) throw new Error(data.error || 'The line didn\'t answer. Please try again.');
     return data;
   }
 
@@ -99,7 +108,7 @@
     if (script) {
       const item = document.createElement('li');
       item.className = 'expected';
-      item.textContent = `Expected. ${script.expected}.`;
+      item.textContent = `What should happen. ${script.expected}.`;
       els.lines.append(item);
     }
   }
@@ -183,7 +192,7 @@
     void els.gift.offsetWidth;
     els.gift.classList.add('flash');
     const word = (status) => STATUS_WORDS[status] ?? status;
-    els.subChange.textContent = `Changed during this call, ${word(from)} to ${word(to)}.`;
+    els.subChange.textContent = `Changed on this call, from ${word(from)} to ${word(to)}.`;
     els.subChange.hidden = false;
   }
 
@@ -220,7 +229,7 @@
       link.href = inv.recipientViewUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = 'Open the PayPal payer page';
+      link.textContent = 'Open PayPal\'s payment page';
       els.invLink.append(link);
     } else {
       els.invLink.textContent = 'none';
@@ -232,7 +241,7 @@
     if (!pending) return;
     els.pendingLabel.textContent = `${pending.label}. Nothing changes in PayPal until you say yes.`;
     const time = clockTime(pending.expiresAt);
-    els.pendingExpiry.textContent = time ? `This request times out at ${time}.` : 'This request times out soon.';
+    els.pendingExpiry.textContent = time ? `It waits for your answer until ${time}.` : 'It waits a little while for your answer.';
   }
 
   // ---- Receipts, every sentence the line said beside the PayPal read behind it ----
@@ -254,8 +263,8 @@
   function chipLabels(sentence) {
     const groups = new Map();
     for (const fact of listOf(sentence.facts)) {
-      const time = fact.proof ? clockTime(fact.proof.ts, { seconds: true }) ?? 'in this call' : null;
-      const key = fact.proof ? `read ${time}` : 'config';
+      const time = fact.proof ? clockTime(fact.proof.ts, { seconds: true }) ?? 'some point in this call' : null;
+      const key = fact.proof ? `at ${time}` : 'config';
       if (!groups.has(key)) groups.set(key, { key, proofs: [], values: [] });
       const group = groups.get(key);
       if (fact.proof) group.proofs.push(fact.proof);
@@ -264,12 +273,12 @@
     const reads = [...groups.values()].map(({ key, proofs, values }) => {
       if (key === 'config') return { text: `The line's own limit, ${values.join(', ')}`, title: '' };
       const seen = [...new Map(proofs.map((p) => [p.seq, p])).values()];
-      const title = seen.map((p) => `PayPal ${p.what} ${p.id ?? ''}, debug id ${p.debugId ?? 'none'}`.replace(/\s+/g, ' ')).join('. ');
-      return { text: `PayPal, ${key}, ${values.join(', ')}`, title };
+      const title = seen.map((p) => `Read of PayPal ${p.what} ${p.id ?? ''}, debug id ${p.debugId ?? 'none'}`.replace(/\s+/g, ' ')).join('. ');
+      return { text: `From PayPal ${key}, ${values.join(', ')}`, title };
     });
     const claims = listOf(sentence.claims).filter((c) => c.proven).map((c) => {
       const label = CLAIM_LABELS[String(c.name).split('=')[0]];
-      return label ? { text: label, title: `Checked, ${c.meaning ?? c.name}` } : { text: `Checked, ${c.meaning ?? c.name}`, title: '' };
+      return label ? { text: label, title: `Backed by ${c.meaning ?? c.name}` } : { text: `Backed by ${c.meaning ?? c.name}`, title: '' };
     });
     return [...reads, ...claims];
   }
@@ -288,7 +297,7 @@
       item.append(chips);
     } else if (blocked) {
       // Never expected, since the line speaks only what it can prove. If it happens, say so plainly.
-      item.append(element('span', 'chip chip-blocked', 'Not backed by PayPal'));
+      item.append(element('span', 'chip chip-blocked', 'Not backed by the record'));
       const problems = listOf(sentence.problems);
       if (problems.length > 0) {
         const list = element('ul', 'problems');
@@ -315,7 +324,7 @@
     const count = (verdict) => sentences.filter((s) => s.verdict === verdict).length;
     els.receiptsSummary.textContent = sentences.length === 0
       ? 'Nothing said yet.'
-      : `${plural(sentences.length, 'sentence', 'sentences')} said. ${count('proven')} proven against this call's record, ${count('plain')} with nothing to prove, ${count('blocked')} not backed.`;
+      : `${plural(sentences.length, 'sentence', 'sentences')} so far. ${count('proven')} backed by the record, ${count('plain')} with nothing to check, ${count('blocked')} not backed.`;
     els.receiptsScroll.scrollTop = els.receiptsScroll.scrollHeight;
     const lastGiftRead = receipts.flatMap((r) => listOf(r.sentences)).flatMap((s) => listOf(s.facts))
       .map((f) => f.proof).filter((p) => p && p.what === 'subscription').sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)).at(-1);
@@ -326,26 +335,26 @@
     const what = LABELS[e.kind] || e.kind;
     switch (e.type) {
       case 'call_start': return 'Call started.';
-      case 'heard': return `Heard by ${e.source}, "${e.text}".`;
+      case 'heard': return `Heard "${e.text}", ${e.source}.`;
       case 'pin_ok': return 'PIN accepted.';
       case 'pin_bad': return 'Wrong PIN.';
-      case 'pin_locked': return 'Too many wrong PINs, so the call is locked.';
+      case 'pin_locked': return 'Too many wrong PINs. The call is locked.';
       case 'route': return `Understood as ${String(e.intent).replace(/_/g, ' ')}.`;
       case 'read':
-        if (e.notFound) return `Read the ${e.what} from PayPal, which says it is not found.`;
-        if (e.error) return `Could not read the ${e.what} from PayPal, ${e.error}.`;
+        if (e.notFound) return `Asked PayPal for the ${e.what}. PayPal couldn't find it.`;
+        if (e.error) return `Couldn't read the ${e.what} from PayPal, ${e.error}.`;
         return `Read the ${e.what} from PayPal${e.status ? `, status ${e.status}` : ''}, debug id ${e.debugId || 'none'}.`;
       case 'proposed': return `Asked for a yes before ${what}.`;
-      case 'yes': return 'Heard a clear yes in its own turn, so a one-time write token was issued.';
+      case 'yes': return 'Heard a clear yes on its own, so the line may make this one change.';
       case 'no': return 'Heard a no.';
-      case 'write': return e.ok ? `PayPal accepted ${what}, debug id ${e.debugId || 'none'}.` : `PayPal did not accept ${what}, ${e.error || 'error'}.`;
+      case 'write': return e.ok ? `PayPal said yes to ${what}, debug id ${e.debugId || 'none'}.` : `PayPal turned down ${what}, ${e.error || 'error'}.`;
       case 'staging_write':
-        if (e.kind === 'create_draft') return e.ok ? `Created a private draft invoice, ${e.id}.` : 'Could not create a draft invoice.';
-        return e.ok ? `Deleted the draft invoice ${e.id}.` : `Could not delete the draft invoice ${e.id}.`;
-      case 'refused': return `Refused, ${REASONS[e.reason] || e.reason}.`;
-      case 'expired': return 'The pending request timed out, nothing changed.';
-      case 'withdrawn': return 'The pending request was dropped.';
-      case 'staff_callback': return 'Noted a request for a staff callback.';
+        if (e.kind === 'create_draft') return e.ok ? `Made a draft invoice, ${e.id}. It isn't sent.` : 'Couldn\'t make a draft invoice.';
+        return e.ok ? `Deleted the draft invoice ${e.id}.` : `Couldn't delete the draft invoice ${e.id}.`;
+      case 'refused': return `Turned down, ${REASONS[e.reason] || e.reason}.`;
+      case 'expired': return 'No answer in time, so nothing changed.';
+      case 'withdrawn': return 'The request was set aside.';
+      case 'staff_callback': return 'Noted that you want a call back from staff.';
       case 'call_end': return `Call ended, ${e.reason}.`;
       default: return null;
     }
@@ -395,8 +404,8 @@
     state.locked = Boolean(s.locked);
     if (s.locked) els.status.textContent = 'This call is locked after too many wrong PINs.';
     else if (s.ended) els.status.textContent = 'Call ended. Press Start call for a new one.';
-    else if (!s.verified) els.status.textContent = 'Enter your PIN on the keypad, or say its digits.';
-    else els.status.textContent = s.script ? `Verified. Running script ${s.script}.` : 'Verified. Ask about your monthly gift.';
+    else if (!s.verified) els.status.textContent = 'Enter your PIN on the keypad, or say the numbers.';
+    else els.status.textContent = s.script ? `PIN accepted. Running script ${s.script}.` : 'PIN accepted. Go ahead and ask about your monthly gift.';
     renderPending(s.pending);
     renderRecord(s.record);
     renderReceipts(s.receipts);
@@ -429,7 +438,7 @@
    */
   function logGap(callId, turn, startedAt, source, muted, played) {
     const gapMs = Math.max(0, Math.round(performance.now() - startedAt));
-    els.gapLast.textContent = `${seconds(gapMs)}${muted ? ', muted' : played ? '' : ', the reply never started'}`;
+    els.gapLast.textContent = `${seconds(gapMs)}${muted ? ', muted' : played ? '' : ', the reply didn\'t play'}`;
     if (source === 'voice' && !muted && played) {
       state.voiceGaps.push(gapMs);
       els.gapMedian.textContent = `${seconds(median(state.voiceGaps))} over ${state.voiceGaps.length} ${state.voiceGaps.length === 1 ? 'turn' : 'turns'}`;
@@ -586,7 +595,7 @@
   }
 
   function renderPin() {
-    els.pinDots.textContent = state.pin ? '•'.repeat(state.pin.length) : 'No digits yet';
+    els.pinDots.textContent = state.pin ? '•'.repeat(state.pin.length) : 'No numbers yet';
     els.pinDots.classList.toggle('dots-empty', !state.pin);
   }
 
@@ -657,8 +666,8 @@
     }
     if (!SR) {
       openTyped();
-      els.talk.textContent = 'Hold to talk is not available here';
-      showError('This browser has no speech input, so use the typed box below.');
+      els.talk.textContent = 'Talking isn\'t available in this browser';
+      showError('This browser can\'t listen, so please type below.');
     }
     wire();
     setControls();
