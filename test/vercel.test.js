@@ -178,3 +178,20 @@ test('the deps are built once per instance, so a call started on one request is 
   await get(handle, '/');
   assert.equal(built, 1);
 });
+
+test('the shared mock gift is reset when a call starts with no other call live, so Script 2 suspends it every time', async () => {
+  const { handle } = demoHandler(DEMO_ENV, { sleep: async () => {} });
+  for (let run = 1; run <= 2; run += 1) {
+    const start = await (await post(handle, '/api/calls', { script: 2 })).json();
+    const turn = async (text, source, answering) => (await post(handle, `/api/calls/${start.callId}/turn`, { text, source, answering })).json();
+    const pin = await turn(MOCK_DEFAULT_PIN, 'keypad', start.turn);
+    assert.equal(pin.state.verified, true, `run ${run}`);
+    const offer = await turn('I want to stop my monthly gift.', 'typed', pin.turn);
+    assert.match(offer.reply, /pause/i, `run ${run}`);
+    await new Promise((resolve) => { setTimeout(resolve, 300); });
+    const yes = await turn('Yes.', 'typed', offer.turn);
+    assert.match(yes.reply, /as suspended/, `run ${run}`);
+    await turn('Goodbye.', 'typed', yes.turn);
+    assert.equal((await (await get(handle, `/api/calls/${start.callId}`)).json()).ended, true, `run ${run} ended`);
+  }
+});

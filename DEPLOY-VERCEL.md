@@ -126,7 +126,7 @@ Then open the page with `?mute=1`, start Script 2, enter 2468 and say you want t
 The demo keeps nothing durable. A new instance starts empty.
 
 - Calls in progress live in memory. A call whose next turn reaches a different or a new instance gets "That call was not found. Please start a new call." Fluid compute keeps one warm instance serving many requests, so this is rare at demo traffic, but it can happen on a cold start, a redeploy, a scale out to a second instance or after the instance sleeps.
-- The mock PayPal subscription lives in memory, and every visitor on an instance shares it. After one visitor pauses the gift, the next hears it as suspended until someone restarts it. A cold start sets it back to active.
+- The mock PayPal subscription lives in memory, and every visitor on an instance shares it. A caller can leave it suspended, or cancelled, which is final. So `src/vercel.js` sets it back to active whenever a call starts while no other call is live. A visitor who starts a call while someone else is mid-call hears the gift in whatever state that call left it. A cold start also sets it back to active.
 - The ledger at `/tmp/pledge-line/mock-ledger.jsonl` is per instance and goes when the instance does.
 - Rate limits and the wrong PIN count per address reset.
 - Idle calls are swept on the next request after 30 seconds, since a function has no timer between requests.

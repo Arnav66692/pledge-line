@@ -91,13 +91,37 @@ export function createVercelHandler({ env = process.env, overrides = {} } = {}) 
     deps.calls.sweep().catch((error) => log.error(`sweep failed ${error?.name ?? 'Error'}`));
   }
 
+  // Every visitor shares the one mock gift. A Script 2 caller can leave it suspended or cancelled, and cancelled is
+  // final, so a call that starts while no other call is live gets the seeded, active gift back.
+  const started = new Set();
+  function anyCallLive(deps) {
+    for (const id of started) {
+      let ended = true;
+      try {
+        ended = deps.calls.get(id).ended;
+      } catch {
+        // The sweep already dropped it.
+      }
+      if (!ended) return true;
+      started.delete(id);
+    }
+    return false;
+  }
+
   return async function handleRequest(request) {
     const live = instance();
     if (!live) return refusal();
     sweepNow(live.deps);
+    const isNewCall = request.method === 'POST' && new URL(request.url).pathname === '/api/calls';
+    if (isNewCall && !anyCallLive(live.deps)) live.deps.paypal.resetSubscription?.();
     const body = NO_BODY.has(request.method) ? Buffer.alloc(0) : Buffer.from(await request.arrayBuffer());
     const { res, done } = nodeResponse();
     await live.handle(nodeRequest(request, body), res);
-    return done;
+    const response = await done;
+    if (isNewCall && response.ok) {
+      const { callId } = await response.clone().json().catch(() => ({}));
+      if (typeof callId === 'string') started.add(callId);
+    }
+    return response;
   };
 }

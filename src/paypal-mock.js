@@ -192,6 +192,8 @@ export function createMockPayPal({ tokens, now = () => new Date(), onWebhook = n
     sendInvoice,
     verifyWebhookSignature,
     mockPay,
+    /** The public demo shares one gift among all visitors, so it puts the seeded gift back when nobody is on a call. */
+    resetSubscription: () => { subs.set(MOCK_SUBSCRIPTION_ID, seedSubscription(now())); },
     mockSetSubscriptionStatus: (id, status) => {
       const sub = subs.get(id);
       if (sub) subs.set(id, { ...sub, status });
