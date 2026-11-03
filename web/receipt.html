@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" data-page="receipt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pledge Line, receipt of your call</title>
+  <meta name="description" content="Every sentence the line said on your call, with what backed it. Print it, and keep the receipt file.">
+  <meta name="theme-color" content="#ece4dd" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151918" media="(prefers-color-scheme: dark)">
+  <meta name="robots" content="noindex">
+  <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/chrome.css">
+  <link rel="stylesheet" href="/receipt.css">
+  <script src="/claim-words.js" defer></script>
+  <script src="/receipt.js" defer></script>
+</head>
+<body class="rc-page">
+  <a class="skip" href="#main">Skip to the receipt</a>
+  <header class="rc-top">
+    <a class="logo rc-logo" href="/" aria-label="Pledge Line, the donor line"><span class="logo__a">pledge</span><span class="logo__b">line</span></a>
+    <a class="rc-toplink" href="/check">Check a receipt</a>
+  </header>
+
+  <main id="main" class="rc-sheet" tabindex="-1">
+    <p class="rc-kicker">Receipt of a call</p>
+    <h1 class="rc-title">Everything the line said</h1>
+    <p id="rc-status" class="rc-status" role="status">Getting the receipt from the line.</p>
+
+    <div id="rc-body" hidden>
+      <dl class="rc-meta">
+        <dt>Nonprofit</dt><dd id="rc-org"></dd>
+        <dt>Call</dt><dd id="rc-when"></dd>
+        <dt>Call number</dt><dd id="rc-id" class="rc-mono"></dd>
+      </dl>
+      <p id="rc-practice" class="rc-practice"></p>
+
+      <div class="rc-actions">
+        <button id="rc-download" class="pill pill--dark" type="button">Download the receipt file</button>
+        <button id="rc-print" class="pill pill--outline" type="button">Print this page</button>
+      </div>
+
+      <div class="rc-notes">
+        <p><strong>Keep the file.</strong> This demo's server forgets its calls when it restarts, so the file you download is the copy that lasts. After a restart, this page can't show the call again.</p>
+        <p><strong>It is tamper-evident.</strong> The line signed every sentence in the file. If anyone edits it, even by one letter, a check at <a href="/check">/check</a> shows that it was changed and which sentence. The signature can't stop an edit. It shows one.</p>
+      </div>
+
+      <h2 class="rc-h2">In order, with what backs each sentence</h2>
+      <p class="rc-hint">Times are Pacific. A PayPal reference is the id PayPal gave that read, which PayPal can look up.</p>
+      <ol id="rc-list" class="rc-list"></ol>
+
+      <p id="rc-seal" class="rc-seal"></p>
+    </div>
+  </main>
+</body>
+</html>

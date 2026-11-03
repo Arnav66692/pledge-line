@@ -12,6 +12,8 @@ import { createCallService, CallNotFound, GapRefused, LIVE_TEMPLATE_HASH, LIVE_U
 import { TEMPLATE_HASH } from './template-words.js';
 import { PILOT_SCRIPTS, displayLines } from './pilot-scripts.js';
 import { staffCalls, staffCall, staffKeyMatches } from './staff.js';
+import { createReceiptSigner, secretMatches, verifyReceipt, RECEIPT_ALG, RECEIPT_MAX_BYTES } from './receipt-seal.js';
+import { receiptFile } from './receipt-file.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -28,6 +30,10 @@ const STAFF_CALLS_PATH = /^\/api\/staff\/calls(?:\/([0-9a-f-]{36}))?$/;
 // The staff page and its files. With no STAFF_KEY they are 404s like every staff route, so the view is simply off.
 const STAFF_FILES = new Set(['staff.html', 'staff.js', 'staff.css']);
 const STAFF_DIRS = new Set(['vendor']);
+// The donor's receipt page and the check page. With no RECEIPT_SIGNING_KEY they are 404s like every receipt route.
+const RECEIPT_FILES = new Set(['receipt.html', 'receipt.js', 'receipt.css', 'check.html', 'receipt-check.js']);
+const RECEIPT_PAGES = Object.freeze({ '/receipt': 'receipt.html', '/check': 'check.html' });
+const RECEIPT_PATH = /^\/api\/receipts\/([0-9a-f-]{36})$/;
 const STATIC_TYPES = Object.freeze({
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -184,7 +190,9 @@ export function buildDeps(config, overrides = {}) {
   // Only the public Render service needs it. Locally the line listens on this computer alone, and Script 8 uses three wrong PINs.
   const pinGuard = config.trustProxy ? createPinGuard({ limit: config.limits.wrongPinsPerHour, windowMs: HOUR_MS, now: () => now().getTime() }) : null;
   const calls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
-  return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now };
+  // Off, with every receipt route a 404, unless RECEIPT_SIGNING_KEY is set.
+  const receiptSigner = config.receiptSigningKey ? createReceiptSigner(config.receiptSigningKey) : null;
+  return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now, receiptSigner };
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8', headers = {}) {
@@ -244,6 +252,12 @@ export function isStaffFile(file, webDir = WEB_DIR) {
   return parts.length === 1 ? STAFF_FILES.has(head) : STAFF_DIRS.has(head);
 }
 
+/** True for a file only the receipt pages use, which stays a 404 while receipts are off. */
+export function isReceiptFile(file, webDir = WEB_DIR) {
+  const parts = path.relative(webDir, file).split(path.sep);
+  return parts.length === 1 && RECEIPT_FILES.has(parts[0].toLowerCase());
+}
+
 function serveFile(res, file) {
   fs.stat(file, (statError, stat) => {
     if (statError || !stat.isFile()) return send(res, 404, { error: 'Not found.' });
@@ -254,12 +268,13 @@ function serveFile(res, file) {
   });
 }
 
-function serveStatic(req, res, webDir, staffOn) {
+function serveStatic(req, res, webDir, staffOn, receiptsOn) {
   const rawPath = req.url.split('?')[0];
   const file = resolveStatic(rawPath, webDir);
   if (!file) return send(res, rawPath.includes('..') ? 400 : 404, { error: 'Not found.' });
   // Checked on the resolved file, so an encoded path such as /%73taff.js can't reach it either.
   if (!staffOn && isStaffFile(file, webDir)) return send(res, 404, { error: 'Not found.' });
+  if (!receiptsOn && isReceiptFile(file, webDir)) return send(res, 404, { error: 'Not found.' });
   serveFile(res, file);
 }
 
@@ -305,6 +320,7 @@ function createApi(deps) {
   const turns = createRateLimiter({ limit: config.limits.turnsPerMinute, windowMs: MINUTE_MS });
   const scripts = PILOT_SCRIPTS.map((s) => ({ number: s.number, title: s.title, lines: displayLines(s), expected: s.expected }));
   const staffRequests = createRateLimiter({ limit: config.limits.staffPerMinute, windowMs: MINUTE_MS });
+  const receiptRequests = createRateLimiter({ limit: config.limits.receiptsPerMinute, windowMs: MINUTE_MS });
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
 
   // A second gap for a turn is a 409, and so is one for a reply the line has not finished (Test 4).
@@ -353,6 +369,40 @@ function createApi(deps) {
     return send(res, 200, { call });
   }
 
+  /**
+   * The donor's receipt. Off, as a 404, when RECEIPT_SIGNING_KEY is unset. A call's receipt needs the secret its page
+   * got when the call started, in x-receipt-secret. The limit runs before the secret check, so wrong secrets are
+   * limited too, and a wrong secret is a 401 whether or not the call exists.
+   */
+  async function receiptRoute(req, res, pathname, ip) {
+    const signer = deps.receiptSigner;
+    if (!signer) throw new HttpError(404, 'Not found.');
+    if (Object.hasOwn(RECEIPT_PAGES, pathname)) {
+      if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+      return serveFile(res, path.join(deps.webDir ?? WEB_DIR, RECEIPT_PAGES[pathname]));
+    }
+    if (pathname === '/receipt-key') {
+      if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+      return send(res, 200, { alg: RECEIPT_ALG, keyId: signer.keyId, publicKey: signer.publicHex, pem: signer.publicPem });
+    }
+    if (pathname === '/api/receipts/check') {
+      if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
+      limitOr429(receiptRequests, ip);
+      const raw = await readBody(req, RECEIPT_MAX_BYTES);
+      return send(res, 200, { check: verifyReceipt(raw, { publicKey: signer.publicKey, keyId: signer.keyId }), keyId: signer.keyId });
+    }
+    const match = pathname.match(RECEIPT_PATH);
+    if (!match) throw new HttpError(404, 'Not found.');
+    if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+    limitOr429(receiptRequests, ip);
+    const given = req.headers['x-receipt-secret'];
+    if (!secretMatches(signer, match[1], typeof given === 'string' ? given : '')) throw new HttpError(401, "That receipt link isn't right for this call.");
+    const { text, error } = receiptFile(deps.ledger.byCall(match[1]), config, signer);
+    if (error === 'not_ended') throw new HttpError(409, 'The call is still going. Its receipt is ready once it ends.');
+    if (error) throw new HttpError(404, 'The line no longer has this call. Its server forgets calls when it restarts.');
+    return send(res, 200, text);
+  }
+
   async function webhookRoute(req, res) {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
     const rawBody = await readBody(req, WEBHOOK_LIMIT_BYTES);
@@ -364,6 +414,9 @@ function createApi(deps) {
 
   return async function route(req, res, pathname, ip) {
     if (pathname === '/staff' || pathname === '/api/staff' || pathname.startsWith('/api/staff/')) return staffRoute(req, res, pathname, ip);
+    if (Object.hasOwn(RECEIPT_PAGES, pathname) || pathname === '/receipt-key' || pathname === '/api/receipts' || pathname.startsWith('/api/receipts/')) {
+      return receiptRoute(req, res, pathname, ip);
+    }
     if (pathname === '/healthz' && req.method === 'GET') return send(res, 200, { ok: true, mode: { paypal: config.paypal.mode, router: config.router.mode } });
     if (pathname === '/api/pilot-scripts' && req.method === 'GET') return send(res, 200, { scripts });
     if (pathname === '/api/webhooks' && req.method === 'GET') return send(res, 200, { webhooks: webhooks.recent(WEBHOOK_LIST_MAX) });
@@ -374,17 +427,19 @@ function createApi(deps) {
       limitOr429(newCalls, ip);
       const userAgent = typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] ?? '';
       // The page's engine signals, which a user-agent override does not change. call.js keeps only those fields.
-      return send(res, 200, calls.start({ script: body.script ?? null, userAgent, client: body.client ?? null, clientKey: ip }));
+      const started = calls.start({ script: body.script ?? null, userAgent, client: body.client ?? null, clientKey: ip });
+      // Only the page that started the call gets its receipt secret. It is never logged or stored.
+      return send(res, 200, deps.receiptSigner ? { ...started, receiptSecret: deps.receiptSigner.secretFor(started.callId) } : started);
     }
     const match = pathname.match(CALL_PATH);
     if (match) return callRoute(req, res, ip, match[1], match[2]);
     if (pathname.startsWith('/api/') || pathname.startsWith('/webhooks/')) throw new HttpError(404, 'Not found.');
     if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
-    return serveStatic(req, res, deps.webDir ?? WEB_DIR, Boolean(config.staffKey));
+    return serveStatic(req, res, deps.webDir ?? WEB_DIR, Boolean(config.staffKey), Boolean(deps.receiptSigner));
   };
 }
 
-const redactPath = (pathname) => pathname.replace(/\/api\/(calls|staff\/calls)\/[0-9a-f-]{36}/, '/api/$1/:id');
+const redactPath = (pathname) => pathname.replace(/\/api\/(calls|staff\/calls|receipts)\/[0-9a-f-]{36}/, '/api/$1/:id');
 
 export function createServer(deps) {
   const route = createApi(deps);

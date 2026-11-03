@@ -20,6 +20,7 @@
     invNumber: $('inv-number'), invStatus: $('inv-status'), invAmount: $('inv-amount'), invDebug: $('inv-debug'), invLink: $('inv-link'),
     events: $('events'), gift: $('gift'), subRead: $('sub-read'), subChange: $('sub-change'), demo: $('demo'),
     receipts: $('receipts'), receiptsSummary: $('receipts-summary'), receiptsScroll: $('receipts-scroll'),
+    keep: $('keep'), keepLink: $('keep-link'),
   };
 
   // Read times show in Pacific time, the line's own zone, whatever zone the viewer's computer is in.
@@ -88,7 +89,8 @@
 
   // lastTurn is the turn of the last reply this page received. Each turn says it answers that reply, so a yes only counts for a proposal the caller heard.
   // giftStatus is the status the gift card last showed in this call, so a change's read-back can be marked when it lands.
-  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false };
+  // receiptSecret is the call's own key to its receipt, given only to this page when the call started. It stays in memory.
+  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false, receiptSecret: null };
 
   // Engine signals a user-agent override, such as Chrome's device toolbar, does not change. The line checks them against the agent.
   const engineSignals = () => ({ vendor: String(navigator.vendor || ''), chrome: typeof window.chrome !== 'undefined', uaData: 'userAgentData' in navigator });
@@ -438,6 +440,17 @@
     els.pinClear.disabled = !live;
     for (const key of els.keys) key.disabled = !live;
     els.start.textContent = live ? 'End call' : 'Start call';
+    renderKeep();
+  }
+
+  /**
+   * After the call ends, a link to the call's receipt page. The secret rides in the link's fragment, which the browser
+   * never sends to a server, and the receipt page takes it out of the address bar as soon as it loads.
+   */
+  function renderKeep() {
+    const ready = Boolean(state.callId && state.receiptSecret) && state.ended;
+    els.keep.hidden = !ready;
+    els.keepLink.href = ready ? `/receipt#${state.callId}.${state.receiptSecret}` : '/receipt';
   }
 
   function applyState(s) {
@@ -495,6 +508,7 @@
       const script = els.script.value ? Number(els.script.value) : null;
       const data = await api('/api/calls', { script, userAgent: navigator.userAgent, client: engineSignals() });
       state.callId = data.callId;
+      state.receiptSecret = typeof data.receiptSecret === 'string' ? data.receiptSecret : null;
       state.lastTurn = data.turn;
       state.pin = '';
       renderPin();
