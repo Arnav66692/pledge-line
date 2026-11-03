@@ -56,3 +56,35 @@ Added Nov 2 on the `feat/unseen-look` branch. The donor page and the staff view 
 - Changed from unseen. Unseen's faces are paid, so Instrument Serif and Geist stand in, self-hosted under the SIL Open Font License with their sha256 in `web/fonts/README.md`. Unseen's rock and world link are left out. The hero's pill is "Start a call" and opens the call workspace instead of a project list. The room dims while a call is open so the receipts stay easy to read. Unseen has no dark mode, so dark mode here is the same room at dusk. The staff view is a dark unseen case page. Focus rings stay, since unseen drops them.
 - The room pauses when the tab is hidden, draws one still frame under reduced motion, and falls back to a painted still in CSS when WebGL2 is missing, the context is lost, or the room's files fail to load. It draws its first frame before the canvas shows, so a slow first frame never flashes black, and it holds 60 fps at full quality on this Mac. The menu closes on Esc, keeps focus inside while open and sets `aria-expanded`.
 - Sound is off by default. The line speaks its replies out loud and the pilot times the gap after each one, so a background bed must never talk over a donor or the line, or add noise to that timing. When a viewer turns it on, it plays on the hero only and fades to silent within a quarter second once a call starts.
+
+## The donor's receipt
+
+Added Nov 3 on the `feat/proof-receipt` branch. Other entries already show a tamper check as a demo beat. This one is about the donor. When a call ends, she can keep a receipt of every sentence the line said to her, each with what backs it, and anyone can later check that nobody changed it.
+
+- `RECEIPT_SIGNING_KEY` turns it on. It is 64 hex characters, a 32-byte Ed25519 key, and `config.js` refuses any other shape without echoing the value. Unset, the button is never shown, the page gets no secret, and `/receipt`, `/check`, `/receipt-key`, `/api/receipts/...` and the five receipt files are all 404s, like the staff view without `STAFF_KEY`.
+- After the call ends, the donor page shows "Keep a receipt of this call". It opens `/receipt`, a plain printable page on the line's own tokens and fonts, which lists every sentence in order with the PayPal read time, amount and status behind each fact, the plain words for each claim from `web/claim-words.js`, and a note on each sentence that had nothing to check. It offers the receipt file to download, byte for byte as the line signed it, and a print button. Print drops the buttons and prints black on white.
+- The page says plainly that Render's free disk is wiped on restart, so the downloaded file is the copy that lasts, and that the file is tamper-evident. An edit is detectable, not prevented. The copy never says tamper-proof.
+- Only the page that started the call can fetch its receipt. `POST /api/calls` returns `receiptSecret`, 128 bits, an HMAC of the call id under a key derived from the signing key, so nothing is stored and one call's secret never opens another's. The donor page puts it in the link's fragment, which the browser never sends to a server, and the receipt page moves it to `sessionStorage` and takes it out of the address bar at once. `GET /api/receipts/:id` needs it in `x-receipt-secret`, compared in constant time on sha256 digests, after a limit of 30 requests a minute per address. A wrong or missing secret is a 401, whether or not the call exists, a call still going is a 409, and a call the ledger no longer has is a 404.
+- The file holds no PIN or PIN digits, no full email (the line only ever says the masked one), no token or pending ids, no user agent and no raw snapshots. It is built from `buildReceipts` alone, with `receiptOptions(config)`, so it covers the call's own subscription, its plan and the call's own drafts, and each sentence is rebuilt from a short list of fields. Any email form with an @ is hidden, though the line never says one.
+- `/check` takes a receipt file, by file picker or drop, posts its exact bytes, and says "Untouched, and signed by this line." or which sentence changed. `scripts/check-receipt.js FILE --key receipt-key.json` does the same offline with only the public key from `/receipt-key`. It exits 0 for untouched, 1 for changed and 2 for a wrong command.
+
+### The receipt file, version 1
+
+`src/receipt-file.js` builds the content and `src/receipt-seal.js` signs and checks it, with `node:crypto` alone. The file is UTF-8 JSON in one exact layout: a top line with everything but the sentences, one line per sentence, then `]}` and a newline.
+
+```
+{"about":"...","call":{...},"chain":{"count":17,"head":"<hex>","start":"<hex>"},"format":"pledge-line-receipt",
+ "signature":{"alg":"Ed25519","keyId":"<16 hex>","value":"<128 hex>"},"version":1,"sentences":[
+{"at":"<ISO>","claims":[...],"facts":[...],"link":"<hex>","n":1,"note":"...","problems":[],"sig":"<128 hex>","text":"...","turn":0,"verdict":"plain"},
+...
+]}
+```
+
+- `call` is `{id, org, script, startedAt, endedAt, endReason, timeZone, paypal, router, practice}`. Times are UTC ISO strings, as logged.
+- Each sentence is `{n, turn, at, text, verdict, facts, claims, problems, note}` plus its `link` and `sig`. `text`, `verdict`, `facts` (with each `proof` of `{seq, ts, what, id, debugId, status}`), `claims` and `problems` are exactly what `buildReceipts` gives for that sentence. `note` is a plain sentence for a plain or blocked sentence, else null.
+- Keys are sorted and there are no spaces, so a value always gives the same bytes. Numbers are whole numbers only.
+- `sig` signs the sentence's content alone, `pledge-line-receipt/1 sentence\n` then its canonical JSON without `link` and `sig`. `chain.start` is the sha256 of `pledge-line-receipt/1 call\n` and the canonical `{about, call, format, version}`. Each `link` is sha256 of the previous link's bytes and the sha256 of the sentence's signed message, and `chain.head` is the last link. `signature.value` signs `pledge-line-receipt/1 seal\n` and the canonical `{count, head, start}`. `keyId` is the first 16 hex of the sha256 of the raw public key.
+
+The check names what changed. A sentence whose words, facts or number changed fails its own signature, even if every link after it was redone. A sentence taken out, added, moved or copied in from another receipt breaks the chain or sits out of its signed order. A change at the top is named as the call details or the seal. Any byte the values don't cover, such as a space or a line ending, fails as a layout change. A test edits every byte of a short call's file, and 400 places of a long one three ways, and each edit fails and names the sentence it is in.
+
+The CSP is the same string on every route, with receipts on or off. `check.js`, `receipt.js`, `say.js`, `vocabulary.js`, the template lists, `router.js` and `gate.js` are unchanged, the line says no new sentence, and grading a copy of the mock dry run's ledger with pilot's `check.js` and with this branch's gives the same output.

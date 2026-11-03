@@ -90,6 +90,16 @@ After Script 5 sends its invoice, the record card links to PayPal's payer page. 
 
 Set `STAFF_KEY` to at least 16 characters and open `/staff`. A coordinator types the key and sees every call the line took, what the donor wanted, what PayPal changed and what PayPal shows now, with each call's sentences counted as proven, plain or blocked. Picking a call shows every sentence the line said beside the PayPal read behind each fact, with its time and debug id, and each claim with what the grader needed for it. The PIN, PIN turns, full emails, token ids and user agents never reach the page. With `STAFF_KEY` unset the view is off and every staff page is a 404. The table is AG Grid Community, served by the line itself, see `web/vendor/README.md`.
 
+## A receipt the donor keeps
+
+Set `RECEIPT_SIGNING_KEY` to 64 hex characters (`SETUP.md` shows how) and, when a call ends, the donor page offers "Keep a receipt of this call". It opens a printable page with every sentence the line said, in order, and what backs each one, and offers the receipt file to download. The line signs every sentence with Ed25519 and chains them with sha256, so the file is tamper-evident. Any edit can be detected, and the check says which sentence changed. It can't stop an edit. Drop a file on `/check`, or check it offline with only the public key from `/receipt-key`.
+
+```
+node scripts/check-receipt.js receipt.json --key receipt-key.json
+```
+
+Only the page that started a call gets that call's receipt secret. The file holds no PIN, no full email, no token ids and no user agent. Render's free disk is wiped on restart, so the downloaded file is the copy that lasts. With the key unset, the button and every receipt page are off, as 404s. `FEATURES.md` has the file's format.
+
 ## The pilot
 
 The pass bar and how each test is graded live in `PILOT.md`. The bar was set before any code existed and does not change after results come in. `npm run pilot:check` grades the ledger and writes `PILOT-RESULTS.md`.

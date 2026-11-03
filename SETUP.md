@@ -47,6 +47,14 @@ In `.env`, set `PILOT_PIN=` to 4 to 6 digits you'll remember. Don't use 1111, 22
 
 Optional. To read the night's calls and their receipts at `/staff`, set `STAFF_KEY=` in `.env`, and in Render, to a made-up key of at least 16 characters with no spaces, and type it on that page. Left empty, the staff view stays off.
 
+Optional. To let a donor keep a signed receipt of each call, set `RECEIPT_SIGNING_KEY=` in `.env`, and in Render, to 64 hex characters. Make them with this, then paste the line it prints.
+
+```
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Keep it secret, like a password, and keep the same one. A receipt signed with an old key no longer checks once the key changes. Left empty, the receipt button, `/receipt`, `/check` and `/receipt-key` stay off. Render's free disk is wiped on restart, so the file a donor downloads is the only copy that lasts.
+
 ## 5. Put the line on Render
 
 The private repo `Arnav66692/pledge-line` is pushed, with the tested code on the `pilot` branch.
