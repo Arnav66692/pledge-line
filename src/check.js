@@ -5,6 +5,7 @@ import { LIMITS } from './config.js';
 import { TEMPLATE_WORDS, TEMPLATE_SENTENCES, TEMPLATE_CLAIMS, TEMPLATE_HASH } from './template-words.js';
 import { TEMPLATE_HISTORY } from './template-history.js';
 import { unreviewedSentences } from './vocabulary.js';
+import { drillOf } from './drill.js';
 
 const DEFAULT_TIME_ZONE = 'America/Los_Angeles';
 const SOURCE_WHAT = Object.freeze({
@@ -71,6 +72,16 @@ export function callSubscription(list, subscriptionId = null) {
   const first = list.find((e) => (e.type === 'read' && e.what === 'subscription') || ((e.type === 'proposed' || e.type === 'write') && SUBSCRIPTION_KINDS.has(e.kind)));
   if (!first) return null;
   return first.type === 'read' ? first.id : first.targetId;
+}
+
+/**
+ * The id a write is read back from. A fault drill's suspend goes to PayPal's test id and is read back from the call's
+ * own gift (A12). Every other write, in every other call, is read back from its own target, as before.
+ */
+function readTargetOf(write, list, subId) {
+  const drill = drillOf(list.find((e) => e.type === 'call_start'));
+  const drilled = Boolean(drill) && Boolean(subId) && write.kind === drill.kind && write.targetId === drill.writeId;
+  return drilled ? subId : write.targetId;
 }
 
 /** The reads a fact may come from: the latest of the call's own subscription, of that subscription's plan, and of the call's latest draft. */
@@ -148,8 +159,11 @@ const CHANGED = Object.freeze({ suspend: (s) => s.status === 'SUSPENDED', activa
 const ACTS_ON = Object.freeze({ suspend: ['ACTIVE'], activate: ['SUSPENDED'], cancel: ['ACTIVE', 'SUSPENDED'] });
 const isClientError = (status) => Number.isInteger(status) && status >= 400 && status < 500;
 
-/** The latest read of a write's target after the write, in the turn. */
-const readAfter = (scope, write) => scope.turn.filter((e) => e.seq > write.seq && e.type === 'read' && e.what === WRITE_READS[write.kind] && e.id === write.targetId).at(-1) ?? null;
+/** The latest read of a write's target after the write, in the turn, the call's own gift for a drill's suspend. */
+function readAfter(scope, write) {
+  const target = scope.readTarget(write);
+  return scope.turn.filter((e) => e.seq > write.seq && e.type === 'read' && e.what === WRITE_READS[write.kind] && e.id === target).at(-1) ?? null;
+}
 
 /**
  * The turn's failed write that PayPal refused: answered with a 4xx, or followed by a read that does not show the
@@ -176,7 +190,8 @@ const nothingToDo = (scope, kind) => Boolean(scope.gift?.snapshot) && Object.has
 function unreadAfterWrite(scope, what, kinds) {
   const write = scope.turn.filter((e) => e.type === 'write' && kinds.has(e.kind)).at(-1);
   if (!write) return false;
-  const read = scope.turn.filter((e) => e.seq > write.seq && e.type === 'read' && e.what === what && e.id === write.targetId).at(-1);
+  const target = scope.readTarget(write);
+  const read = scope.turn.filter((e) => e.seq > write.seq && e.type === 'read' && e.what === what && e.id === target).at(-1);
   return Boolean(read) && !read.snapshot;
 }
 
@@ -265,7 +280,8 @@ function claimScope(list, said, subId) {
   const before = list.filter((e) => e.seq < said.seq);
   const drafts = before.filter((e) => e.type === 'staging_write' && e.kind === 'create_draft' && e.ok).map((e) => e.id);
   const latest = (what, id) => (id ? before.filter((e) => e.type === 'read' && e.what === what && e.id === id).at(-1) ?? null : null);
-  return { said, before, turn: before.filter((e) => e.turn === said.turn), made: new Set(drafts), gift: latest('subscription', subId), draft: latest('invoice', drafts.at(-1)) };
+  return { said, before, turn: before.filter((e) => e.turn === said.turn), made: new Set(drafts), gift: latest('subscription', subId), draft: latest('invoice', drafts.at(-1)),
+    readTarget: (write) => readTargetOf(write, list, subId) };
 }
 
 /** The reply a repeat repeats: the latest earlier reply of the turn it names, whose words it ends with. */
@@ -455,16 +471,17 @@ function checkTimely(write, yes, proposed, list) {
 const lastBefore = (list, seq, pred) => list.filter((e) => e.seq < seq && pred(e)).at(-1) ?? null;
 
 /** The proposal was read back from its own target, and an invoice send targets a draft this call made. */
-function checkTarget(write, proposed, list) {
+function checkTarget(write, proposed, list, readId) {
   const problems = [];
   const read = lastBefore(list, proposed.seq, (e) => e.type === 'read' && e.what === WRITE_READS[write.kind]);
-  if (!read || read.id !== write.targetId) problems.push(violation(write, 'writes', `the ${write.kind} proposal was not read back from ${write.targetId}`));
+  if (!read || read.id !== readId) problems.push(violation(write, 'writes', `the ${write.kind} proposal was not read back from ${write.targetId}`));
   const made = list.some((e) => e.type === 'staging_write' && e.kind === 'create_draft' && e.ok && e.id === write.targetId && e.seq < proposed.seq);
   if (write.kind === 'send_invoice' && !made) problems.push(violation(write, 'writes', `the invoice sent, ${write.targetId}, is not a draft this call made`));
   return problems;
 }
 
-function checkOneWrite(write, list) {
+function checkOneWrite(write, list, subId) {
+  const readId = readTargetOf(write, list, subId);
   if (!hasToken(write)) return [violation(write, 'writes', `${write.kind} ran without a one-time token`)];
   const yes = list.find((e) => e.type === 'yes' && e.tokenId === write.tokenId && e.seq < write.seq);
   if (!yes) return [violation(write, 'writes', `${write.kind} ran without an earlier yes carrying its token`)];
@@ -475,18 +492,19 @@ function checkOneWrite(write, list) {
   if (proposed.kind !== write.kind || proposed.targetId !== write.targetId) problems.push(violation(write, 'writes', `${write.kind} does not match what was proposed`));
   const spoken = list.some((e) => e.type === 'said' && e.turn === proposed.turn && e.seq > proposed.seq && e.seq < yes.seq);
   if (!spoken) problems.push(violation(write, 'writes', `the ${write.kind} proposal was never spoken before the yes`));
-  problems.push(...checkYesTurn(write, yes, proposed, list), ...checkTimely(write, yes, proposed, list), ...checkTarget(write, proposed, list));
-  const readBack = list.some((e) => e.type === 'read' && e.what === WRITE_READS[write.kind] && e.id === write.targetId && e.turn === write.turn && e.seq > write.seq);
-  if (!readBack) problems.push(violation(write, 'writes', `no fresh PayPal read of ${write.targetId} after ${write.kind}`));
+  problems.push(...checkYesTurn(write, yes, proposed, list), ...checkTimely(write, yes, proposed, list), ...checkTarget(write, proposed, list, readId));
+  const readBack = list.some((e) => e.type === 'read' && e.what === WRITE_READS[write.kind] && e.id === readId && e.turn === write.turn && e.seq > write.seq);
+  if (!readBack) problems.push(violation(write, 'writes', `no fresh PayPal read of ${readId} after ${write.kind}`));
   return problems;
 }
 
 /** Every subscription read, proposal and write in a call targets one subscription, the configured one when given (R3-7). */
 function checkOneSubscription(list, subscriptionId) {
   const subId = callSubscription(list, subscriptionId);
+  // A fault drill's suspend proposal and write go to PayPal's test id and stand for the call's own gift (A12).
   const targetOf = (e) => {
     if (e.type === 'read' && e.what === 'subscription') return e.id;
-    return (e.type === 'proposed' || e.type === 'write') && SUBSCRIPTION_KINDS.has(e.kind) ? e.targetId : undefined;
+    return (e.type === 'proposed' || e.type === 'write') && SUBSCRIPTION_KINDS.has(e.kind) ? readTargetOf(e, list, subId) : undefined;
   };
   // sweep holds a later call to the id it logged, which may not be the pilot's, so the message names the id only (C1).
   const own = subscriptionId ? `${subId}, the subscription this call is held to` : `${subId}, the subscription this call works on`;
@@ -511,10 +529,11 @@ export function checkWrites(events, { subscriptionId = null } = {}) {
       if (ended && event.seq > ended.seq) problems.push(violation(event, 'writes', `${event.type} happened after the call ended`));
     }
     const tokens = new Set();
+    const subId = callSubscription(list, subscriptionId);
     for (const write of list.filter((e) => e.type === 'write')) {
       if (tokens.has(write.tokenId)) problems.push(violation(write, 'writes', 'a token was used twice'));
       tokens.add(write.tokenId);
-      problems.push(...checkOneWrite(write, list));
+      problems.push(...checkOneWrite(write, list, subId));
     }
   }
   return problems;

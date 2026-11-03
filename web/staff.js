@@ -72,7 +72,8 @@
 
   // ---- What each row says, in plain words ----
 
-  const callLabel = (row) => (row.kind === 'script' ? `Script ${row.script}` : 'No script');
+  // A fault drill sends its pause to PayPal's test id on purpose, so it is never read as a donor's call.
+  const callLabel = (row) => (row.kind === 'drill' ? `Fault drill, ${row.drill?.writeId ?? 'test id'}` : row.kind === 'script' ? `Script ${row.script}` : 'No script');
   function wanted(row) {
     // A yes or a no routes as unclear, so unclear shows only when nothing else was heard.
     const routed = row.intents.length > 1 ? row.intents.filter((i) => i !== 'unclear') : row.intents;
@@ -82,7 +83,10 @@
     if (row.locked) return 'PIN locked';
     return row.verified ? 'nothing after the PIN' : 'no PIN yet';
   }
-  const writeWords = (w) => (w.ok ? WRITES[w.kind] : REFUSED[w.kind]) ?? `${w.kind} ${w.ok ? 'done' : 'refused'}`;
+  // A 4xx is PayPal saying no. A 5xx or a lost answer is no clear answer, so the row never calls it refused (A12).
+  const refusedOutright = (w) => Number.isInteger(w.httpStatus) && w.httpStatus >= 400 && w.httpStatus < 500;
+  const writeWords = (w) => (w.ok ? WRITES[w.kind] : !w.staging && !refusedOutright(w) ? `no clear answer to the ${w.kind === 'send_invoice' ? 'send' : 'change'}` : REFUSED[w.kind])
+    ?? `${w.kind} ${w.ok ? 'done' : 'refused'}`;
   const changed = (row) => (row.writes.length > 0 ? row.writes.map(writeWords).join(', ') : 'nothing');
   function paypalNow(row) {
     const parts = [];
@@ -128,6 +132,7 @@
       const tags = [];
       if (row.mock) tags.push(el('span', 'tag', 'test'));
       if (row.dryRun) tags.push(el('span', 'tag', 'dry run'));
+      if (row.kind === 'drill') tags.push(el('span', 'tag', 'drill, not scored'));
       if (row.callback) tags.push(el('span', 'flag call-flag', 'Call back'));
       this.gui.replaceChildren(el('span', 'call-name', callLabel(row)), ...tags);
       return true;
@@ -368,7 +373,7 @@
     const inv = call.paypalNow.invoice;
     const body = [
       facts([
-        ['Run', call.mock ? 'Test call, not counted' : call.dryRun ? 'Dry run, not counted' : "PayPal's test system"],
+        ['Run', call.kind === 'drill' ? 'Fault drill, not scored' : call.mock ? 'Test call, not counted' : call.dryRun ? 'Dry run, not counted' : "PayPal's test system"],
         ['Ended', call.ended ? `${whenPt(call.ended)}, ${END_REASONS[call.endReason] ?? call.endReason}` : 'still open'],
         ['The donor wanted', wanted(call)],
         ['Gift now', sub ? `${statusWord(sub.status)}, checked at ${clockPt(sub.ts)}` : 'not checked'],

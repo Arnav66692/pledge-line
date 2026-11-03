@@ -16,7 +16,8 @@
     "pilot:dry": "node --env-file-if-exists=.env scripts/pilot-dry-run.js",
     "pilot:check": "node --env-file-if-exists=.env scripts/pilot-check.js",
     "vocabulary": "node src/vocabulary.js",
-    "audit": "node --env-file-if-exists=.env scripts/claim-audit.js"
+    "audit": "node --env-file-if-exists=.env scripts/claim-audit.js",
+    "errsub:check": "node --env-file-if-exists=.env scripts/errsub-check.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0"

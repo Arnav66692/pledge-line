@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { PayPalError, WriteNotAuthorized, safeId, pickVerifyHeaders } from './paypal.js';
 import { MOCK_SUBSCRIPTION_ID, MOCK_PLAN_ID, MOCK_WEBHOOK_ID } from './config.js';
+import { drillByWriteId } from './drill.js';
 
 const MOCK_EMAIL = 'sb-maria@personal.example.com';
 const MONEY_PATTERN = /^\d{1,7}\.\d{2}$/;
@@ -75,6 +76,9 @@ export function createMockPayPal({ tokens, now = () => new Date(), onWebhook = n
   async function subscriptionWrite(kind, id, token, ctx, from, to) {
     authorize(token, kind, id, ctx);
     await wait();
+    // PayPal's sandbox test ids for a suspend that fails on purpose, ERRSUB062 with 422 and ERRSUB059 with 500 (A12).
+    const drill = kind === 'suspend' ? drillByWriteId(id) : null;
+    if (drill) fail(drill.httpStatus, drill.name, drill.message);
     const sub = subs.get(id);
     if (!sub) fail(404, 'RESOURCE_NOT_FOUND', 'The specified resource does not exist.');
     if (!from.includes(sub.status)) fail(422, 'UNPROCESSABLE_ENTITY', 'The requested action could not be performed.', 'SUBSCRIPTION_STATUS_INVALID');

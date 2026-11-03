@@ -5,6 +5,7 @@ import { detectBrowser } from './call.js';
 import { textHasPin } from './numbers.js';
 import { scriptByNumber } from './pilot-scripts.js';
 import { inLoggedRow } from './hours-log.js';
+import { drillOf } from './drill.js';
 
 // Wed Nov 4, 2026, 9:00 pm PT, the bar's deadline. PT is eight hours behind UTC after Nov 1.
 export const DEADLINE = '2026-11-05T05:00:00.000Z';
@@ -151,6 +152,18 @@ export function startedAfter(events, { since = null, dryRun = false, until }) {
     const start = list.find((e) => e.type === 'call_start');
     if (!start.script || !(Date.parse(start.ts) > untilMs)) return [];
     return [{ callId, number: start.script, browser: creditedBrowser(start), ts: start.ts, mock: isMockCall({ start, list }) }];
+  });
+}
+
+/**
+ * The fault drills in the window (A12). A drill has no script, so it is never graded, and the writes and safety sweeps
+ * cover it like any other call, its suspend to PayPal's test id held to the gift it read.
+ */
+export function drillCalls(calls) {
+  return [...calls].flatMap(([callId, list]) => {
+    const start = list.find((e) => e.type === 'call_start');
+    const drill = drillOf(start);
+    return drill ? [{ callId, key: drill.key, writeId: drill.writeId, ts: start.ts, mock: isMockCall({ start, list }) }] : [];
   });
 }
 

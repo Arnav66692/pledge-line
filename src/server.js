@@ -12,6 +12,7 @@ import { createCallService, CallNotFound, GapRefused, LIVE_TEMPLATE_HASH, LIVE_U
 import { TEMPLATE_HASH } from './template-words.js';
 import { PILOT_SCRIPTS, displayLines } from './pilot-scripts.js';
 import { staffCalls, staffCall, staffKeyMatches } from './staff.js';
+import { DRILLS, DrillRefused, drillLines, drillOpen } from './drill.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -304,8 +305,20 @@ function createApi(deps) {
   const newCalls = createRateLimiter({ limit: config.limits.newCallsPerHour, windowMs: HOUR_MS });
   const turns = createRateLimiter({ limit: config.limits.turnsPerMinute, windowMs: MINUTE_MS });
   const scripts = PILOT_SCRIPTS.map((s) => ({ number: s.number, title: s.title, lines: displayLines(s), expected: s.expected }));
+  const drills = Object.values(DRILLS).map(drillLines);
+  const clock = deps.now ?? (() => new Date());
   const staffRequests = createRateLimiter({ limit: config.limits.staffPerMinute, windowMs: MINUTE_MS });
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
+
+  // A drill asked for with a script, by an unknown name, or on the sandbox before the deadline is refused (A12).
+  function startCall(input) {
+    try {
+      return calls.start(input);
+    } catch (error) {
+      if (error instanceof DrillRefused) throw new HttpError(error.status, error.message);
+      throw error;
+    }
+  }
 
   // A second gap for a turn is a 409, and so is one for a reply the line has not finished (Test 4).
   function logGap(id, gap) {
@@ -366,6 +379,8 @@ function createApi(deps) {
     if (pathname === '/staff' || pathname === '/api/staff' || pathname.startsWith('/api/staff/')) return staffRoute(req, res, pathname, ip);
     if (pathname === '/healthz' && req.method === 'GET') return send(res, 200, { ok: true, mode: { paypal: config.paypal.mode, router: config.router.mode } });
     if (pathname === '/api/pilot-scripts' && req.method === 'GET') return send(res, 200, { scripts });
+    // The fault drills, listed only while one may start: in mock mode, or on the sandbox after the deadline (A12).
+    if (pathname === '/api/drills' && req.method === 'GET') return send(res, 200, { drills: drillOpen(config.paypal.mode, clock()) ? drills : [] });
     if (pathname === '/api/webhooks' && req.method === 'GET') return send(res, 200, { webhooks: webhooks.recent(WEBHOOK_LIST_MAX) });
     if (pathname === '/webhooks/paypal') return webhookRoute(req, res);
     if (pathname === '/api/calls') {
@@ -374,7 +389,7 @@ function createApi(deps) {
       limitOr429(newCalls, ip);
       const userAgent = typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] ?? '';
       // The page's engine signals, which a user-agent override does not change. call.js keeps only those fields.
-      return send(res, 200, calls.start({ script: body.script ?? null, userAgent, client: body.client ?? null, clientKey: ip }));
+      return send(res, 200, startCall({ script: body.script ?? null, userAgent, client: body.client ?? null, clientKey: ip, drill: body.drill ?? null }));
     }
     const match = pathname.match(CALL_PATH);
     if (match) return callRoute(req, res, ip, match[1], match[2]);
