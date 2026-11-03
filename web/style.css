@@ -234,6 +234,11 @@ button:disabled { cursor: not-allowed; }
 .invoice-none { display: none; margin: 0; font-size: 1.05rem; color: var(--muted); }
 .invoice:has(#inv-number:empty):has(#inv-status:empty) .invoice-none { display: block; }
 .invoice:has(#inv-number:empty):has(#inv-status:empty) .facts { display: none; }
+.cover-none { margin: 0; font-size: 1.05rem; color: var(--muted); }
+.cover-outcome { display: none; margin: 0 0 .75rem; font-size: 1.05rem; }
+.cover.has-cover .cover-none { display: none; }
+.cover.has-cover .cover-outcome { display: block; }
+.cover:not(.has-cover) .facts { display: none; }
 
 /* The moment a change's read-back lands. The border takes the new status's colour and stays for the rest of the call,
    the status word sits on its own tint, underlined, and it pops once as it lands. */

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { SANDBOX_BASE_URL } from './config.js';
+import { moneyBinding } from './cover.js';
 
 const REFRESH_EARLY_MS = 60000;
 const ID_PATTERN = /^[A-Za-z0-9-]{1,100}$/;
@@ -51,6 +52,8 @@ export function toSnapshot(what, data) {
     return { id: str(data.id), price_value: str(price?.value), price_currency: str(price?.currency_code) };
   }
   if (what === 'charge') return chargeSnapshot(data);
+  if (what === 'hold') return holdSnapshot(data);
+  if (what === 'capture' || what === 'gift_charge') return captureSnapshot(data);
   if (what === 'invoice') {
     const amount = data.amount ?? data.due_amount;
     const recipients = Array.isArray(data.primary_recipients) ? data.primary_recipients : [];
@@ -65,6 +68,20 @@ export function toSnapshot(what, data) {
     };
   }
   throw new Error(`unknown snapshot type ${what}`);
+}
+
+/** A sponsor's hold, from GET /v2/payments/authorizations/{id}. PayPal's read has no field for what is left of it. */
+function holdSnapshot(data) {
+  return { id: str(data.id), status: str(data.status), amount_value: str(data.amount?.value), amount_currency: str(data.amount?.currency_code), expiration_time: str(data.expiration_time) };
+}
+
+/**
+ * A capture, from GET /v2/payments/captures/{id}. A subscription's transaction id works here too (Keepwell's spike, Q1),
+ * which gives the donor's charge its own status beside the list. The fee is what PayPal's breakdown names, for the page.
+ */
+function captureSnapshot(data) {
+  return { id: str(data.id), status: str(data.status), amount_value: str(data.amount?.value), amount_currency: str(data.amount?.currency_code),
+    fee_value: str(data.seller_receivable_breakdown?.paypal_fee?.value) };
 }
 
 const timeOf = (t) => {
@@ -87,6 +104,8 @@ function chargeSnapshot(data) {
     amount_currency: str(gross?.currency_code),
     time: str(latest?.time),
     count: list.length,
+    // Charges in the window PayPal already shows as refunded, which Covered Month's yearly rule counts.
+    refunded_count: list.filter((t) => t.status === 'REFUNDED' || t.status === 'PARTIALLY_REFUNDED').length,
   };
 }
 
@@ -206,7 +225,7 @@ function createTransport({ baseUrl, clientId, clientSecret, fetchImpl, timeoutMs
     return (await inflight).accessToken;
   }
 
-  async function request(method, pathname, { body, rawBody, headers = {}, idempotent = false, allow404 = false } = {}) {
+  async function request(method, pathname, { body, rawBody, headers = {}, idempotent = false, requestId = null, allow404 = false } = {}) {
     const token = await accessToken();
     const init = {
       method,
@@ -214,6 +233,8 @@ function createTransport({ baseUrl, clientId, clientSecret, fetchImpl, timeoutMs
     };
     // Only the creates declare or recommend PayPal-Request-Id (see .pilot/facts-paypal.md).
     if (idempotent) init.headers['PayPal-Request-Id'] = randomUUID();
+    // A money leg's id comes from the charge, so a retry or a double submit replays the same move (cover.js).
+    if (requestId) init.headers['PayPal-Request-Id'] = requestId;
     if (rawBody !== undefined) init.body = rawBody;
     else if (body !== undefined) init.body = JSON.stringify(body);
     const { res, data, debugId, ms } = await send(`${baseUrl}${pathname}`, init);
@@ -229,9 +250,37 @@ export function createPayPal({ baseUrl, clientId, clientSecret, tokens, fetchImp
   if (baseUrl !== SANDBOX_BASE_URL) throw new Error(`PayPal base URL must be ${SANDBOX_BASE_URL}`);
   const { request, accessToken, scope } = createTransport({ baseUrl, clientId, clientSecret, fetchImpl, timeoutMs });
 
-  function authorize(token, kind, id, ctx) {
+  function authorize(token, kind, id, ctx, binding) {
     if (!tokens || typeof tokens.consume !== 'function') throw new WriteNotAuthorized('no_token_store');
-    tokens.consume(token, { kind, targetId: id, callId: ctx?.callId });
+    tokens.consume(token, { kind, targetId: id, callId: ctx?.callId, ...(binding ? { binding } : {}) });
+  }
+
+  /** A money leg's amount from its token's exact binding, in PayPal's shape, or a refusal before any network call. */
+  function moneyOf(ctx) {
+    if (!MONEY_PATTERN.test(String(ctx?.amountValue))) throw new PayPalError({ status: 400, name: 'BAD_AMOUNT', message: 'Amount must have two decimals' });
+    return { value: String(ctx.amountValue), currency_code: ctx.currency };
+  }
+
+  /** The move's own answer: its id, its status and the amount PayPal says it moved, so the line checks them before the next leg. */
+  const moved = (res) => ({ id: str(res.data?.id), status: str(res.data?.status) ?? str(res.data?.state)?.toUpperCase() ?? null,
+    amountValue: str(res.data?.amount?.value) ?? str(res.data?.amount?.total), debugId: res.debugId, ms: res.ms });
+
+  /** One authorized draw on the sponsor's hold. final_capture false leaves the hold open for later months. No items, so no donation-item permission is needed. */
+  async function captureSponsorHold(holdId, token, ctx) {
+    authorize(token, 'cover_capture', holdId, ctx, moneyBinding(ctx?.amountValue, ctx?.currency));
+    const amount = moneyOf(ctx);
+    const res = await request('POST', `/v2/payments/authorizations/${safeId(holdId)}/capture`, {
+      body: { amount, final_capture: false, note_to_payer: ctx.note }, requestId: ctx.requestId, headers: { Prefer: 'return=representation' } });
+    return moved(res);
+  }
+
+  /** The refund of a capture, v2 first. Only a 404 falls back to v1's sale refund, since a 404 means v2 moved nothing. */
+  async function refundById(id, ctx) {
+    const amount = moneyOf(ctx);
+    const headers = { Prefer: 'return=representation' };
+    const v2 = await request('POST', `/v2/payments/captures/${safeId(id)}/refund`, { body: { amount, note_to_payer: ctx.note }, requestId: ctx.requestId, headers, allow404: true });
+    if (!v2.notFound) return moved(v2);
+    return moved(await request('POST', `/v1/payments/sale/${safeId(id)}/refund`, { body: { amount: { total: amount.value, currency: amount.currency_code } }, requestId: ctx.requestId }));
   }
 
   async function read(pathname) {
@@ -285,8 +334,20 @@ export function createPayPal({ baseUrl, clientId, clientSecret, tokens, fetchImp
     getSubscription: (id) => read(`/v1/billing/subscriptions/${safeId(id)}`),
     getPlan: (id) => read(`/v1/billing/plans/${safeId(id)}`),
     getInvoice: (id) => read(`/v2/invoicing/invoices/${safeId(id)}`),
-    // Read only. The line never refunds a charge, staff do, so this is the one call the charge check makes (PICK.md).
+    // Read only, the one call the charge check makes. Covered Month's money legs are the token-gated calls below (PICK.md).
     getSubscriptionCharges: async (id, window) => read(`/v1/billing/subscriptions/${safeId(id)}/transactions?${new URLSearchParams(chargeWindow(window))}`),
+    getSponsorHold: (id) => read(`/v2/payments/authorizations/${safeId(id)}`),
+    getCapture: (id) => read(`/v2/payments/captures/${safeId(id)}`),
+    captureSponsorHold,
+    refundCharge: async (transactionId, token, ctx) => {
+      authorize(token, 'cover_refund', transactionId, ctx, moneyBinding(ctx?.amountValue, ctx?.currency));
+      return refundById(transactionId, ctx);
+    },
+    // Gives the sponsor's capture back when the donor's refund failed. Its token is bound to the hold, and the capture must be this yes's own.
+    unwindSponsorCapture: async (holdId, token, ctx) => {
+      authorize(token, 'cover_unwind', holdId, ctx, moneyBinding(ctx?.amountValue, ctx?.currency));
+      return refundById(ctx.captureId, ctx);
+    },
     createDraftInvoice,
     deleteDraftInvoice: async (id) => {
       const res = await request('DELETE', `/v2/invoicing/invoices/${safeId(id)}`);
@@ -308,6 +369,23 @@ export function createPayPal({ baseUrl, clientId, clientSecret, tokens, fetchImp
 function createSetupMethods(request) {
   const representation = { Prefer: 'return=representation' };
   return {
+    // The sponsor's one consent, in the browser. scripts/seed-sponsor-hold.js runs these, never a call. No items, since items.category DONATION can be refused.
+    createSponsorOrder: async ({ amountValue, currency, description, brandName, returnUrl, cancelUrl }) => {
+      const body = {
+        intent: 'AUTHORIZE',
+        purchase_units: [{ amount: { currency_code: currency, value: amountValue }, description }],
+        application_context: { brand_name: brandName, shipping_preference: 'NO_SHIPPING', user_action: 'CONTINUE', return_url: returnUrl, cancel_url: cancelUrl },
+      };
+      const res = await request('POST', '/v2/checkout/orders', { body, idempotent: true, headers: representation });
+      const links = Array.isArray(res.data?.links) ? res.data.links : [];
+      return { id: str(res.data?.id), status: str(res.data?.status), approveUrl: str(links.find((link) => link?.rel === 'approve' || link?.rel === 'payer-action')?.href), debugId: res.debugId, ms: res.ms };
+    },
+    authorizeSponsorOrder: async (orderId) => {
+      const res = await request('POST', `/v2/checkout/orders/${safeId(orderId)}/authorize`, { body: {}, idempotent: true, headers: representation });
+      const units = Array.isArray(res.data?.purchase_units) ? res.data.purchase_units : [];
+      const auths = Array.isArray(units[0]?.payments?.authorizations) ? units[0].payments.authorizations : [];
+      return { holdId: str(auths[0]?.id), status: str(auths[0]?.status), expirationTime: str(auths[0]?.expiration_time), debugId: res.debugId, ms: res.ms };
+    },
     createProduct: async ({ name, description }) => {
       const body = { name, type: 'SERVICE', category: 'NONPROFIT', description };
       const res = await request('POST', '/v1/catalogs/products', { body, idempotent: true, headers: representation });

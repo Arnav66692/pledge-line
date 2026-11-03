@@ -21,20 +21,27 @@
     gift_status: 'check the gift', stop_gift: 'stop the gift', cancel_now: 'cancel now', pause_gift: 'pause the gift',
     resume_gift: 'restart the gift', one_time_gift: 'give once', other_email: 'use a new email, turned down', how_do_you_know: 'ask how the line knows',
     repeat: 'hear it again', help: 'help', staff_callback: 'a call back', goodbye: 'say goodbye', unclear: 'unclear',
-    charge_check: 'ask about a charge',
+    charge_check: 'ask about a charge', hardship_cover: "can't afford this month",
   };
   const WRITES = {
     suspend: 'paused the gift', activate: 'restarted the gift', cancel: 'cancelled the gift', send_invoice: 'sent the invoice',
     create_draft: 'made a draft invoice', delete_draft: 'deleted the draft', refund_request: 'asked staff to look at a refund',
+    cover_capture: "took the sponsor's payment", cover_refund: 'refunded the charge to the donor', cover_unwind: "returned the sponsor's payment",
   };
   const REFUSED = {
     suspend: 'refused the pause', activate: 'refused the restart', cancel: 'refused the cancel', send_invoice: 'refused the send',
     create_draft: 'refused the draft', delete_draft: 'refused the delete', refund_request: 'refund request not logged',
+    cover_capture: "refused the sponsor's payment", cover_refund: 'refused the refund', cover_unwind: "refused the return of the sponsor's payment",
   };
-  const READS = { subscription: 'gift', plan: 'gift plan', invoice: 'invoice', charge: 'charge' };
+  const READS = { subscription: 'gift', plan: 'gift plan', invoice: 'invoice', charge: 'charge', hold: "sponsor's hold", capture: "sponsor's payment", gift_charge: 'charge' };
   // The donor page says paused, so the staff view does too. PayPal's own word for it is suspended.
   const STATUS_WORDS = { SUSPENDED: 'paused' };
   const CLAIM_WORDS = window.PledgeClaimWords || {};
+  const COVER_OUTCOMES = { covered: 'given back, and the sponsor paid the same amount', no_money_moved: 'no money moved', unwound: "refund refused, so the sponsor's payment went back",
+    open: 'not settled, check this in PayPal' };
+  /** One covered month, with the fee the sponsor's payment leaves unpaid, from PayPal's own numbers. */
+  const coverLine = (c) => `${c.amountValue ?? '?'} ${c.currency ?? ''}, transaction ${c.transactionId ?? 'unknown'}, ${COVER_OUTCOMES[c.outcome] ?? c.outcome}.`
+    + (c.captureFee ? ` The nonprofit ends ${c.captureFee} short of a gift that stood, since PayPal keeps its fee on the refunded gift and takes one on the sponsor's payment.` : '');
   const VERDICTS = { proven: 'Proven', plain: 'Plain', blocked: 'Blocked' };
   const END_REASONS = { goodbye: 'said goodbye', locked: 'locked after wrong PINs', idle: 'went idle', client: 'page closed' };
 
@@ -378,6 +385,7 @@
         ['Refund to look at', (call.refundRequests ?? []).length > 0
           ? call.refundRequests.map((r) => `${r.amountValue ?? '?'} ${r.amountCurrency ?? ''}, transaction ${r.transactionId ?? 'unknown'}`).join('. ')
           : 'none asked'],
+        ['Covered month', (call.covers ?? []).length > 0 ? call.covers.map(coverLine).join(' ') : 'none'],
         ['Receipts', `${call.counts.proven} proven, ${call.counts.plain} plain, ${call.counts.blocked} blocked`],
       ]),
       el('h3', null, 'What PayPal changed'),

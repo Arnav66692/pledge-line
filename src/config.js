@@ -10,6 +10,7 @@ const GEMINI_MODEL_ID = /^[a-z0-9][a-z0-9.-]*$/;
 export const MOCK_SUBSCRIPTION_ID = 'I-MOCK0000001';
 export const MOCK_PLAN_ID = 'P-MOCK0000001';
 export const MOCK_WEBHOOK_ID = 'WH-MOCK-WEBHOOK';
+export const MOCK_HOLD_ID = 'MOCKHOLD00000001';
 export const MOCK_DEFAULT_PIN = '2468';
 export const STATE_FILE = '.pilot/state.json';
 export const PILOT_LEDGER = '.pilot/ledger.jsonl';
@@ -41,6 +42,13 @@ export const LIMITS = Object.freeze({
   // Staff view requests from one address in a minute, wrong keys included.
   staffPerMinute: 60,
 });
+// Covered Month's staff rule (PICK.md), the defaults when the env sets none. A charge above the cap, older than the window,
+// or past the yearly count is never offered, and with no sponsor hold the move stays off.
+export const COVER_DEFAULTS = Object.freeze({ maxDollars: 50, windowDays: 30, perYear: 1 });
+// PayPal refunds a capture for up to 180 days, so no staff rule can honestly offer longer.
+const COVER_WINDOW_MAX = 180;
+const COVER_PER_YEAR_MAX = 12;
+const HOLD_ID = /^[A-Za-z0-9-]{1,100}$/;
 // The staff key guards every donor's call record, so a short one is refused.
 export const STAFF_KEY_MIN = 16;
 
@@ -169,12 +177,35 @@ function parseRouter(env, mode, partial, errors) {
 
 function parseIds(env, paypalMode) {
   if (paypalMode === 'mock') {
-    return { subscriptionId: clean(env.DEMO_SUBSCRIPTION_ID) ?? MOCK_SUBSCRIPTION_ID, planId: MOCK_PLAN_ID };
+    return { subscriptionId: clean(env.DEMO_SUBSCRIPTION_ID) ?? MOCK_SUBSCRIPTION_ID, planId: MOCK_PLAN_ID, holdId: clean(env.SPONSOR_HOLD_ID) ?? MOCK_HOLD_ID };
   }
   const state = readState(STATE_FILE);
   const fromState = typeof state.subscriptionId === 'string' ? state.subscriptionId : null;
   const planId = typeof state.planId === 'string' ? state.planId : null;
-  return { subscriptionId: clean(env.DEMO_SUBSCRIPTION_ID) ?? fromState, planId };
+  const holdFromState = typeof state.sponsorHoldId === 'string' ? state.sponsorHoldId : null;
+  return { subscriptionId: clean(env.DEMO_SUBSCRIPTION_ID) ?? fromState, planId, holdId: clean(env.SPONSOR_HOLD_ID) ?? holdFromState };
+}
+
+/** A whole number or dollar amount from the env inside its range, else the default and a config problem. */
+function parseCoverNumber(raw, { name, fallback, min, max, whole }, errors) {
+  if (raw === null) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min || n > max || (whole && !Number.isInteger(n))) {
+    errors.push(`${name} must be ${whole ? 'a whole number' : 'an amount'} from ${min} to ${max}`);
+    return fallback;
+  }
+  return n;
+}
+
+/** The staff rule and the sponsor's hold. With no hold the move is off, and the line says the fund isn't open. */
+function parseCover(env, holdId, errors) {
+  if (holdId !== null && !HOLD_ID.test(holdId)) errors.push('SPONSOR_HOLD_ID must be a PayPal authorization id');
+  return Object.freeze({
+    holdId,
+    maxDollars: parseCoverNumber(clean(env.COVER_MAX_DOLLARS), { name: 'COVER_MAX_DOLLARS', fallback: COVER_DEFAULTS.maxDollars, min: 1, max: LIMITS.invoiceMaxDollars, whole: false }, errors),
+    windowDays: parseCoverNumber(clean(env.COVER_WINDOW_DAYS), { name: 'COVER_WINDOW_DAYS', fallback: COVER_DEFAULTS.windowDays, min: 1, max: COVER_WINDOW_MAX, whole: true }, errors),
+    perYear: parseCoverNumber(clean(env.COVER_PER_YEAR), { name: 'COVER_PER_YEAR', fallback: COVER_DEFAULTS.perYear, min: 0, max: COVER_PER_YEAR_MAX, whole: true }, errors),
+  });
 }
 
 /**
@@ -203,6 +234,7 @@ export function loadConfig(env = process.env, { partial = false } = {}) {
     staffKey: parseStaffKey(clean(env.STAFF_KEY), errors),
     demoSubscriptionId: ids.subscriptionId,
     demoPlanId: ids.planId,
+    cover: parseCover(env, ids.holdId, errors),
     limits: LIMITS,
     currency: 'USD',
   };

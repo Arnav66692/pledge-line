@@ -1,6 +1,7 @@
 // Spoken templates. Every amount, date, invoice suffix and status word comes from a
 // PayPal snapshot and is declared as a fact with its source path (I3).
 import { NUMBER_WORDS, ORDINAL_WORDS, tokenize, runValue, ordinalValue } from './numbers.js';
+import { isRefundedStatus } from './cover.js';
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -105,6 +106,10 @@ export const FACT_SOURCES = Object.freeze({
   'charge.date': (s, timeZone) => formatDate(s.time, timeZone),
   'charge.status': (s) => spokenStatus(s.status),
   'charge.id_last4': (s) => last4(s.transaction_id),
+  // Covered Month. The donor's charge by its own id, from GET /v2/payments/captures/{id}, and the sponsor's capture the same way.
+  'gift_charge.amount': (s) => formatMoney(s.amount_value, s.amount_currency ?? undefined),
+  'gift_charge.status': (s) => spokenStatus(s.status),
+  'capture.status': (s) => spokenStatus(s.status),
 });
 
 function derived(source, snapshot, kind, timeZone) {
@@ -221,7 +226,7 @@ export const draftDeleted = (notFound) => (notFound
   ? combine(claim('OK, I deleted that invoice before it went out, and PayPal no longer shows it.', 'draft_deleted'), ANYTHING_ELSE)
   : combine('OK.', claim('I asked PayPal to delete that invoice, but PayPal still shows it.', 'draft_kept'), STAFF_CHECK));
 export const otherEmail = () => claim("For your safety, I can only send to the email already on file with PayPal, so I won't use a new email.", 'email_refused');
-export const help = () => part('I can read you your monthly gift, pause it, restart it, or cancel it. I can also set up a one-time gift as a PayPal invoice to the email on file, or ask staff to call you back. If you see a PayPal charge you don\'t recognize, I can tell you what it was.');
+export const help = () => part('I can read you your monthly gift, pause it, restart it, or cancel it. I can also set up a one-time gift as a PayPal invoice to the email on file, or ask staff to call you back. If you see a PayPal charge you don\'t recognize, I can tell you what it was. If you can\'t afford this month, I can see if a sponsor can cover it.');
 // A repeat keeps the claims of the reply it repeats, and call.js logs which turn that was, so check.js proves them there.
 export const repeat = (lastText) => (lastText && lastText.text ? { text: lastText.text, facts: lastText.facts ?? [], claims: lastText.claims ?? [] } : unclear());
 export const goodbye = () => part('Thanks for calling. Goodbye.');
@@ -267,20 +272,24 @@ export function recheck(sub, plan, inv = null, { draftGone = false, close = true
   return combine(rechecked(), shows(sub, plan), inv ? invoiceShows(inv) : null, end);
 }
 // ---- Is this charge real? (PICK.md) ----
-// The line reads the gift's latest charge from PayPal and says what it was. It never refunds anything. A yes only asks
-// staff to look at a refund, which call.js logs, so the donor has no reason to dispute the charge with their bank.
+// The line reads the gift's latest charge from PayPal and says what it was. Here a yes only asks staff to look at a refund,
+// which call.js logs, so the donor has no reason to dispute the charge with their bank. Only Covered Month, below, moves money.
 
-/** The latest charge, its amount, date, status and transaction suffix, all from one read, or null when one is missing. */
-function chargeShows(charge, orgName, timeZone) {
+/** The latest charge's amount, date and status, all from one read, or null when one is missing. */
+function latestCharge(charge, orgName, timeZone) {
   const money = derived('charge.amount', charge, 'money');
   const date = derived('charge.date', charge, 'date', timeZone);
   const status = derived('charge.status', charge, 'status');
+  if (!money || !date || !status) return null;
+  return part(`PayPal shows the latest charge for your monthly gift to ${orgName} was ${money.value} on ${date.value}, with the status ${status.value}.`, [money, date, status]);
+}
+
+/** The latest charge and its transaction suffix, all from one read, or null when one is missing. */
+function chargeShows(charge, orgName, timeZone) {
+  const latest = latestCharge(charge, orgName, timeZone);
   const suffix = derived('charge.id_last4', charge, 'number_suffix');
-  if (!money || !date || !status || !suffix) return null;
-  return combine(
-    part(`PayPal shows the latest charge for your monthly gift to ${orgName} was ${money.value} on ${date.value}, with the status ${status.value}.`, [money, date, status]),
-    part(`In your PayPal activity, it is the transaction ending in ${suffix.value}.`, [suffix]),
-  );
+  if (!latest || !suffix) return null;
+  return combine(latest, part(`In your PayPal activity, it is the transaction ending in ${suffix.value}.`, [suffix]));
 }
 
 /** True when chargeOffer can read this charge aloud in full, so call.js only offers a refund request for a charge it named. */
@@ -314,6 +323,84 @@ export function afterRefundRequest(charge, { ok = true, same = false, timeZone }
     part(`I've asked staff to look at a refund of ${money.value} for the charge on ${date.value}.`, [money, date], ['wrote_refund_request', 'refund_matches_read']),
     part(`PayPal now shows that charge as ${status.value}.`, [status], ['refund_matches_read']),
     claim(FOLLOW_UP, 'wrote_refund_request'), ANYTHING_ELSE);
+}
+
+// ---- Covered Month (PICK.md) ----
+// A donor who can't afford this month gets her last charge back, and a sponsor's hold pays the same amount to the org.
+// One spoken yes runs both moves, sponsor first, and every amount and status said after it comes from a fresh PayPal read.
+
+const COVER_PAUSE = 'You can ask me to pause your monthly gift instead.';
+const SORRY = "I'm sorry to hear that.";
+/** Said first when the router picked no phrase, so a donor who just said she lost her job never hears a bare charge read. */
+export const hardshipSorry = () => part(SORRY);
+
+function nextGift(sub, timeZone) {
+  const date = sub?.status === 'ACTIVE' ? derived('subscription.next_billing_time', sub, 'date', timeZone) : null;
+  return date ? part(`The next gift is on ${date.value}.`, [date], ['gift_active']) : null;
+}
+
+/**
+ * The offer. The charge's facts come from one read, and the gift stays as it is, so the line says when the next gift
+ * comes (a refund never touches the subscription). The hold's amount is not spoken, since PayPal's read gives its whole
+ * amount and not what is left, so a claim says the read covers this charge.
+ */
+// The amount is declared once, by the charge's own sentence, so a receipt lists it once. It slots in both sentences.
+export function coverOffer(charge, sub, orgName, { timeZone } = {}) {
+  const money = derived('charge.amount', charge, 'money');
+  return combine(latestCharge(charge, orgName, timeZone),
+    part(`I can give that ${money.value} back to you, and a sponsor's hardship fund would pay the same amount to ${orgName}.`),
+    claim("PayPal shows the sponsor's hold covers that amount.", 'hold_covers'),
+    'This does not change your monthly gift.', nextGift(sub, timeZone),
+    'Should I give it back?', YES_OR_NO);
+}
+
+const COVER_TURNED_DOWN = Object.freeze({
+  too_old: ["That charge is too old for the hardship fund, so I can't give it back here.", 'cover_too_old'],
+  too_big: ["That charge is more than the hardship fund can cover, so I can't give it back here.", 'cover_too_big'],
+  used: ["A charge on this gift was already given back in the last year, so the hardship fund can't cover another.", 'cover_used'],
+  prior: ["Staff are already looking at this charge, so I won't move any money.", 'cover_prior'],
+  no_hold: ["The sponsor's hardship fund isn't open in PayPal right now, so I can't cover this month.", 'cover_no_hold'],
+});
+const coverTail = () => combine(STAFF_HOURS, COVER_PAUSE, ANYTHING_ELSE);
+
+/** Why the line offers nothing, with no limit said aloud. The rule's numbers are staff's, and no fact proves them to a donor. */
+export const coverTurnedDown = (reason) => combine(claim(...COVER_TURNED_DOWN[reason]), coverTail());
+/** A charge that can't be refunded yet or at all, read aloud so she knows which one the line looked at. */
+export const coverNotReady = (charge, orgName, { timeZone } = {}) => combine(latestCharge(charge, orgName, timeZone), claim("That charge can't be given back right now.", 'cover_not_ready'), coverTail());
+export const coverChanged = () => combine(claim("Something changed since I read that to you, so I didn't move any money.", 'cover_changed'), STAFF_HOURS, ANYTHING_ELSE);
+export const coverCaptureFailed = () => combine(claim("PayPal didn't accept the sponsor's payment, so I didn't give the month back and no money moved.", 'cover_capture_failed'), STAFF_HOURS, ANYTHING_ELSE);
+export const coverCaptureUnclear = () => combine(claim("PayPal didn't answer clearly about the sponsor's payment, so I didn't give the month back.", 'cover_capture_unclear'), STAFF_CHECK, ANYTHING_ELSE);
+export const coverRefundUnclear = () => combine(claim("PayPal didn't answer clearly about the refund, so I can't say it went through.", 'cover_refund_unclear'), STAFF_CHECK, ANYTHING_ELSE);
+
+/** The refund was refused after the sponsor paid. The sponsor's payment goes back, and the line says what PayPal shows for it. */
+export function coverUnwound({ ok, capture, giftCharge } = {}) {
+  if (!ok) return combine(claim("PayPal didn't accept the refund, and I couldn't return the sponsor's payment.", 'cover_unwind_failed'), STAFF_CHECK, ANYTHING_ELSE);
+  const status = isRefundedStatus(capture?.status) ? derived('capture.status', capture, 'status') : null;
+  return combine(part("PayPal didn't accept the refund, so I asked PayPal to return the sponsor's payment.", [], ['cover_refund_failed', 'wrote_cover_unwind']),
+    status ? part(`PayPal now shows the sponsor's payment as ${status.value}.`, [status], ['cover_unwound']) : STAFF_CHECK,
+    giftCharge?.status === 'COMPLETED' ? claim('Your charge stays as it was.', 'cover_charge_unchanged') : null, STAFF_HOURS, ANYTHING_ELSE);
+}
+
+/**
+ * After both moves. Each sentence that says a move went through is backed by that move's own fresh read, and a read PayPal
+ * hasn't updated or didn't return says only that the line asked. unclear is a refund PayPal gave no clear answer to,
+ * which a fresh read then showed had gone through (L2).
+ */
+export function afterCover({ giftCharge, capture, sub, orgName, unclear = false, timeZone }) {
+  const refunded = isRefundedStatus(giftCharge?.status);
+  const money = refunded ? derived('gift_charge.amount', giftCharge, 'money') : null;
+  const status = refunded ? derived('gift_charge.status', giftCharge, 'status') : null;
+  const shownBack = money && status;
+  const back = shownBack
+    ? part(`PayPal now shows your charge of ${money.value} as ${status.value}.`, [money, status], ['wrote_cover_refund', 'cover_refund_read'])
+    : combine(claim('I asked PayPal to give it back.', 'wrote_cover_refund'), claim(UPDATE_LATER, 'wrote'));
+  const paid = derived('capture.status', capture, 'status');
+  const sponsor = paid
+    ? part(`PayPal shows the sponsor's payment of the same amount to ${orgName}, with the status ${paid.value}.`, [paid], ['wrote_cover_capture', 'cover_capture_read'])
+    : claim("I asked PayPal to take the sponsor's payment.", 'wrote_cover_capture');
+  const lead = unclear ? claim(UNCLEAR_ANSWER, 'write_unclear') : shownBack ? claim('Done.', 'wrote') : null;
+  const gift = sub ? shows(sub, null, 'PayPal now shows') : null;
+  return combine(lead, back, sponsor, gift, nextGift(sub, timeZone), 'If next month is hard too, you can ask me to pause it.', ANYTHING_ELSE);
 }
 
 export const pinLimit = () => combine(claim("There have been too many wrong PINs from here, so I can't check a PIN right now.", 'pin_limit'), 'Please try again later.');

@@ -382,7 +382,7 @@ test('the sandbox client lists the charges with start_time and end_time, and the
   assert.equal(url.searchParams.get('start_time'), '2025-11-03T18:00:00.000Z');
   assert.equal(url.searchParams.get('end_time'), '2026-11-03T18:00:00.000Z');
   assert.equal(res.debugId, 'dbg-9');
-  assert.deepEqual(toSnapshot('charge', res.data), { transaction_id: 'NEWEST00000000ABC', status: 'COMPLETED', amount_value: '25.00', amount_currency: 'USD', time: '2026-11-01T10:00:00Z', count: 2 });
+  assert.deepEqual(toSnapshot('charge', res.data), { transaction_id: 'NEWEST00000000ABC', status: 'COMPLETED', amount_value: '25.00', amount_currency: 'USD', time: '2026-11-01T10:00:00Z', count: 2, refunded_count: 0 });
   await assert.rejects(paypal.getSubscriptionCharges(SUB, { startTime: 'later', endTime: 'now' }), /time window is not valid/);
-  assert.equal(typeof paypal.refundCapture, 'undefined', 'the client has no refund call at all');
+  assert.equal(typeof paypal.refundCapture, 'undefined', "the charge check has no refund call, and Covered Month's needs its own token (cover.test.js)");
 });
