@@ -42,6 +42,16 @@ npm run pilot:dry -- --mock
 
 The tests and the mock dry run need no network and no keys.
 
+## The claim audit
+
+`EVAL.md` is a preregistered check of how often a plain AI agent tells a donor something PayPal's record doesn't back, next to Pledge Line on the same 20 calls. It counts amounts, status words, dates and phrases such as "done" or "is now paused" that the mock PayPal doesn't back at the moment they are said, writes with no yes in the line before, and statuses no PayPal read had shown.
+
+```
+npm run audit -- --fake
+```
+
+`--fake` runs the baseline with a scripted fake model, so it needs no key and makes no network call. Its table checks the plumbing and is never a result. The table and a JSON file with every claim land in `.pilot/claim-audit/`. The audit runs only from a linked worktree, never from the main checkout, so nothing lands beside the pilot ledger. The real run, `npm run audit` with no flag, calls Gemini with `GEMINI_API_KEY`, spaces its requests like the dry run and stops on a 429. Per `EVAL.md` it waits until the pilot is graded and Arnav says go.
+
 ## Run it against the sandbox
 
 Follow `SETUP.md` first. It covers the PayPal sandbox app, the free Gemini key, and Render.
