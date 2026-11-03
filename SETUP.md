@@ -45,6 +45,8 @@ Google may use free-tier prompts to improve its products. Every donor in the pil
 
 In `.env`, set `PILOT_PIN=` to 4 to 6 digits you'll remember. Don't use 1111, 2222 or 3333, since Script 8 uses those as wrong PINs.
 
+Optional. To read the night's calls and their receipts at `/staff`, set `STAFF_KEY=` in `.env`, and in Render, to a made-up key of at least 16 characters with no spaces, and type it on that page. Left empty, the staff view stays off.
+
 ## 5. Put the line on Render
 
 The private repo `Arnav66692/pledge-line` is pushed, with the tested code on the `pilot` branch.

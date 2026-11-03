@@ -91,6 +91,9 @@ function receiptFor(said, ctx, problems) {
   };
 }
 
+/** The options the line, the staff view and pilot-check all build receipts with, from one config. */
+export const receiptOptions = (config) => ({ orgName: config.orgName, subscriptionId: config.demoSubscriptionId ?? null, timeZone: config.timeZone });
+
 /**
  * One receipt per said event of one call, oldest first. orgName and subscriptionId are the configured ones, as
  * pilot-check grades with, else what the call logged. timeZone is used only when the call_start logged none.
