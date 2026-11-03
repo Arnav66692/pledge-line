@@ -184,6 +184,8 @@ html.header-away:not(.menu-open) .logo { opacity: 0; transform: translateY(-1.5r
   transition: transform 0.5s var(--expo);
 }
 .disc:hover::before { transform: scale(1.06); }
+/* Over the white panels of the call, a white disc needs an edge, or only its two dots show. */
+html.scrolled .disc--menu::before, html[data-mode="call"] .disc--menu::before { box-shadow: 0 0 0 1px rgb(33 33 33 / 0.12), 0 0.4rem 1.4rem rgb(33 33 33 / 0.1); }
 .disc__fill {
   position: absolute; width: 2.83rem; height: 2.83rem; border-radius: 50%;
   background: #212121;

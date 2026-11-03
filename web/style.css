@@ -295,3 +295,6 @@ button:disabled { cursor: not-allowed; }
   .gift-status { font-size: 3rem; }
   .foot { flex-direction: column; }
 }
+
+/* A jump from the nav lands below the fixed header, not under the logo. */
+#receipts-title, #record-title { scroll-margin-top: 6rem; }

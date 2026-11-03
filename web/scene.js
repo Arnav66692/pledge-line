@@ -71,11 +71,11 @@ float inside(float d, float s) { return 1.0 - smoothstep(-s, s, d); }
 
 vec3 sky(vec2 p) {
   float t = clamp((p.y - H) / 0.6, 0.0, 1.0);
-  vec3 col = mix(pal(vec3(0.975, 0.875, 0.81), vec3(0.24, 0.2, 0.27)), pal(vec3(0.74, 0.85, 0.9), vec3(0.07, 0.09, 0.13)), smoothstep(0.0, 1.0, t));
+  vec3 col = mix(pal(vec3(0.975, 0.875, 0.81), vec3(0.44, 0.38, 0.47)), pal(vec3(0.74, 0.85, 0.9), vec3(0.2, 0.24, 0.32)), smoothstep(0.0, 1.0, t));
   float far = H + 0.055 + 0.022 * sin(p.x * 6.0 + 1.3) + 0.012 * sin(p.x * 17.0 + 0.4);
   float near = H + 0.025 + 0.03 * sin(p.x * 3.4 + 4.1) + 0.01 * sin(p.x * 11.0);
-  col = mix(col, pal(vec3(0.84, 0.8, 0.84), vec3(0.13, 0.16, 0.16)), 1.0 - smoothstep(far - 0.003, far + 0.003, p.y));
-  col = mix(col, pal(vec3(0.76, 0.81, 0.77), vec3(0.08, 0.11, 0.1)), 1.0 - smoothstep(near - 0.003, near + 0.003, p.y));
+  col = mix(col, pal(vec3(0.84, 0.8, 0.84), vec3(0.3, 0.31, 0.34)), 1.0 - smoothstep(far - 0.003, far + 0.003, p.y));
+  col = mix(col, pal(vec3(0.76, 0.81, 0.77), vec3(0.22, 0.26, 0.26)), 1.0 - smoothstep(near - 0.003, near + 0.003, p.y));
   return col;
 }
 
@@ -91,11 +91,11 @@ vec3 pearl(vec2 p, float soft, out float a) {
   // A thin-film shimmer that slides slowly round the rim, over a satin body that takes the room's warm light.
   float x = ndv * 1.3 + n.y * 0.25 + uTime * 0.025;
   vec3 film = 0.5 + 0.5 * cos(6.28318 * (x + vec3(0.0, 0.33, 0.67)));
-  vec3 body = pal(vec3(0.83, 0.8, 0.79), vec3(0.11, 0.12, 0.13)) + pal(vec3(0.17), vec3(0.06)) * wrap;
+  vec3 body = pal(vec3(0.83, 0.8, 0.79), vec3(0.36, 0.36, 0.4)) + pal(vec3(0.17), vec3(0.12)) * wrap;
   float rim = pow(clamp(1.0 - ndv, 0.0, 1.0), 2.2);
   body = mix(body, body * (0.75 + 0.5 * film), 0.25 + 0.55 * rim);
   float spec = pow(max(dot(reflect(-vec3(0.0, 0.0, 1.0), n), key), 0.0), 60.0);
-  body += pal(vec3(0.35), vec3(0.22)) * spec;
+  body += pal(vec3(0.35), vec3(0.4)) * spec;
   return body;
 }
 
@@ -103,7 +103,7 @@ vec3 room(vec2 p, float soft) {
   float t = uTime;
   float y = p.y - H;
   // Plaster, a touch warmer low down, with a slow breathing of the light across it.
-  vec3 wall = mix(pal(vec3(0.95, 0.895, 0.862), vec3(0.135, 0.16, 0.156)), pal(vec3(0.905, 0.835, 0.81), vec3(0.105, 0.126, 0.125)), smoothstep(0.0, 0.7, y));
+  vec3 wall = mix(pal(vec3(0.95, 0.895, 0.862), vec3(0.3, 0.29, 0.31)), pal(vec3(0.905, 0.835, 0.81), vec3(0.25, 0.24, 0.27)), smoothstep(0.0, 0.7, y));
   // A long diagonal shadow over the upper left of the wall.
   float shade = smoothstep(-0.05, 0.12, y * 0.9 - (p.x + 0.05) * 0.75 - 0.12);
   wall *= 1.0 - shade * pal(vec3(0.15, 0.16, 0.12), vec3(0.22));
@@ -128,14 +128,14 @@ vec3 room(vec2 p, float soft) {
     steps = max(steps, m);
     tread = max(tread, m * (1.0 - smoothstep(0.0, 0.006 + soft, abs(sq.y - top))));
   }
-  vec3 stone = pal(vec3(0.935, 0.895, 0.87), vec3(0.15, 0.175, 0.17));
+  vec3 stone = pal(vec3(0.935, 0.895, 0.87), vec3(0.32, 0.31, 0.33));
   wall = mix(wall, stone * (0.9 + 0.1 * smoothstep(-0.3, 0.3, sq.x)), steps);
   wall += tread * pal(vec3(0.06, 0.055, 0.045), vec3(0.03));
 
   // A low ledge along the right.
   float ledge = inside(sdBox(p - vec2(0.72, H + 0.045), vec2(0.42, 0.045)), 0.002 + soft);
   float ledgeTop = ledge * (1.0 - smoothstep(0.0, 0.01 + soft, abs(p.y - (H + 0.09))));
-  wall = mix(wall, pal(vec3(0.925, 0.878, 0.85), vec3(0.12, 0.142, 0.14)), ledge);
+  wall = mix(wall, pal(vec3(0.925, 0.878, 0.85), vec3(0.28, 0.27, 0.29)), ledge);
   wall += ledgeTop * pal(vec3(0.035), vec3(0.03));
 
   // Three arches on the left open onto a soft sky and two ranges of hills. Each shows a shaded jamb on one side.
@@ -214,7 +214,7 @@ void main() {
     vec2 pr = vec2(p.x + bend.x, 2.0 * H - p.y + bend.y);
     vec3 refl = room(pr, 0.004 + depth * 0.035);
     float k = mix(0.84, 0.56, smoothstep(0.0, 0.45, depth));
-    vec3 tint = pal(vec3(0.69, 0.79, 0.75), vec3(0.04, 0.06, 0.06));
+    vec3 tint = pal(vec3(0.69, 0.79, 0.75), vec3(0.12, 0.13, 0.15));
     col = mix(tint, refl * pal(vec3(0.97, 0.99, 1.0), vec3(0.8, 0.85, 0.85)), k);
     // Glints where the ripples face the window.
     float glint = pow(clamp(r1 * 0.5 + 0.2, 0.0, 1.0), 10.0) * (1.0 - smoothstep(0.0, 0.25, abs(p.x - 0.3 + depth * 0.4)));
@@ -497,7 +497,7 @@ void main() {
     gl.uniform1f(po.u.uFlowAmt, flowOk && !reduced() ? 0.55 : 0);
     gl.uniform1f(po.u.uGrain, isCase ? 0.055 : s.dark ? 0.045 : 0.05);
     gl.uniform1f(po.u.uCA, 0.028);
-    gl.uniform1f(po.u.uVig, isCase ? 0.35 : s.dark ? 0.3 : 0.16);
+    gl.uniform1f(po.u.uVig, isCase ? 0.35 : s.dark ? 0.22 : 0.16);
     gl.uniform1f(po.u.uCalm, s.calm * 0.55);
     gl.uniform1f(po.u.uDark, s.dark);
     gl.uniform1f(po.u.uIntro, s.intro);

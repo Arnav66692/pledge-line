@@ -57,6 +57,38 @@ test('static files are served from web/ with the right types and security header
   assert.match((await rawGet('/style.css')).headers['content-type'], /text\/css/);
 });
 
+const PAGE_POLICY = "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'";
+
+test('the unseen look files serve with their types and the page policy, with STAFF_KEY unset', async () => {
+  const assets = {
+    '/chrome.css': /^text\/css/, '/chrome.js': /^text\/javascript/, '/scene.js': /^text\/javascript/,
+    '/favicon.svg': /^image\/svg\+xml$/,
+    '/fonts/geist-latin-wght-normal.woff2': /^font\/woff2$/,
+    '/fonts/instrument-serif-latin-400-normal.woff2': /^font\/woff2$/,
+    '/fonts/instrument-serif-latin-400-italic.woff2': /^font\/woff2$/,
+    '/fonts/OFL-geist.txt': /^text\/plain/, '/fonts/OFL-instrument-serif.txt': /^text\/plain/,
+  };
+  for (const [path, type] of Object.entries(assets)) {
+    const res = await rawGet(path);
+    assert.equal(res.status, 200, path);
+    assert.match(res.headers['content-type'], type, path);
+    assert.equal(res.headers['content-security-policy'], PAGE_POLICY, path);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff', path);
+  }
+  // The README is notes for people, not a page file.
+  assert.equal((await rawGet('/fonts/README.md')).status, 404);
+});
+
+test('the fonts match the sha256 in web/fonts/README.md', async () => {
+  const { createHash } = await import('node:crypto');
+  const dir = new URL('../web/fonts/', import.meta.url);
+  const readme = fs.readFileSync(new URL('README.md', dir), 'utf8');
+  const rows = [...readme.matchAll(/^\| `([^`]+)` \|.*\| `([0-9a-f]{64})` \|$/gm)];
+  const files = fs.readdirSync(dir).filter((f) => f !== 'README.md').sort();
+  assert.deepEqual(rows.map((r) => r[1]).sort(), files);
+  for (const [, file, sum] of rows) assert.equal(createHash('sha256').update(fs.readFileSync(new URL(file, dir))).digest('hex'), sum, file);
+});
+
 test('static path traversal is refused', async () => {
   const attempts = ['/../package.json', '/..%2fpackage.json', '/%2e%2e/%2e%2e/package.json', '/web/../../package.json',
     '/%2e%2e%2fsrc%2fconfig.js', '//etc/passwd', '/..\\package.json', '/%252e%252e/package.json', '/%00index.html', '/.env', '/web/'];
