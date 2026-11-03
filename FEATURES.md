@@ -20,7 +20,7 @@ Added Nov 2, 2026 on the `feat/receipts` branch. Other entries in this hackathon
 
 The receipts come from the same events and the same check.js code that `npm run pilot:check` grades with, so the page and the grader can't disagree. A test runs every call it builds through both and checks that a turn has a blocked sentence exactly when checkFacts reports a problem in it. Another test grades the same events with the check.js the pilot branch had at `0d5ad85` and with the new one, and every existing check returns the same result.
 
-The call state that `calls.start`, `calls.turn`, `calls.get` and `calls.end` return carries `receipts`, built with the configured `ORG_NAME` and `DEMO_SUBSCRIPTION_ID`. The page does not draw them yet.
+The call state that `calls.start`, `calls.turn`, `calls.get` and `calls.end` return carries `receipts`, built with the configured `ORG_NAME` and `DEMO_SUBSCRIPTION_ID`. The page draws them under "What the line said". Each proven sentence gets a chip naming the PayPal read time in PT and the facts it read, as in "PayPal, read 5:42 pm, $25.00, suspended", and one per claim, as in "Checked, an ok suspend in that turn". Plain sentences get no chip, and a blocked one says "Not backed by PayPal" with the grader's reasons. When a change's read-back shows the gift suspended or active again, the gift card shows the new status with PayPal's read time and a short highlight, which stays still under reduced motion.
 
 ## The "How do you know?" intent
 
