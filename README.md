@@ -70,6 +70,12 @@ After Script 5 sends its invoice, the record card links to PayPal's payer page. 
 - The PIN never lands in the log, the browser, a reply or the Haiku router, whether it is typed, said digit by digit, said as numbers like "twenty four sixty eight", or typed as superscript, circled or full-width characters. Keys stay in `.env` and are never logged.
 - The words said before an answer are one of four fixed phrases the line owns. Haiku only picks which one, so it can't put a number or a claim in the line's mouth.
 
+## Receipts and "How do you know?"
+
+- The call state the line returns after every turn carries `receipts`, each sentence the line said with its verdict, proven, plain or blocked, the PayPal read behind each fact, and the claims it carries. They are built from the same ledger events and the same checks `npm run pilot:check` grades with.
+- A donor who asks "How do you know?", "Are you sure?", "Says who?" or "Prove it." after the PIN hears the line read PayPal again. It says "I just checked PayPal's record again." and reads the gift's amount and status, and the call's draft when there is one, from those fresh reads. A change waiting for a yes stays open only while PayPal still shows what the line read back.
+- `FEATURES.md` has the details.
+
 ## The pilot
 
 The pass bar and how each test is graded live in `PILOT.md`. The bar was set before any code existed and does not change after results come in. `npm run pilot:check` grades the ledger and writes `PILOT-RESULTS.md`.
