@@ -1,5 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { loadConfig } from '../src/config.js';
 import { buildDeps, createServer } from '../src/server.js';
 import { buildReceipts, receiptOptions } from '../src/receipt.js';
@@ -177,6 +179,19 @@ test('the staff API is rate limited, wrong keys included', async () => {
   for (let i = 0; i <= limit; i += 1) statuses.push((await staffGet(limited.base, '/api/staff/calls', i % 2 ? STAFF_KEY : 'wrong-key-wrong-key')).status);
   assert.equal(statuses.at(-1), 429);
   assert.ok(statuses.slice(0, limit).every((s) => s === 200 || s === 401));
+});
+
+test('the vendored AG Grid files match the sha256 in web/vendor/README.md, and the page never sets innerHTML', () => {
+  const dir = new URL('../web/vendor/', import.meta.url);
+  const readme = fs.readFileSync(new URL('README.md', dir), 'utf8');
+  const rows = [...readme.matchAll(/^\| `([^`]+)` \|[^|]+\| `([0-9a-f]{64})` \|$/gm)];
+  assert.equal(rows.length, 4);
+  for (const [, file, sha] of rows) {
+    assert.equal(createHash('sha256').update(fs.readFileSync(new URL(file, dir))).digest('hex'), sha, file);
+  }
+  assert.match(readme, /32\.3\.3/);
+  const page = fs.readFileSync(new URL('../web/staff.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(page, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
 });
 
 test('STAFF_KEY must be at least 16 plain characters when set', () => {

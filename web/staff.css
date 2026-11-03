@@ -1,0 +1,172 @@
+/* The staff view, on the donor page's own tokens from style.css, so the two read as one product. */
+
+/* Quartz ships its icon font as a data: URL, which the line's font policy (self only) refuses. This is the same font,
+   taken out of ag-theme-quartz.css into its own file, and the later rule wins. See vendor/README.md. */
+@font-face {
+  font-family: "agGridQuartz";
+  src: url("/vendor/ag-grid-quartz-icons.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+}
+
+:root {
+  --proven: var(--talk);
+  --blocked: var(--error);
+  --plain: var(--muted);
+  --callback: var(--warn-text);
+  --callback-bg: var(--warn-bg);
+}
+
+.staff-page .top, .staff, .staff-page .foot { max-width: 1440px; }
+
+.eyebrow { margin: 0 0 4px; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+
+.staff { margin: 0 auto; padding: 16px var(--gutter) 24px; }
+
+.key-card { max-width: 560px; }
+.key-form { margin-top: 12px; }
+.key-open { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; white-space: nowrap; }
+input[type="password"], input[type="search"] {
+  width: 100%;
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
+
+.board-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+.board-head h2 { margin: 0; font-size: 1.3rem; }
+.board-head .hint { margin: 0; }
+
+/* The totals strip. A blocked sentence anywhere in the night turns its tile red. */
+.tiles { list-style: none; margin: 14px 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
+.tile-value { display: block; font-size: 1.6rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.tile-label { display: block; color: var(--muted); font-size: 0.85rem; }
+.tile-proven .tile-value { color: var(--proven); }
+.tile-blocked .tile-value { color: var(--blocked); }
+.tile-callback .tile-value { color: var(--callback); }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin-bottom: 4px; }
+.filter { flex: 1 1 280px; min-width: 0; }
+.toolbar-buttons { display: flex; gap: 8px; }
+
+.board-body { display: grid; gap: var(--gutter); grid-template-columns: minmax(0, 1fr); margin-top: 8px; }
+.board.with-detail .board-body { grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); align-items: start; }
+
+/* ---- The custom AG Grid theme, Quartz with every color and the type taken from the donor page's tokens ---- */
+.ag-theme-quartz.pl-grid {
+  --ag-font-family: inherit;
+  --ag-font-size: 15px;
+  --ag-foreground-color: var(--text);
+  --ag-secondary-foreground-color: var(--muted);
+  --ag-data-color: var(--text);
+  --ag-header-foreground-color: var(--text);
+  --ag-background-color: var(--surface);
+  --ag-odd-row-background-color: var(--surface);
+  --ag-header-background-color: var(--bg);
+  --ag-tooltip-background-color: var(--bg);
+  --ag-border-color: var(--line);
+  --ag-row-border-color: var(--line);
+  --ag-secondary-border-color: var(--line);
+  --ag-header-column-resize-handle-color: var(--line);
+  --ag-active-color: var(--accent);
+  --ag-row-hover-color: var(--accent-soft);
+  --ag-selected-row-background-color: var(--accent-soft);
+  --ag-range-selection-border-color: var(--focus);
+  --ag-input-focus-border-color: var(--focus);
+  --ag-icon-font-color: var(--muted);
+  --ag-wrapper-border-radius: var(--radius);
+  --ag-border-radius: 8px;
+  --ag-grid-size: 7px;
+  --ag-cell-horizontal-padding: 14px;
+  --ag-header-cell-hover-background-color: var(--accent-soft);
+  --ag-icon-font-family: agGridQuartz;
+  height: min(62vh, 600px);
+  min-height: 320px;
+  color-scheme: light dark;
+}
+.pl-grid .ag-header-cell-text { font-weight: 600; letter-spacing: 0.01em; }
+.pl-grid .ag-row-selected { box-shadow: inset 4px 0 0 var(--accent); }
+/* Keyboard focus on a cell, in the same focus color as every other control on both pages. */
+.pl-grid .ag-cell-focus:not(.ag-cell-range-selected) { outline: 3px solid var(--focus); outline-offset: -3px; border-color: transparent; }
+.pl-grid .ag-header-cell:focus-visible, .pl-grid .ag-header-cell.ag-keyboard-focus::after { outline: 3px solid var(--focus); outline-offset: -3px; }
+.pl-empty { color: var(--muted); }
+
+/* Receipt chips, the custom cell. Each count sits beside its word, so it never leans on color alone. */
+.receipt-cell { display: inline-flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+.chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 0 8px; border: 1px solid currentColor; border-radius: 999px; line-height: 1.6; font-size: 0.85rem; white-space: nowrap; }
+.chip-count { font-weight: 700; font-variant-numeric: tabular-nums; }
+.chip-proven { color: var(--proven); }
+.chip-plain { color: var(--plain); }
+.chip-blocked { color: var(--plain); }
+.chip-blocked.chip-alert { color: var(--blocked); background: var(--surface); border-width: 2px; }
+
+.call-cell { display: inline-flex; gap: 6px; align-items: center; }
+.call-name { font-weight: 600; }
+.tag { font-size: 0.75rem; padding: 0 6px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); line-height: 1.6; }
+.flag { font-weight: 700; color: var(--callback); background: var(--callback-bg); border-radius: 6px; padding: 2px 8px; }
+.flag-none { color: var(--muted); }
+/* The callback flag rides in the call cell only at phone width, where the callback column hides. */
+.call-flag { display: none; font-size: 0.75rem; padding: 0 6px; }
+.pl-grid-narrow .call-flag { display: inline; }
+.pl-grid-narrow .tag { display: none; }
+.pl-grid-narrow .chip-word { display: none; }
+.pl-grid-narrow .chip { padding: 0 6px; }
+.pl-grid-narrow .receipt-cell { gap: 4px; }
+.pl-grid-narrow .call-cell { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; height: 100%; line-height: 1.25; }
+.pl-grid-narrow .call-flag { font-size: 0.7rem; padding: 0 4px; }
+
+/* ---- The side panel ---- */
+.detail { max-height: calc(100vh - 32px); overflow-y: auto; position: sticky; top: 16px; }
+.detail:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.detail-head h2 { margin: 0; font-size: 1.15rem; }
+.detail h3 { margin: 18px 0 6px; font-size: 1rem; }
+.detail-facts { margin-top: 12px; }
+.writes { margin: 0; padding-left: 20px; }
+.writes li { margin: 4px 0; overflow-wrap: anywhere; }
+.write-refused { color: var(--blocked); }
+
+.turn { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 12px; }
+.turn-title { margin: 0 0 6px; font-size: 0.95rem; color: var(--muted); }
+.heard { margin: 0 0 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; overflow-wrap: anywhere; }
+.heard-label { color: var(--muted); }
+.sentences { list-style: none; margin: 0; padding: 0; }
+.sentence { margin: 0 0 10px; padding: 8px 10px 8px 12px; border-left: 4px solid var(--plain); border-radius: 0 8px 8px 0; background: var(--bg); }
+.sentence.verdict-proven { border-left-color: var(--proven); }
+.sentence.verdict-blocked { border-left-color: var(--blocked); }
+.sentence-head { display: flex; gap: 10px; align-items: baseline; }
+.sentence-text { margin: 0; overflow-wrap: anywhere; }
+.verdict { flex: 0 0 auto; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; min-width: 5.2em; }
+.verdict-badge-proven { color: var(--proven); }
+.verdict-badge-plain { color: var(--plain); }
+.verdict-badge-blocked { color: var(--blocked); }
+.proofs { list-style: none; margin: 6px 0 0; padding: 0 0 0 calc(5.2em + 10px); font-size: 0.9rem; }
+.proof { margin: 4px 0; overflow-wrap: anywhere; }
+.proof-value { font-weight: 700; }
+.proof-from { color: var(--text); }
+.proof-meta { display: block; color: var(--muted); font-size: 0.85rem; }
+.claim-unproven .proof-value, .problem { color: var(--blocked); }
+.problem { font-weight: 600; }
+
+@media (max-width: 1100px) {
+  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .board.with-detail .board-body { grid-template-columns: minmax(0, 1fr); }
+  .detail { position: static; max-height: none; }
+}
+
+/* At phone width the panel covers the screen, with Close at the top, and the grid keeps its place under it. */
+@media (max-width: 760px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile-value { font-size: 1.3rem; }
+  .toolbar-buttons { width: 100%; }
+  .toolbar-buttons button { flex: 1 1 0; }
+  .ag-theme-quartz.pl-grid { --ag-font-size: 14px; --ag-cell-horizontal-padding: 10px; height: 60vh; }
+  .detail { position: fixed; inset: 0; z-index: 10; border-radius: 0; max-height: none; overflow-y: auto; padding: var(--gutter); }
+  .proofs { padding-left: 0; }
+  .sentence-head { flex-direction: column; gap: 2px; }
+}
