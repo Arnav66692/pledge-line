@@ -89,7 +89,9 @@ async function main() {
   out('');
   out(`${passed} of ${results.length} scripts passed the checks. This is a dry run, so it does not count.`);
   if (isMock) out('MOCK RUN, does not count');
-  const transcript = path.join(path.dirname(ledgerPath), `dry-run-${label}.txt`);
+  // A run given its own --ledger gets its own transcript beside it, named after that ledger, so runs don't overwrite each other.
+  const transcriptName = flagValue('--ledger') ? `${path.parse(ledgerPath).name}.txt` : `dry-run-${label}.txt`;
+  const transcript = path.join(path.dirname(ledgerPath), transcriptName);
   fs.mkdirSync(path.dirname(transcript), { recursive: true });
   fs.writeFileSync(transcript, `${lines.join('\n')}\n`);
   process.stdout.write(`Transcript saved to ${transcript}\n`);
