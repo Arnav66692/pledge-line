@@ -280,10 +280,14 @@
       return;
     }
     const change = CHANGE_NAMES[write.kind] ?? 'change';
-    const answer = Number.isInteger(write.httpStatus) && write.httpStatus > 0 ? `HTTP ${write.httpStatus}` : 'no answer';
+    const answered = Number.isInteger(write.httpStatus) && write.httpStatus > 0;
+    const refused = answered && write.httpStatus >= 400 && write.httpStatus < 500;
     const where = drill ? ` Fault drill, the ${change} went to PayPal's test id ${drill.writeId}.` : '';
-    els.subRefusedMark.textContent = write.unclear ? 'PayPal didn\'t answer clearly' : 'PayPal said no';
-    els.subRefusedWhy.textContent = `PayPal answered the ${change} with ${answer}, debug id ${write.debugId || 'none'}.${where} The status above is PayPal's fresh read after it.`;
+    // Only a 4xx is PayPal saying no. A failure with no HTTP answer may never have reached PayPal at all.
+    if (refused) els.subRefusedMark.textContent = 'PayPal said no';
+    else els.subRefusedMark.textContent = write.unclear ? 'PayPal didn\'t answer clearly' : 'The change didn\'t go through';
+    const heard = answered ? `PayPal answered the ${change} with HTTP ${write.httpStatus}` : `No PayPal answer came back for the ${change}`;
+    els.subRefusedWhy.textContent = `${heard}, debug id ${write.debugId || 'none'}.${where} The status above is PayPal's fresh read after it.`;
   }
 
   function renderRecord(record, drill = null) {

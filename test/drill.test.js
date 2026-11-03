@@ -136,6 +136,17 @@ test('a forged drill on a scripted call or on another id gets no allowance, so i
   }
 });
 
+test('a drill proposal read from the wrong id names the real gift it should have been read from', async () => {
+  const stack = buildStack();
+  const { list } = await drillCall(stack, 'refused');
+  const proposed = list.find((e) => e.type === 'proposed');
+  const stray = { ...list.find((e) => e.type === 'read' && e.what === 'subscription' && e.seq < proposed.seq), id: DRILLS.refused.writeId, seq: proposed.seq - 0.5 };
+  const misread = list.flatMap((e) => (e === proposed ? [stray, e] : [e]));
+  const messages = check.checkWrites(misread, options(stack)).map((v) => v.message).join('\n');
+  assert.match(messages, /the suspend proposal was not read back from I-MOCK0000001/);
+  assert.doesNotMatch(messages, /not read back from ERRSUB062/);
+});
+
 test('the pilot tip\'s grader would fail a drill, and agrees with this grader on every non-drill call', async (t) => {
   const base = spawnSync('git', ['show', `${PILOT_TIP}:src/check.js`], { cwd: ROOT, encoding: 'utf8' });
   if (base.status !== 0) {
