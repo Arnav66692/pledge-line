@@ -155,6 +155,9 @@ const RULES = Object.freeze({
   // A charge the caller doesn't know, or doubts, or wants back. Checked before the gift and amount rules, so
   // "I was charged twenty five dollars and I don't recognize it" reads the charge rather than drafting a gift.
   charge: /\b(recogni[sz]e|unknown charge|strange charge|weird charge|this charge|that charge|the charge|a charge|charged|fraud|scam|unauthori[sz]ed|refund|money back|my statement|bank statement|dispute)\b/,
+  // Words that doubt a charge. Without one, a question about the next charge, as in "When will I be charged next?", stays a gift question.
+  chargeDoubt: /\b(recogni[sz]e|unknown|strange|weird|fraud|scam|unauthori[sz]ed|refund|money back|statement|dispute|real|twice)\b/,
+  nextCharge: /\b(next|will i be|will you charge|going to charge|each month|every month|upcoming)\b/,
   // The caller asks how the line knows what it said, so it reads PayPal again and says what the fresh read shows.
   proof: /\b(how do you know|how do i know|how would you know|are you sure|you sure|says who|who says|prove it|prove that|show me proof|how can i be sure|how can i trust|is that right|is that true|is that correct)\b/,
   oneTime: /\b(one time|onetime|once|one off|extra gift|another gift|invoice|donate|give)\b/,
@@ -182,7 +185,7 @@ export function rulesRoute(text, state = {}) {
   if (has('stop')) return { intent: 'stop_gift', amountDollars: 0 };
   // A new address can carry digits, so only an amount said as money counts with it.
   if (has('newEmail')) return { intent: 'other_email', amountDollars: parseAmountDollars(text, { needCurrency: true }) };
-  if (has('charge')) return { intent: 'charge_check', amountDollars: 0 };
+  if (has('charge') && (has('chargeDoubt') || !has('nextCharge'))) return { intent: 'charge_check', amountDollars: 0 };
   if (has('oneTime') || amountDollars > 0) return { intent: 'one_time_gift', amountDollars };
   // After the gift rule, so "Is that right? I want to give twenty dollars." keeps its amount.
   if (has('proof')) return { intent: 'how_do_you_know', amountDollars: 0 };

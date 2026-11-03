@@ -4,7 +4,7 @@ The after-hours donor line for small nonprofits.
 
 A monthly donor opens the line in a browser and proves who she is with a PIN. When she asks to stop her gift, the line reads her amount from PayPal's own record and offers a pause. Only after her separate spoken yes does it call PayPal's suspend, and then it reads the new status back from a fresh PayPal read. A one-time gift becomes a PayPal draft invoice. The line reads the draft back from PayPal, sends it only on yes, and deletes it on no.
 
-A donor who sees a PayPal charge she doesn't recognize can ask the line about it. It reads the gift's latest charge from PayPal and says the amount, the date, the status and the end of the PayPal transaction id. On her yes in the next turn, it asks staff to look at a refund, so she has no reason to dispute the charge with her bank. The line itself never refunds anything.
+A donor who sees a PayPal charge she doesn't recognize can ask the line about it. It reads the gift's latest charge from PayPal and says the amount, the date, the status and the end of the PayPal transaction id. On her yes in the next turn, it asks staff to look at a refund. A charge PayPal shows as refunded or declined gets no offer. The line itself never refunds anything.
 
 This is a pilot for the PayPal AI Hackathon. It runs against the PayPal sandbox only, so no real money moves.
 

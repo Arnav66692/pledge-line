@@ -286,8 +286,12 @@ function chargeShows(charge, orgName, timeZone) {
 /** True when chargeOffer can read this charge aloud in full, so call.js only offers a refund request for a charge it named. */
 export const chargeReadable = (charge) => chargeShows(charge, 'org', undefined) !== null;
 
+// The offer promises no outcome. Staff only look at a refund, so the line never tells a donor she needn't call her bank.
 export const chargeOffer = (charge, orgName, { timeZone } = {}) => combine(chargeShows(charge, orgName, timeZone),
-  "If you still don't recognize it, I can ask staff to look at a refund, so there is no need to dispute it with your bank. Would you like me to ask staff?", YES_OR_NO);
+  "If you still don't recognize it, I can ask staff to look at a refund. Would you like me to ask staff?", YES_OR_NO);
+// A charge PayPal shows as refunded or declined has no money to give back, so the line reads it and offers nothing.
+export const NO_REFUND_STATUSES = Object.freeze(['REFUNDED', 'DECLINED']);
+export const chargeNoOffer = (charge, orgName, { timeZone } = {}) => combine(chargeShows(charge, orgName, timeZone), ANYTHING_ELSE);
 export const noCharge = () => combine(claim('PayPal shows no recent charge for your monthly gift.', 'no_charge'), STAFF_HOURS);
 export const chargeUnread = () => combine(claim("PayPal didn't return a charge I can read clearly, so I won't guess.", 'charge_unread'), STAFF_HOURS);
 export const noRefundRequest = () => combine(claim("OK, I won't ask staff for a refund.", 'no_refund_request'), ANYTHING_ELSE);

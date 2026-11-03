@@ -39,6 +39,26 @@ test('the rules router sends a charge the caller does not know to charge_check, 
   assert.equal(rulesRoute("I'd like to give fifty dollars, just once.").intent, 'one_time_gift');
 });
 
+test('a question about the next charge stays a gift question, unless it doubts a charge', () => {
+  for (const text of ['When will I be charged next?', 'How much will I be charged next month?', 'How much am I charged each month?']) {
+    assert.equal(rulesRoute(text).intent, 'gift_status', text);
+  }
+  assert.equal(rulesRoute("I don't recognize this charge, will I be charged again next month?").intent, 'charge_check');
+});
+
+test('a charge PayPal shows as refunded or declined is read aloud with no refund offer', async () => {
+  for (const status of ['REFUNDED', 'DECLINED']) {
+    const stack = buildStack();
+    stack.paypal.mockSetCharges(SUB, [mockCharge({ status, time: '2026-11-01T10:00:00.000Z' })]);
+    const { callId, asked } = await askedCall(stack);
+    assert.equal(asked.reply, 'PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, '
+      + `with the status ${status.toLowerCase()}. In your PayPal activity, it is the transaction ending in 0042. What else can I help with?`);
+    assert.deepEqual(eventsOf(stack, callId, 'proposed'), [], status);
+    assert.equal(asked.state.pending, null);
+    assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
+  }
+});
+
 test('Gemini and Haiku can pick charge_check, and the prompt says when', () => {
   assert.ok(INTENTS.includes('charge_check'));
   assert.ok(ROUTE_TOOL.input_schema.properties.intent.enum.includes('charge_check'));
@@ -50,8 +70,8 @@ test('Gemini and Haiku can pick charge_check, and the prompt says when', () => {
 test('the line reads the latest charge from PayPal and says its amount, date, status and transaction, then asks', async () => {
   const { stack, callId, asked } = await askedCall();
   assert.equal(asked.reply, "PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, with the status completed. "
-    + 'In your PayPal activity, it is the transaction ending in 0042. If you still don\'t recognize it, I can ask staff to look at a refund, '
-    + 'so there is no need to dispute it with your bank. Would you like me to ask staff? Please say yes or no.');
+    + 'In your PayPal activity, it is the transaction ending in 0042. If you still don\'t recognize it, I can ask staff to look at a refund. '
+    + 'Would you like me to ask staff? Please say yes or no.');
   const reads = eventsOf(stack, callId, 'read');
   assert.deepEqual(reads.map((e) => [e.what, e.id, e.status]), [['charge', SUB, 'COMPLETED']]);
   assert.equal(reads[0].snapshot.transaction_id, MOCK_TRANSACTION_ID);
@@ -126,6 +146,50 @@ test('a yes in the asking turn, an okay, or a yes with more in it never logs a r
   assert.doesNotMatch(more.reply, /I've asked staff/);
   assert.deepEqual(eventsOf(stack, callId, 'refund_request'), []);
   assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
+});
+
+test('"yes, refund it" answers the offer, and "I want my money back" asks again without reading the charge twice', async () => {
+  const { stack, callId } = await askedCall();
+  const again = await say(stack, callId, 'I want my money back.');
+  assert.match(again.reply, /^I need a clear yes or no before I change anything\. PayPal shows the latest charge/);
+  assert.equal(eventsOf(stack, callId, 'read').length, 1, 'the charge is not read again');
+  assert.equal(eventsOf(stack, callId, 'proposed').length, 1, 'the offer stays the same proposal');
+  assert.deepEqual(eventsOf(stack, callId, 'withdrawn'), []);
+  const { reply } = await say(stack, callId, 'Yes, refund it.');
+  assert.match(reply, /^OK\. I've asked staff to look at a refund of \$25\.00/);
+  assert.equal(eventsOf(stack, callId, 'refund_request').length, 1);
+  assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
+});
+
+test('a refund yes never approves another change, and a pause yes never logs a refund request', async () => {
+  const { stack, callId } = await askedCall();
+  await say(stack, callId, 'Yes, pause it.');
+  assert.deepEqual(eventsOf(stack, callId, 'refund_request'), []);
+  assert.deepEqual(eventsOf(stack, callId, 'write'), []);
+  assert.equal(eventsOf(stack, callId, 'proposed').at(-1).kind, 'suspend');
+  await say(stack, callId, 'Yes, ask staff.');
+  assert.deepEqual(eventsOf(stack, callId, 'refund_request'), []);
+  assert.deepEqual(eventsOf(stack, callId, 'write'), []);
+  assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
+});
+
+test('a stale yes to the refund offer logs nothing', async () => {
+  const { stack, callId } = await askedCall();
+  stack.clock.advance(stack.config.limits.pendingTtlMs + 1000);
+  await say(stack, callId, 'Yes.');
+  assert.deepEqual(eventsOf(stack, callId, 'refund_request'), []);
+  assert.deepEqual(eventsOf(stack, callId, 'write'), []);
+  assert.equal(eventsOf(stack, callId, 'expired').length, 1);
+  assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
+});
+
+test('before the PIN, a charge question reads nothing and logs nothing', async () => {
+  const stack = buildStack();
+  const { callId } = stack.calls.start({ userAgent: 'node-test' });
+  const { reply } = await say(stack, callId, ASK);
+  assert.match(reply, /PIN/);
+  assert.deepEqual(eventsOf(stack, callId, 'read'), []);
+  assert.deepEqual(eventsOf(stack, callId, 'proposed'), []);
 });
 
 test('a no logs nothing and says so', async () => {

@@ -86,7 +86,9 @@ export const TEMPLATE_RENDERS = Object.freeze({
     say.recheck(ACTIVE, PLANS[0], null, { draftGone: true }),
   ],
   // call.js offers a refund request only for a charge it can read aloud in full (say.chargeReadable).
-  chargeOffer: () => CHARGES.map((charge) => say.chargeOffer(charge, ORG, { timeZone: TIME_ZONE })),
+  chargeOffer: () => CHARGES.filter((charge) => !say.NO_REFUND_STATUSES.includes(charge.status)).map((charge) => say.chargeOffer(charge, ORG, { timeZone: TIME_ZONE })),
+  // A refunded or declined charge is read with no offer.
+  chargeNoOffer: () => CHARGES.filter((charge) => say.NO_REFUND_STATUSES.includes(charge.status)).map((charge) => say.chargeNoOffer(charge, ORG, { timeZone: TIME_ZONE })),
   noCharge: () => [say.noCharge()],
   chargeUnread: () => [say.chargeUnread()],
   noRefundRequest: () => [say.noRefundRequest()],
@@ -106,7 +108,7 @@ export const TEMPLATE_RENDERS = Object.freeze({
  */
 export const NOT_TEMPLATES = Object.freeze(['combine', 'numberToWords', 'formatMoney', 'formatDate', 'spokenStatus', 'last4', 'maskEmail',
   'FACT_SOURCES', 'STATUS_WORDS', 'filterEmpathy', 'scanSpoken', 'extractSpokenFacts', 'saysPhrase', 'spokenForm', 'wordsOf', 'asksForAmount',
-  'SLOT_MARKS', 'slotFacts', 'sentencesOf', 'limitsPhrase', 'chargeReadable']);
+  'SLOT_MARKS', 'slotFacts', 'sentencesOf', 'limitsPhrase', 'chargeReadable', 'NO_REFUND_STATUSES']);
 
 /**
  * The template sentences that state no PayPal result and nothing the line did, each one read and passed by hand.
@@ -128,7 +130,7 @@ const PLAIN_CLAIM_FREE = [
   'I can read you your monthly gift, pause it, restart it, or cancel it.',
   "If you see a PayPal charge you don't recognize, I can tell you what it was.",
   // An offer. The yes it asks for logs a request for staff and changes nothing in PayPal.
-  "If you still don't recognize it, I can ask staff to look at a refund, so there is no need to dispute it with your bank.",
+  "If you still don't recognize it, I can ask staff to look at a refund.",
   // Its limits are config facts, which check.js holds to the config.
   'I can set up a one-time gift from one dollar to five hundred dollars.',
   'I understand.',

@@ -2,23 +2,23 @@
 // Generated from say.js by `npm run vocabulary`. Do not edit by hand, the vocabulary test fails on any drift.
 export const TEMPLATE_WORDS = Object.freeze([
   'a', 'about', 'accept', 'activity', 'address', 'again', 'already', 'also', 'amount', 'an', 'and', 'answer',
-  'any', 'anything', 'are', 'as', 'aside', 'ask', 'asked', 'asks', 'at', 'back', 'bank', 'be', 'been',
-  'before', 'but', 'call', 'calling', 'can', "can't", 'cancel', 'cancelling', 'cannot', 'catch', 'change',
-  'changed', 'charge', 'check', 'checked', 'clear', 'clearly', 'comes', 'confirm', "couldn't", 'delete',
-  'deleted', 'demo', "didn't", 'digits', 'dispute', 'do', "don't", 'done', 'donor', 'during', 'each',
-  'earlier', 'else', 'email', 'ended', 'ends', 'enter', 'file', 'find', 'first', 'follow', 'for', 'from',
-  'get', 'gift', 'give', 'go', 'good', 'goodbye', 'guess', 'has', 'have', 'hear', 'help', 'here', 'holds',
-  'hours', 'how', 'i', "i'm", "i've", 'if', 'in', 'instead', 'invoice', 'is', 'it', 'its', 'just', 'keep',
-  'keypad', 'later', 'latest', 'like', 'limit', 'line', 'link', 'locked', 'longer', 'look', 'lot', 'many',
-  'match', 'me', 'means', 'minute', 'money', 'month', 'monthly', 'more', 'moves', 'much', 'need', 'never',
-  'new', 'next', 'no', 'noted', 'nothing', 'now', 'number', 'of', 'ok', 'on', 'once', 'only', 'open', 'or',
-  'out', 'pass', 'pause', 'pausing', 'pay', 'paypal', "paypal's", 'pin', 'pins', 'please', 'reached', 'read',
-  'real', 'recent', 'recognize', 'record', 'refund', 'request', 'restart', 'restarting', 'return', 'right',
-  'safe', 'safety', 'sandbox', 'say', 'see', 'send', 'set', 'shorter', 'should', 'shows', 'so', 'sorry',
-  'staff', 'start', 'status', 'stays', 'still', 'stop', 'take', 'taken', 'tell', 'thank', 'thanks', 'that',
-  'the', 'there', "there's", 'this', 'time', 'timed', 'times', 'to', 'too', 'transaction', 'try',
-  'understand', 'undone', 'until', 'up', 'update', 'use', 'verified', 'waiting', 'want', 'was', 'way', 'went',
-  'what', 'will', 'with', "won't", 'would', 'wrong', 'yes', 'you', "you'd", 'your',
+  'any', 'anything', 'are', 'as', 'aside', 'ask', 'asked', 'asks', 'at', 'back', 'be', 'been', 'before',
+  'but', 'call', 'calling', 'can', "can't", 'cancel', 'cancelling', 'cannot', 'catch', 'change', 'changed',
+  'charge', 'check', 'checked', 'clear', 'clearly', 'comes', 'confirm', "couldn't", 'delete', 'deleted',
+  'demo', "didn't", 'digits', 'do', "don't", 'done', 'donor', 'during', 'each', 'earlier', 'else', 'email',
+  'ended', 'ends', 'enter', 'file', 'find', 'first', 'follow', 'for', 'from', 'get', 'gift', 'give', 'go',
+  'good', 'goodbye', 'guess', 'has', 'have', 'hear', 'help', 'here', 'holds', 'hours', 'how', 'i', "i'm",
+  "i've", 'if', 'in', 'instead', 'invoice', 'is', 'it', 'its', 'just', 'keep', 'keypad', 'later', 'latest',
+  'like', 'limit', 'line', 'link', 'locked', 'longer', 'look', 'lot', 'many', 'match', 'me', 'means',
+  'minute', 'money', 'month', 'monthly', 'more', 'moves', 'much', 'need', 'never', 'new', 'next', 'no',
+  'noted', 'nothing', 'now', 'number', 'of', 'ok', 'on', 'once', 'only', 'open', 'or', 'out', 'pass', 'pause',
+  'pausing', 'pay', 'paypal', "paypal's", 'pin', 'pins', 'please', 'reached', 'read', 'real', 'recent',
+  'recognize', 'record', 'refund', 'request', 'restart', 'restarting', 'return', 'right', 'safe', 'safety',
+  'sandbox', 'say', 'see', 'send', 'set', 'shorter', 'should', 'shows', 'so', 'sorry', 'staff', 'start',
+  'status', 'stays', 'still', 'stop', 'take', 'taken', 'tell', 'thank', 'thanks', 'that', 'the', 'there',
+  "there's", 'this', 'time', 'timed', 'times', 'to', 'too', 'transaction', 'try', 'understand', 'undone',
+  'until', 'up', 'update', 'use', 'verified', 'waiting', 'want', 'was', 'way', 'went', 'what', 'will', 'with',
+  "won't", 'would', 'wrong', 'yes', 'you', "you'd", 'your',
 ]);
 
 // Each sentence the templates speak, with the org name and each fact as a slot named for its source.
@@ -53,7 +53,7 @@ export const TEMPLATE_SENTENCES = Object.freeze([
   "I've asked staff to look at a refund of {charge.amount} for the charge on {charge.date}.",
   "I've set that earlier request aside, so nothing changed.",
   "If you see a PayPal charge you don't recognize, I can tell you what it was.",
-  "If you still don't recognize it, I can ask staff to look at a refund, so there is no need to dispute it with your bank.",
+  "If you still don't recognize it, I can ask staff to look at a refund.",
   'If you would like to give a one-time gift to the email on file, tell me the amount.',
   'In your PayPal activity, it is the transaction {charge.id_last4}.',
   'It can take a minute to update.',
@@ -225,4 +225,4 @@ export const TEMPLATE_CLAIMS = Object.freeze({
 });
 
 // The hash call_start logs, so pilot-check holds each call to the list it was spoken with (R4-2).
-export const TEMPLATE_HASH = '1db9edb205f4';
+export const TEMPLATE_HASH = '82a8836dd340';

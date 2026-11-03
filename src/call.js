@@ -468,6 +468,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const charge = await readCharges(ctx, subId);
     if (charge && charge.count === 0) return say.noCharge();
     if (!charge || !say.chargeReadable(charge)) return say.chargeUnread();
+    if (say.NO_REFUND_STATUSES.includes(charge.status)) return say.chargeNoOffer(charge, config.orgName, { timeZone: config.timeZone });
     const readBack = propose(ctx, 'refund_request', subId, say.chargeOffer(charge, config.orgName, { timeZone: config.timeZone }), 'charge_check');
     // The request names the charge this proposal read aloud, never a later one (refund-desk.js).
     ctx.call.chargeAsked = { pendingId: ctx.call.pending.id, charge };
@@ -706,6 +707,9 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       return askAgain(ctx, say.otherEmail());
     }
     if (routed.intent === 'repeat' || routed.intent === 'unclear') return askAgain(ctx);
+    // "Yes, refund me" or "I want my money back" answers the refund offer, not a new charge check, so the line asks
+    // for a clear yes or no again rather than setting the offer aside and reading the same charge once more.
+    if (routed.intent === 'charge_check' && call.pending.kind === 'refund_request') return askAgain(ctx, say.needYesOrNo());
     // "Are you sure?" while a change waits reads PayPal again and keeps the change open when PayPal still agrees.
     if (routed.intent === 'how_do_you_know') return proofTurn(ctx);
     // Anything else moves past the proposal, so it is dropped and a later yes can never approve it.
