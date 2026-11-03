@@ -69,6 +69,28 @@ function grade(events, { webhook = WEBHOOK, pin = '2468', until = null } = {}) {
 
 const callOf = (events, number, browser) => events.filter((e) => e.type === 'call_start' && e.script === number && e.browser === browser).at(-1).callId;
 
+test('fault drills in the window never count as scripts and never fail the window (A12)', async () => {
+  // Drills before, between and after the scripts, as a stray one could happen on a mock run graded by mistake.
+  const drill = async (stack, key) => {
+    const { callId } = stack.calls.start({ drill: key, userAgent: AGENTS.chrome, client: SIGNALS.chrome });
+    let answering = 0;
+    for (const [text, source] of [[stack.config.pin, 'keypad'], ['Can I pause my gift for a while?', 'voice'], ['Yes.', 'voice'], ['Goodbye.', 'voice']]) {
+      answering = (await stack.calls.turn(callId, { text, source, answering })).turn;
+    }
+    return callId;
+  };
+  const ids = [];
+  const { events } = await honestPilot({ before: async (stack) => ids.push(await drill(stack, 'refused')), after: async (stack) => ids.push(await drill(stack, 'unclear')) });
+  const result = grade(events);
+  assert.deepEqual(result.pass, [true, true, true, true]);
+  assert.deepEqual(result.stops, []);
+  assert.deepEqual(result.swept.writes, []);
+  const graded = [...result.selected.main.values(), ...result.selected.fox.values(), ...result.selected.others.values()].map((c) => c.callId);
+  assert.ok(ids.every((id) => !graded.includes(id)), 'no drill is ever graded as a script');
+  assert.equal(startedAfter(events, { until: '2026-11-03T17:00:00.000Z' }).some((c) => ids.includes(c.callId)), false, 'a drill is never listed as a scripted call');
+  assert.ok(ids.every((id) => windowCalls(events).has(id)), 'the sweep still covers every drill');
+});
+
 test('an honest pilot passes all four tests with no stops', async () => {
   const { events } = await honestPilot();
   const result = grade(events);
