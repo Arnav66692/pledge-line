@@ -278,6 +278,8 @@ test('a caller who asks how the line knows routes to how_do_you_know in rules mo
   // An action in the same words still wins, so a request is never read as a question about the last reply.
   assert.equal(rulesRoute('Are you sure? Then cancel my gift.').intent, 'stop_gift');
   assert.equal(rulesRoute('Are you sure you can pause it?').intent, 'pause_gift');
+  assert.deepEqual(rulesRoute('Is that right? I want to give twenty dollars.', { verified: true }), { intent: 'one_time_gift', amountDollars: 20 });
+  assert.deepEqual(rulesRoute('Is that correct, fifty dollars once?', { verified: true }), { intent: 'one_time_gift', amountDollars: 50 });
   assert.equal(rulesRoute('How much is my monthly gift?').intent, 'gift_status');
   assert.ok(INTENTS.includes('how_do_you_know'));
   assert.ok(ROUTE_TOOL.input_schema.properties.intent.enum.includes('how_do_you_know'));

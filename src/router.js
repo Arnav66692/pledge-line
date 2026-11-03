@@ -179,8 +179,9 @@ export function rulesRoute(text, state = {}) {
   if (has('stop')) return { intent: 'stop_gift', amountDollars: 0 };
   // A new address can carry digits, so only an amount said as money counts with it.
   if (has('newEmail')) return { intent: 'other_email', amountDollars: parseAmountDollars(text, { needCurrency: true }) };
-  if (has('proof')) return { intent: 'how_do_you_know', amountDollars: 0 };
   if (has('oneTime') || amountDollars > 0) return { intent: 'one_time_gift', amountDollars };
+  // After the gift rule, so "Is that right? I want to give twenty dollars." keeps its amount.
+  if (has('proof')) return { intent: 'how_do_you_know', amountDollars: 0 };
   if (has('status')) return { intent: 'gift_status', amountDollars: 0 };
   if (has('staff')) return { intent: 'staff_callback', amountDollars: 0 };
   if (has('help')) return { intent: 'help', amountDollars: 0 };
