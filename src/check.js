@@ -15,29 +15,42 @@ const SOURCE_WHAT = Object.freeze({
   'invoice.number_last4': 'invoice',
   'invoice.status': 'invoice',
   'invoice.recipient_email': 'invoice',
+  'charge.amount': 'charge',
+  'charge.date': 'charge',
+  'charge.status': 'charge',
+  'charge.id_last4': 'charge',
 });
 // The line's own limits, spoken when it asks for an amount. They are config, not PayPal facts, so they must match the config.
 const CONFIG_FACTS = Object.freeze({
   'config.invoice_min_dollars': () => formatMoney(LIMITS.invoiceMinDollars),
   'config.invoice_max_dollars': () => formatMoney(LIMITS.invoiceMaxDollars),
 });
-const WRITE_READS = Object.freeze({ suspend: 'subscription', activate: 'subscription', cancel: 'subscription', send_invoice: 'invoice' });
+// A refund request writes nothing to PayPal. Its target is the gift, and its read-back is a fresh read of the gift's charges.
+const WRITE_READS = Object.freeze({ suspend: 'subscription', activate: 'subscription', cancel: 'subscription', send_invoice: 'invoice', refund_request: 'charge' });
 // What each proposal must read aloud, and the status each write's read-back must speak (PILOT.md Tests 1 and 2).
 const GIFT_FACTS = ['plan.price', 'subscription.status'];
-const PROPOSAL_FACTS = Object.freeze({ suspend: GIFT_FACTS, activate: GIFT_FACTS, cancel: GIFT_FACTS, send_invoice: ['invoice.amount', 'invoice.number_last4'] });
+const PROPOSAL_FACTS = Object.freeze({ suspend: GIFT_FACTS, activate: GIFT_FACTS, cancel: GIFT_FACTS, send_invoice: ['invoice.amount', 'invoice.number_last4'],
+  refund_request: ['charge.amount', 'charge.date', 'charge.status', 'charge.id_last4'] });
 const WRITE_STATUS = Object.freeze({
   suspend: { source: 'subscription.status', values: ['suspended'] },
   activate: { source: 'subscription.status', values: ['active'] },
   cancel: { source: 'subscription.status', values: ['cancelled'] },
   send_invoice: { source: 'invoice.status', values: ['sent', 'unpaid'] },
+  // A request changes nothing in PayPal, so any status PayPal gives a charge is a true read-back.
+  refund_request: { source: 'charge.status', values: ['completed', 'pending', 'declined', 'refunded', 'partially refunded'] },
 });
 // Events that close a proposal. A yes after one of them answers nothing (I1).
 const CLOSED_BY = Object.freeze({ expired: 'already timed out', withdrawn: 'already been set aside', no: 'already been declined' });
 const SAFETY_REASONS = ['other_email', 'locked'];
-const GATED_TYPES = new Set(['read', 'write', 'staging_write']);
+const GATED_TYPES = new Set(['read', 'write', 'staging_write', 'refund_request']);
 const SUBSCRIPTION_KINDS = new Set(['suspend', 'activate', 'cancel']);
+// The proposals and writes that target the call's own subscription, the refund request included (R3-7).
+const GIFT_TARGET_KINDS = new Set([...SUBSCRIPTION_KINDS, 'refund_request']);
+// The reads whose id is the call's own subscription.
+const GIFT_READS = new Set(['subscription', 'charge']);
 // Whose read a fact may come from (R3-7).
-const OWN = Object.freeze({ subscription: "this call's own subscription", plan: "that subscription's plan", invoice: "this call's own draft" });
+const OWN = Object.freeze({ subscription: "this call's own subscription", plan: "that subscription's plan", invoice: "this call's own draft",
+  charge: "this call's own subscription's charges" });
 // A template list as the facts check reads it, words and sentences as sets.
 const asTemplates = (hash, list) => Object.freeze({ hash, words: new Set(list.words), sentences: new Set(list.sentences), claims: list.claims });
 const CURRENT_TEMPLATES = asTemplates(TEMPLATE_HASH, { words: TEMPLATE_WORDS, sentences: TEMPLATE_SENTENCES, claims: TEMPLATE_CLAIMS });
@@ -68,7 +81,7 @@ const LIMITS_PHRASE = limitsPhrase(LIMITS.invoiceMinDollars, LIMITS.invoiceMaxDo
 /** The one subscription a call works on: the configured one when given, else the first one it read or proposed a change to. */
 export function callSubscription(list, subscriptionId = null) {
   if (subscriptionId) return subscriptionId;
-  const first = list.find((e) => (e.type === 'read' && e.what === 'subscription') || ((e.type === 'proposed' || e.type === 'write') && SUBSCRIPTION_KINDS.has(e.kind)));
+  const first = list.find((e) => (e.type === 'read' && GIFT_READS.has(e.what)) || ((e.type === 'proposed' || e.type === 'write') && GIFT_TARGET_KINDS.has(e.kind)));
   if (!first) return null;
   return first.type === 'read' ? first.id : first.targetId;
 }
@@ -77,7 +90,8 @@ export function callSubscription(list, subscriptionId = null) {
 function ownReads(reads, subId, draftId) {
   const subscription = reads.get(`subscription ${subId}`) ?? null;
   const planId = subscription?.snapshot?.plan_id ?? null;
-  return { subscription, plan: planId ? reads.get(`plan ${planId}`) ?? null : null, invoice: draftId ? reads.get(`invoice ${draftId}`) ?? null : null };
+  return { subscription, plan: planId ? reads.get(`plan ${planId}`) ?? null : null, invoice: draftId ? reads.get(`invoice ${draftId}`) ?? null : null,
+    charge: reads.get(`charge ${subId}`) ?? null };
 }
 
 /** Why a declared fact is wrong, or null when it matches its PayPal read or, inside the line's amount question, the config. */
@@ -207,6 +221,42 @@ function newExpiry(scope) {
 }
 
 const pinBads = (scope) => scope.before.filter((e) => e.type === 'pin_bad').length;
+
+// ---- The charge check (PICK.md) ----
+
+/** The latest read of the call's own subscription's charges in the turn. */
+const chargeReadInTurn = (scope) => scope.turn.filter((e) => e.type === 'read' && e.what === 'charge' && e.id === scope.subId).at(-1) ?? null;
+const CHARGE_SOURCES = ['charge.amount', 'charge.date', 'charge.status', 'charge.id_last4'];
+// The same test say.chargeReadable makes: each fact the offer reads aloud can be derived from the read.
+const unreadable = (snapshot) => !snapshot || (snapshot.count > 0 && CHARGE_SOURCES.some((source) => !FACT_SOURCES[source](snapshot, DEFAULT_TIME_ZONE)));
+
+/**
+ * The turn's refund request and the charge its proposal read aloud: the latest charge read of the gift before that
+ * proposal. A request is only true to its words when it names that charge (refund-desk.js).
+ */
+function refundRequestOf(scope) {
+  const write = scope.turn.filter((e) => e.type === 'write' && e.ok && e.kind === 'refund_request').at(-1);
+  const logged = write ? scope.turn.filter((e) => e.type === 'refund_request' && e.seq < write.seq).at(-1) : null;
+  if (!logged) return null;
+  const yes = scope.before.find((e) => e.type === 'yes' && e.tokenId === write.tokenId);
+  const proposed = yes ? scope.before.find((e) => e.type === 'proposed' && e.pendingId === yes.pendingId) : null;
+  const read = proposed ? scope.before.filter((e) => e.seq < proposed.seq && e.type === 'read' && e.what === 'charge' && e.id === scope.subId).at(-1) : null;
+  return { write, logged, asked: read?.snapshot ?? null };
+}
+
+/** An ok refund request in the turn, logged for the charge its proposal read aloud. */
+function refundForAskedCharge(scope) {
+  const found = refundRequestOf(scope);
+  return Boolean(found?.asked?.transaction_id) && found.logged.transactionId === found.asked.transaction_id;
+}
+
+/** That request, and a read of the gift's charges after it that still returns the same charge first. */
+function refundMatchesRead(scope) {
+  const found = refundRequestOf(scope);
+  if (!found || !refundForAskedCharge(scope)) return false;
+  const read = scope.turn.filter((e) => e.seq > found.write.seq && e.type === 'read' && e.what === 'charge' && e.id === scope.subId).at(-1);
+  return read?.snapshot?.transaction_id === found.logged.transactionId;
+}
 const giftInTurn = (scope) => Boolean(scope.gift) && scope.gift.turn === scope.said.turn;
 
 /** Each claim, the events that back it, and what to call those events in a problem. */
@@ -249,6 +299,14 @@ const CLAIMS = Object.freeze({
   invoice_read: ["a read of this call's own draft that returned it", (s) => Boolean(s.draft?.snapshot)],
   // "I just checked PayPal's record again." says the line read the gift afresh, so it needs a read in that very turn.
   gift_rechecked: ["a read of the call's own subscription in that turn that returned it", (s) => giftInTurn(s) && Boolean(s.gift.snapshot)],
+  no_charge: ["a read of the call's own subscription's charges in that turn that returned no charge", (s) => chargeReadInTurn(s)?.snapshot?.count === 0],
+  charge_unread: ["a read of the call's own subscription's charges in that turn that returned nothing, or a charge missing its id, status, amount or time",
+    (s) => { const read = chargeReadInTurn(s); return Boolean(read) && unreadable(read.snapshot); }],
+  wrote_refund_request: ['a refund request logged in that turn, after a clear yes, for the charge its proposal read aloud', (s) => refundForAskedCharge(s)],
+  refund_matches_read: ["that refund request, and a read of the gift's charges after it that still returns that charge", (s) => refundMatchesRead(s)],
+  refund_request_failed: ['a refund request in that turn that failed, and no ok write', (s) => inTurn(s, (e) => e.type === 'write' && !e.ok && e.kind === 'refund_request') && !okWrite(s)],
+  no_refund_request: ['a no to a refund request in that turn, and no ok write',
+    (s) => !okWrite(s) && inTurn(s, (e) => e.type === 'no' && s.before.some((p) => p.type === 'proposed' && p.pendingId === e.pendingId && p.kind === 'refund_request'))],
 });
 
 /** The claims the grader can prove. A template claim the grader does not know fails the vocabulary test (R4-1). */
@@ -265,7 +323,7 @@ function claimScope(list, said, subId) {
   const before = list.filter((e) => e.seq < said.seq);
   const drafts = before.filter((e) => e.type === 'staging_write' && e.kind === 'create_draft' && e.ok).map((e) => e.id);
   const latest = (what, id) => (id ? before.filter((e) => e.type === 'read' && e.what === what && e.id === id).at(-1) ?? null : null);
-  return { said, before, turn: before.filter((e) => e.turn === said.turn), made: new Set(drafts), gift: latest('subscription', subId), draft: latest('invoice', drafts.at(-1)) };
+  return { said, before, subId, turn: before.filter((e) => e.turn === said.turn), made: new Set(drafts), gift: latest('subscription', subId), draft: latest('invoice', drafts.at(-1)) };
 }
 
 /** The reply a repeat repeats: the latest earlier reply of the turn it names, whose words it ends with. */
@@ -464,6 +522,17 @@ function checkTarget(write, proposed, list) {
   return problems;
 }
 
+/** An ok refund request logged one request, in its own turn, for the charge its proposal read aloud (PICK.md). */
+function checkRefundRequest(write, proposed, list) {
+  if (!write.ok) return [];
+  const logged = list.filter((e) => e.type === 'refund_request' && e.turn === write.turn && e.seq < write.seq);
+  if (logged.length !== 1) return [violation(write, 'writes', `the refund request logged ${logged.length} requests for staff, not one`)];
+  const read = lastBefore(list, proposed.seq, (e) => e.type === 'read' && e.what === 'charge' && e.id === write.targetId);
+  const asked = read?.snapshot?.transaction_id ?? null;
+  if (!asked || logged[0].transactionId !== asked) return [violation(write, 'writes', `the refund request names ${logged[0].transactionId}, not ${asked ?? 'a charge'}, the charge its proposal read aloud`)];
+  return [];
+}
+
 function checkOneWrite(write, list) {
   if (!hasToken(write)) return [violation(write, 'writes', `${write.kind} ran without a one-time token`)];
   const yes = list.find((e) => e.type === 'yes' && e.tokenId === write.tokenId && e.seq < write.seq);
@@ -478,6 +547,7 @@ function checkOneWrite(write, list) {
   problems.push(...checkYesTurn(write, yes, proposed, list), ...checkTimely(write, yes, proposed, list), ...checkTarget(write, proposed, list));
   const readBack = list.some((e) => e.type === 'read' && e.what === WRITE_READS[write.kind] && e.id === write.targetId && e.turn === write.turn && e.seq > write.seq);
   if (!readBack) problems.push(violation(write, 'writes', `no fresh PayPal read of ${write.targetId} after ${write.kind}`));
+  if (write.kind === 'refund_request') problems.push(...checkRefundRequest(write, proposed, list));
   return problems;
 }
 
@@ -485,12 +555,13 @@ function checkOneWrite(write, list) {
 function checkOneSubscription(list, subscriptionId) {
   const subId = callSubscription(list, subscriptionId);
   const targetOf = (e) => {
-    if (e.type === 'read' && e.what === 'subscription') return e.id;
-    return (e.type === 'proposed' || e.type === 'write') && SUBSCRIPTION_KINDS.has(e.kind) ? e.targetId : undefined;
+    if (e.type === 'read' && GIFT_READS.has(e.what)) return e.id;
+    if (e.type === 'refund_request') return e.subscriptionId;
+    return (e.type === 'proposed' || e.type === 'write') && GIFT_TARGET_KINDS.has(e.kind) ? e.targetId : undefined;
   };
   // sweep holds a later call to the id it logged, which may not be the pilot's, so the message names the id only (C1).
   const own = subscriptionId ? `${subId}, the subscription this call is held to` : `${subId}, the subscription this call works on`;
-  const step = (e) => (e.type === 'read' ? 'a read' : `a ${e.kind} ${e.type === 'write' ? 'write' : 'proposal'}`);
+  const step = (e) => (e.type === 'read' ? 'a read' : e.type === 'refund_request' ? 'a refund request' : `a ${e.kind} ${e.type === 'write' ? 'write' : 'proposal'}`);
   return list.filter((e) => targetOf(e) !== undefined && targetOf(e) !== subId)
     .map((e) => violation(e, 'writes', `${step(e)} of ${targetOf(e)}, not of ${own}`));
 }

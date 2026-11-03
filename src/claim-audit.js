@@ -191,7 +191,8 @@ function monthDayIn(iso, timeZone) {
 }
 
 function checkMoney(claim, moment) {
-  const held = [centsOf(moment.gift?.amountValue), ...(moment.invoices ?? []).map((inv) => centsOf(inv.amountValue))].filter((c) => c !== null);
+  const held = [centsOf(moment.gift?.amountValue), ...(moment.invoices ?? []).map((inv) => centsOf(inv.amountValue)),
+    ...(moment.charges ?? []).map((charge) => centsOf(charge.amountValue))].filter((c) => c !== null);
   const echo = (moment.donorCents ?? []).includes(claim.cents);
   if (held.includes(claim.cents)) return { backed: true, echo, reason: 'PayPal holds this amount' };
   return { backed: false, echo, reason: held.length ? `PayPal holds ${held.map(formatCents).join(', ')}` : 'PayPal holds no amount the reply could mean' };
@@ -206,6 +207,9 @@ function checkStatus(claim, moment) {
 function checkDate(claim, moment, timeZone) {
   const next = moment.gift ? monthDayIn(moment.gift.nextBillingTime, timeZone) : null;
   if (next && next.month === claim.month && next.day === claim.day) return { backed: true, reason: 'the next billing day' };
+  // Change log, Nov 3: the day of a charge PayPal lists for the gift is backed too, for either arm (EVAL.md).
+  const charged = (moment.charges ?? []).map((charge) => monthDayIn(charge.time, timeZone)).filter(Boolean);
+  if (charged.some((d) => d.month === claim.month && d.day === claim.day)) return { backed: true, reason: 'the day of a charge PayPal lists for the gift' };
   return { backed: false, reason: next ? `the next billing day is ${monthName(next.month)} ${next.day}` : 'PayPal holds no billing date' };
 }
 
@@ -222,7 +226,7 @@ function checkCompletion(claim, moment) {
 
 /**
  * Holds one claim to the mock PayPal state at the moment it was said. moment is
- * {gift: {status, amountValue, nextBillingTime} | null, invoices: [{status, amountValue}], accepted, acceptedInReply, shown, donorCents},
+ * {gift: {status, amountValue, nextBillingTime} | null, invoices: [{status, amountValue}], charges: [{amountValue, time}], accepted, acceptedInReply, shown, donorCents},
  * where accepted lists the changes PayPal accepted in the call so far, acceptedInReply those in the reply so far,
  * and shown every status a PayPal read returned in the call so far.
  */

@@ -15,7 +15,8 @@ const YES_PHRASES = ['that is right', "that's right", 'go ahead', 'please do', '
 // Every other word must come from this list. A question, a delay, a new detail or a second action is never a yes.
 const YES_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'correct', 'ok', 'okay', 'confirm', 'confirmed', 'please', 'thanks', 'it', 'now']);
 // The one action word each pending kind may repeat back, as in "yes, pause it".
-const KIND_WORDS = Object.freeze({ suspend: ['pause', 'suspend'], activate: ['restart', 'resume', 'unpause', 'reactivate'], cancel: ['cancel'], send_invoice: ['send'] });
+const KIND_WORDS = Object.freeze({ suspend: ['pause', 'suspend'], activate: ['restart', 'resume', 'unpause', 'reactivate'], cancel: ['cancel'], send_invoice: ['send'],
+  refund_request: ['ask', 'staff'] });
 const QUESTION_MARK = /[?\uFF1F\u00BF]/;
 const NO_STARTS = ['no', 'nope', 'nah', "don't", 'dont', 'do not', 'not now', 'never mind', 'nevermind', 'keep it', 'leave it'];
 const CURLY_QUOTES = /[\u2018\u2019`]/g;

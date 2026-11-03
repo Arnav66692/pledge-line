@@ -24,6 +24,9 @@ const DRAFT = { id: 'INV2-1', status: 'DRAFT', number: '0001', amount_value: '50
 // Every mix of a missing number, amount, status and recipient, so each sentence the invoice templates can say is listed.
 const INVOICES = [...['0001', null].flatMap((number) => ['50.00', null].flatMap((amount) => ['DRAFT', 'SENT', 'UNPAID', 'PAID', null]
   .flatMap((status) => [DRAFT.recipient_email, null].map((email) => ({ ...DRAFT, number, amount_value: amount, status, recipient_email: email }))))), null];
+// The gift's latest charge, as GET /v1/billing/subscriptions/{id}/transactions gives it, in each status PayPal lists.
+const CHARGE = { transaction_id: 'MOCKTX00000000042', status: 'COMPLETED', amount_value: '25.00', amount_currency: 'USD', time: '2026-11-01T10:00:00Z', count: 1 };
+const CHARGES = ['COMPLETED', 'PENDING', 'DECLINED', 'REFUNDED', 'PARTIALLY_REFUNDED'].map((status) => ({ ...CHARGE, status }));
 const KINDS = ['suspend', 'activate', 'cancel', 'send_invoice'];
 const GIFT_KINDS = KINDS.slice(0, 3);
 // How a write can end: ok, refused by PayPal, or with no clear answer, a timeout or a 5xx (L2).
@@ -82,6 +85,17 @@ export const TEMPLATE_RENDERS = Object.freeze({
     ...INVOICES.map((inv) => say.recheck(ACTIVE, PLANS[0], inv)),
     say.recheck(ACTIVE, PLANS[0], null, { draftGone: true }),
   ],
+  // call.js offers a refund request only for a charge it can read aloud in full (say.chargeReadable).
+  chargeOffer: () => CHARGES.map((charge) => say.chargeOffer(charge, ORG, { timeZone: TIME_ZONE })),
+  noCharge: () => [say.noCharge()],
+  chargeUnread: () => [say.chargeUnread()],
+  noRefundRequest: () => [say.noRefundRequest()],
+  afterRefundRequest: () => [
+    ...CHARGES.map((charge) => say.afterRefundRequest(charge, { ok: true, same: true, timeZone: TIME_ZONE })),
+    say.afterRefundRequest(CHARGE, { ok: true, same: false }),
+    say.afterRefundRequest(null, { ok: true, same: false }),
+    say.afterRefundRequest(CHARGE, { ok: false }),
+  ],
   EMPATHY_PHRASES: () => Object.values(say.EMPATHY_PHRASES).map(plain),
   empathyPhrase: () => Object.keys(say.EMPATHY_PHRASES).map((key) => plain(say.filterEmpathy(say.empathyPhrase(key)))),
 });
@@ -92,7 +106,7 @@ export const TEMPLATE_RENDERS = Object.freeze({
  */
 export const NOT_TEMPLATES = Object.freeze(['combine', 'numberToWords', 'formatMoney', 'formatDate', 'spokenStatus', 'last4', 'maskEmail',
   'FACT_SOURCES', 'STATUS_WORDS', 'filterEmpathy', 'scanSpoken', 'extractSpokenFacts', 'saysPhrase', 'spokenForm', 'wordsOf', 'asksForAmount',
-  'SLOT_MARKS', 'slotFacts', 'sentencesOf', 'limitsPhrase']);
+  'SLOT_MARKS', 'slotFacts', 'sentencesOf', 'limitsPhrase', 'chargeReadable']);
 
 /**
  * The template sentences that state no PayPal result and nothing the line did, each one read and passed by hand.
@@ -112,6 +126,9 @@ const PLAIN_CLAIM_FREE = [
   'I can also set up a one-time gift as a PayPal invoice to the email on file, or ask staff to call you back.',
   'I can read you your monthly gift, pause it, restart it, cancel it, or set up a one-time gift.',
   'I can read you your monthly gift, pause it, restart it, or cancel it.',
+  "If you see a PayPal charge you don't recognize, I can tell you what it was.",
+  // An offer. The yes it asks for logs a request for staff and changes nothing in PayPal.
+  "If you still don't recognize it, I can ask staff to look at a refund, so there is no need to dispute it with your bank.",
   // Its limits are config facts, which check.js holds to the config.
   'I can set up a one-time gift from one dollar to five hundred dollars.',
   'I understand.',
@@ -142,6 +159,7 @@ const PLAIN_CLAIM_FREE = [
   'To keep your gift safe, please enter your PIN on the keypad, or say its digits.',
   'What else can I help with?',
   'What would you like to do?',
+  'Would you like me to ask staff?',
   'Would you like me to pause it?',
   'You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift.',
 ];
@@ -154,6 +172,9 @@ const PLAIN_CLAIM_FREE = [
 const SLOT_FRAMES = [
   // The safety check stops the pilot when a draft names any email but the one on file.
   'It would go to the email on file, {invoice.recipient_email}.',
+  // The charge check's read-back. Each slot comes from one read of the gift's own charges (PICK.md).
+  'In your PayPal activity, it is the transaction {charge.id_last4}.',
+  'PayPal shows the latest charge for your monthly gift to {org} was {charge.amount} on {charge.date}, with the status {charge.status}.',
   'PayPal now shows invoice with the status {invoice.status}.',
   'PayPal now shows invoice {invoice.number_last4} with the status {invoice.status}.',
   'PayPal now shows invoice {invoice.number_last4}, for {invoice.amount}, with the status {invoice.status}.',
@@ -197,6 +218,15 @@ export const CLAIMED = Object.freeze({
   'I asked PayPal to send it.': ['wrote_send_invoice'],
   "I can't find that invoice in PayPal now, so I can't confirm it went out.": ['invoice_unread'],
   "I couldn't find a monthly gift in PayPal for this line.": ['no_gift'],
+  // Read Nov 3, the charge check (PICK.md). A request for staff is not a refund, and no sentence says one happened.
+  "I couldn't pass that request to staff just now, so nothing changed.": ['refund_request_failed'],
+  "I've asked staff to look at a refund for the charge I read you.": ['wrote_refund_request'],
+  "I've asked staff to look at a refund of {charge.amount} for the charge on {charge.date}.": ['refund_matches_read', 'wrote_refund_request'],
+  "OK, I won't ask staff for a refund.": ['no_refund_request'],
+  "PayPal didn't return a charge I can read clearly, so I won't guess.": ['charge_unread'],
+  'PayPal now shows that charge as {charge.status}.': ['refund_matches_read'],
+  'PayPal shows no recent charge for your monthly gift.': ['no_charge'],
+  'Staff will follow up during open hours.': ['wrote_refund_request'],
   // Read Nov 2. It says the line read the gift again just now, which gift_rechecked proves with a read in that turn.
   "I just checked PayPal's record again.": ['gift_rechecked'],
   'I need a clear yes or no before I change anything.': ['unchanged'],

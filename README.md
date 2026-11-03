@@ -4,13 +4,15 @@ The after-hours donor line for small nonprofits.
 
 A monthly donor opens the line in a browser and proves who she is with a PIN. When she asks to stop her gift, the line reads her amount from PayPal's own record and offers a pause. Only after her separate spoken yes does it call PayPal's suspend, and then it reads the new status back from a fresh PayPal read. A one-time gift becomes a PayPal draft invoice. The line reads the draft back from PayPal, sends it only on yes, and deletes it on no.
 
+A donor who sees a PayPal charge she doesn't recognize can ask the line about it. It reads the gift's latest charge from PayPal and says the amount, the date, the status and the end of the PayPal transaction id. On her yes in the next turn, it asks staff to look at a refund, so she has no reason to dispute the charge with her bank. The line itself never refunds anything.
+
 This is a pilot for the PayPal AI Hackathon. It runs against the PayPal sandbox only, so no real money moves.
 
 ## What is live and what is simulated
 
 Live in the pilot, once the keys are in `.env`.
 
-- PayPal sandbox REST calls for subscriptions, invoices and webhook checks. The code refuses any other PayPal address.
+- PayPal sandbox REST calls for subscriptions, a subscription's transaction list, invoices and webhook checks. The code refuses any other PayPal address.
 - An AI router reads what the caller means. For the pilot it's Google's Gemini on the free tier, or Claude Haiku 5.5 with `ROUTER_MODE=haiku`. It never decides a yes or a no, and it never touches PayPal. Below, Haiku means whichever router model is set.
 - Speech in and out uses the browser's own speech tools. Chrome and Safari can listen. Firefox uses the typed box.
 
@@ -69,7 +71,7 @@ After Script 5 sends its invoice, the record card links to PayPal's payer page. 
 ## Safety rules, in plain words
 
 - Nothing about the gift is read or changed before the PIN passes. Three wrong PINs lock the call.
-- Pausing, restarting, cancelling and sending an invoice each need a yes said in its own turn, right after the line read the details back. A yes inside the request does not count, and neither does a yes the page sent before the details reached it. The line also keeps its own record of when each turn arrived, so a yes that reached it before it had finished the reply that asked, or less than a quarter second after, never counts, whatever the page claims. The line asks again.
+- Pausing, restarting, cancelling, sending an invoice and asking staff about a refund each need a yes said in its own turn, right after the line read the details back. A yes inside the request does not count, and neither does a yes the page sent before the details reached it. The line also keeps its own record of when each turn arrived, so a yes that reached it before it had finished the reply that asked, or less than a quarter second after, never counts, whatever the page claims. The line asks again.
 - A yes only counts when every word in it is a plain yes, such as yes, okay, sure, please or go ahead, or the one action word for what is waiting, as in "yes, pause it". A question, a "later", a request to repeat or a new email is never a yes. Neither is a turn typed with characters outside plain English letters and punctuation, or a turn that carried the PIN. The line asks again.
 - If the caller moves on to something else while a change is waiting, the line sets that change aside and says so. A later yes can't approve it.
 - Each of those changes needs a one-time token that only the yes can create, and it expires after a minute.
@@ -79,6 +81,10 @@ After Script 5 sends its invoice, the record card links to PayPal's payer page. 
 - A one-time gift needs one clear amount. If the caller corrects it, as in "fifty dollars, I mean sixty, one time", or names two different numbers, as in "fifty and sixty dollars", the line asks for the amount again, whatever amount Haiku heard.
 - The PIN never lands in the log, the browser, a reply or the Haiku router, whether it is typed, said digit by digit, said as numbers like "twenty four sixty eight", or typed as superscript, circled or full-width characters. Keys stay in `.env` and are never logged.
 - The words said before an answer are one of four fixed phrases the line owns. Haiku only picks which one, so it can't put a number or a claim in the line's mouth.
+
+## Is this charge real?
+
+After the PIN, try "I see a PayPal charge I don't recognize." In mock mode the fake PayPal holds one completed $25.00 charge on the 1st of the month, transaction ending in 0042. Say yes and the line logs a refund request for staff, reads PayPal again and reads the charge back. Nothing in PayPal changes. `PICK.md` says why this move was picked, `FEATURES.md` has the details and `SPEC.md` the contract.
 
 ## Receipts and "How do you know?"
 
@@ -95,6 +101,9 @@ Set `STAFF_KEY` to at least 16 characters and open `/staff`. A coordinator types
 The pass bar and how each test is graded live in `PILOT.md`. The bar was set before any code existed and does not change after results come in. `npm run pilot:check` grades the ledger and writes `PILOT-RESULTS.md`.
 
 ## Known gaps
+
+- The charge check reads `GET /v1/billing/subscriptions/{id}/transactions`, whose field names follow PayPal's Subscriptions v1 reference. They are not yet confirmed by a real sandbox call. A newly approved sandbox subscription may list no completed charge until its first bill, so a demo needs a seeded gift that has billed once.
+- The charge check reads only the latest charge, and a donor has to link the charge to this nonprofit before she calls.
 
 - After the Nov 2 review, pilot-check reads PILOT.md's checks more strictly than the change log says. Record these in the PILOT.md change log before the graded run if you agree. The bar itself is unchanged.
   - Scripts 1 to 10 come from the latest Chrome or Safari call of each, not any call outside Firefox, so an Edge run is recorded but never replaces a graded call. The Firefox clause still uses the latest Firefox calls of Scripts 2 and 3.

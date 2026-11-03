@@ -45,6 +45,20 @@ A donor can ask "How do you know?", "Are you sure?", "Says who?", "Prove it." or
 
 The new sentence carries the claim `gift_rechecked`, "a read of the call's own subscription in that turn that returned it". The grader proves it against the call's own events, so the line can't say it after an older read. The sentence is on the hand review in `src/vocabulary.js`, and `npm run vocabulary` added the new template list to `src/template-history.js` beside every older one.
 
+## Is this charge real?
+
+Added Tue Nov 3 on the `feat/core-move` branch, to merge only after the pilot is graded (after Wed Nov 4 at 9 pm PT). `PICK.md` says why this move won and what lost. `SPEC.md` has the contract.
+
+A donor sees a PayPal charge she doesn't recognize and calls. After the PIN she says "I see a PayPal charge I don't recognize." The line reads the gift's charges from PayPal (`GET /v1/billing/subscriptions/{id}/transactions`) and says the latest one, as in "PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, with the status completed. In your PayPal activity, it is the transaction ending in 0042." Then it offers to ask staff to look at a refund, so there is no need to dispute the charge with her bank.
+
+- Every amount, date, status and transaction ending is a fact proven against that one read, so the receipts show it as proven, from PayPal's charge record.
+- The offer is a proposal like a pause. Only a clear yes in the next turn counts, the gate mints a one-time token, and `src/refund-desk.js` consumes it before it logs a `refund_request` for staff. Nothing is written to PayPal and nothing is refunded by the line.
+- After the yes, the line reads the charges again and reads the same charge's amount, date and status back. If PayPal now lists a newer charge first, or the read fails, it names no amount and says it asked staff about the charge it read aloud.
+- No charge in the last year, a half filled charge, a PayPal error, a no, and a locked call each have their own honest sentence, and none offers a refund it can't tie to a charge.
+- The grader proves the new claims (`no_charge`, `charge_unread`, `wrote_refund_request`, `refund_matches_read`, `refund_request_failed`, `no_refund_request`), and fails a request that names another charge than the one read aloud. completed, refunded, declined and pending became status words, so "refunded" can only be said when PayPal's read says so.
+- The staff view lists each refund request with its transaction and amount, and the donor page's event log says the request went to staff and nothing changed in PayPal.
+- The claim audit (EVAL.md) now holds a date or amount to the charges PayPal lists for the gift too, for both arms. The change log there says why and keeps the one unbacked date the old rule counted on E6. It needs Arnav's yes before the real run.
+
 ## Unseen look
 
 Added Nov 2 on the `feat/unseen-look` branch. The donor page and the staff view now follow unseen.co's design language. Only the look changed. `app.js`, `staff.js`, every element id, the server routes and the policy are the same, so the pilot grades the same page.

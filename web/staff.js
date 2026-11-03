@@ -21,16 +21,17 @@
     gift_status: 'check the gift', stop_gift: 'stop the gift', cancel_now: 'cancel now', pause_gift: 'pause the gift',
     resume_gift: 'restart the gift', one_time_gift: 'give once', other_email: 'use a new email, turned down', how_do_you_know: 'ask how the line knows',
     repeat: 'hear it again', help: 'help', staff_callback: 'a call back', goodbye: 'say goodbye', unclear: 'unclear',
+    charge_check: 'ask about a charge',
   };
   const WRITES = {
     suspend: 'paused the gift', activate: 'restarted the gift', cancel: 'cancelled the gift', send_invoice: 'sent the invoice',
-    create_draft: 'made a draft invoice', delete_draft: 'deleted the draft',
+    create_draft: 'made a draft invoice', delete_draft: 'deleted the draft', refund_request: 'asked staff to look at a refund',
   };
   const REFUSED = {
     suspend: 'refused the pause', activate: 'refused the restart', cancel: 'refused the cancel', send_invoice: 'refused the send',
-    create_draft: 'refused the draft', delete_draft: 'refused the delete',
+    create_draft: 'refused the draft', delete_draft: 'refused the delete', refund_request: 'refund request not logged',
   };
-  const READS = { subscription: 'gift', plan: 'gift plan', invoice: 'invoice' };
+  const READS = { subscription: 'gift', plan: 'gift plan', invoice: 'invoice', charge: 'charge' };
   // The donor page says paused, so the staff view does too. PayPal's own word for it is suspended.
   const STATUS_WORDS = { SUSPENDED: 'paused' };
   const CLAIM_WORDS = window.PledgeClaimWords || {};
@@ -374,6 +375,9 @@
         ['Gift now', sub ? `${statusWord(sub.status)}, checked at ${clockPt(sub.ts)}` : 'not checked'],
         ['Invoice now', inv ? `${statusWord(inv.status)}, checked at ${clockPt(inv.ts)}` : 'none'],
         ['Callback', call.callback ? 'asked, call the donor back' : 'not asked'],
+        ['Refund to look at', (call.refundRequests ?? []).length > 0
+          ? call.refundRequests.map((r) => `${r.amountValue ?? '?'} ${r.amountCurrency ?? ''}, transaction ${r.transactionId ?? 'unknown'}`).join('. ')
+          : 'none asked'],
         ['Receipts', `${call.counts.proven} proven, ${call.counts.plain} plain, ${call.counts.blocked} blocked`],
       ]),
       el('h3', null, 'What PayPal changed'),

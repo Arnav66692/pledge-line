@@ -50,6 +50,7 @@ export function toSnapshot(what, data) {
     const price = cycles.find((cycle) => cycle?.tenure_type === 'REGULAR')?.pricing_scheme?.fixed_price;
     return { id: str(data.id), price_value: str(price?.value), price_currency: str(price?.currency_code) };
   }
+  if (what === 'charge') return chargeSnapshot(data);
   if (what === 'invoice') {
     const amount = data.amount ?? data.due_amount;
     const recipients = Array.isArray(data.primary_recipients) ? data.primary_recipients : [];
@@ -64,6 +65,39 @@ export function toSnapshot(what, data) {
     };
   }
   throw new Error(`unknown snapshot type ${what}`);
+}
+
+const timeOf = (t) => {
+  const ms = Date.parse(t?.time);
+  return Number.isNaN(ms) ? -Infinity : ms;
+};
+
+/**
+ * The latest charge of a subscription's transaction list, the one the line reads aloud, and how many PayPal listed.
+ * A list with no charges keeps count 0 and nulls, so the line can say PayPal shows none.
+ */
+function chargeSnapshot(data) {
+  const list = Array.isArray(data.transactions) ? data.transactions.filter((t) => t && typeof t === 'object') : [];
+  const latest = list.reduce((best, t) => (best === null || timeOf(t) > timeOf(best) ? t : best), null);
+  const gross = latest?.amount_with_breakdown?.gross_amount;
+  return {
+    transaction_id: str(latest?.id),
+    status: str(latest?.status),
+    amount_value: str(gross?.value),
+    amount_currency: str(gross?.currency_code),
+    time: str(latest?.time),
+    count: list.length,
+  };
+}
+
+/** start_time and end_time as PayPal's list call wants them, ISO 8601 in UTC. */
+export function chargeWindow({ startTime, endTime }) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+    throw new PayPalError({ status: 400, name: 'INVALID_WINDOW', message: 'That time window is not valid' });
+  }
+  return { start_time: start.toISOString(), end_time: end.toISOString() };
 }
 
 export function safeId(id) {
@@ -251,6 +285,8 @@ export function createPayPal({ baseUrl, clientId, clientSecret, tokens, fetchImp
     getSubscription: (id) => read(`/v1/billing/subscriptions/${safeId(id)}`),
     getPlan: (id) => read(`/v1/billing/plans/${safeId(id)}`),
     getInvoice: (id) => read(`/v2/invoicing/invoices/${safeId(id)}`),
+    // Read only. The line never refunds a charge, staff do, so this is the one call the charge check makes (PICK.md).
+    getSubscriptionCharges: async (id, window) => read(`/v1/billing/subscriptions/${safeId(id)}/transactions?${new URLSearchParams(chargeWindow(window))}`),
     createDraftInvoice,
     deleteDraftInvoice: async (id) => {
       const res = await request('DELETE', `/v2/invoicing/invoices/${safeId(id)}`);

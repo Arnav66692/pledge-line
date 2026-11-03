@@ -39,4 +39,10 @@ window.PledgeClaimWords = Object.freeze({
   nothing_to: "PayPal showed the gift in a state that change can't act on",
   invoice_read: 'the line checked its draft in PayPal, and PayPal returned it',
   gift_rechecked: 'the line checked the gift in PayPal again on this reply, and PayPal returned it',
+  no_charge: "the line checked the gift's charges in PayPal on this reply, and PayPal listed none",
+  charge_unread: "the line checked the gift's charges in PayPal on this reply, and PayPal gave no charge it could read in full",
+  wrote_refund_request: 'after a clear yes, a refund request for the charge the line read aloud was logged for staff, and PayPal was not changed',
+  refund_matches_read: 'the line checked the charges again after the request, and PayPal still shows that same charge',
+  refund_request_failed: 'the refund request could not be logged on this reply, and nothing changed',
+  no_refund_request: 'the donor said no to a refund request on this reply, and nothing was logged',
 });

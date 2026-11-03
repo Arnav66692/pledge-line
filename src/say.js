@@ -8,7 +8,9 @@ const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'ei
   'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
 const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'twentieth', 'thirtieth'];
-export const STATUS_WORDS = ['active', 'suspended', 'cancelled', 'canceled', 'paused', 'sent', 'paid', 'unpaid', 'draft', 'approved'];
+// The last four are PayPal's words for a charge, so a reply can only say a charge was refunded when a read says so.
+export const STATUS_WORDS = ['active', 'suspended', 'cancelled', 'canceled', 'paused', 'sent', 'paid', 'unpaid', 'draft', 'approved',
+  'completed', 'refunded', 'declined', 'pending'];
 const NUMBERISH = new Set([...ONES, ...TENS.filter(Boolean), ...ORDINALS, 'hundred', 'thousand', 'million', 'billion', 'dozen']);
 const BLOCKED_WORDS = new Set([...NUMBERISH, ...MONTHS, ...WEEKDAYS, ...STATUS_WORDS]);
 // Stricter than I3 asks: the empathy may not hint at an action or a result either.
@@ -98,6 +100,11 @@ export const FACT_SOURCES = Object.freeze({
   'invoice.number_last4': (s) => last4(s.number),
   'invoice.status': (s) => spokenStatus(s.status),
   'invoice.recipient_email': (s) => maskEmail(s.recipient_email),
+  // The latest charge on the gift, from GET /v1/billing/subscriptions/{id}/transactions.
+  'charge.amount': (s) => formatMoney(s.amount_value, s.amount_currency ?? undefined),
+  'charge.date': (s, timeZone) => formatDate(s.time, timeZone),
+  'charge.status': (s) => spokenStatus(s.status),
+  'charge.id_last4': (s) => last4(s.transaction_id),
 });
 
 function derived(source, snapshot, kind, timeZone) {
@@ -214,7 +221,7 @@ export const draftDeleted = (notFound) => (notFound
   ? combine(claim('OK, I deleted that invoice before it went out, and PayPal no longer shows it.', 'draft_deleted'), ANYTHING_ELSE)
   : combine('OK.', claim('I asked PayPal to delete that invoice, but PayPal still shows it.', 'draft_kept'), STAFF_CHECK));
 export const otherEmail = () => claim("For your safety, I can only send to the email already on file with PayPal, so I won't use a new email.", 'email_refused');
-export const help = () => part('I can read you your monthly gift, pause it, restart it, or cancel it. I can also set up a one-time gift as a PayPal invoice to the email on file, or ask staff to call you back.');
+export const help = () => part('I can read you your monthly gift, pause it, restart it, or cancel it. I can also set up a one-time gift as a PayPal invoice to the email on file, or ask staff to call you back. If you see a PayPal charge you don\'t recognize, I can tell you what it was.');
 // A repeat keeps the claims of the reply it repeats, and call.js logs which turn that was, so check.js proves them there.
 export const repeat = (lastText) => (lastText && lastText.text ? { text: lastText.text, facts: lastText.facts ?? [], claims: lastText.claims ?? [] } : unclear());
 export const goodbye = () => part('Thanks for calling. Goodbye.');
@@ -259,6 +266,52 @@ export function recheck(sub, plan, inv = null, { draftGone = false, close = true
   const end = draftGone ? paypalProblem() : close ? part(ANYTHING_ELSE) : null;
   return combine(rechecked(), shows(sub, plan), inv ? invoiceShows(inv) : null, end);
 }
+// ---- Is this charge real? (PICK.md) ----
+// The line reads the gift's latest charge from PayPal and says what it was. It never refunds anything. A yes only asks
+// staff to look at a refund, which call.js logs, so the donor has no reason to dispute the charge with their bank.
+
+/** The latest charge, its amount, date, status and transaction suffix, all from one read, or null when one is missing. */
+function chargeShows(charge, orgName, timeZone) {
+  const money = derived('charge.amount', charge, 'money');
+  const date = derived('charge.date', charge, 'date', timeZone);
+  const status = derived('charge.status', charge, 'status');
+  const suffix = derived('charge.id_last4', charge, 'number_suffix');
+  if (!money || !date || !status || !suffix) return null;
+  return combine(
+    part(`PayPal shows the latest charge for your monthly gift to ${orgName} was ${money.value} on ${date.value}, with the status ${status.value}.`, [money, date, status]),
+    part(`In your PayPal activity, it is the transaction ending in ${suffix.value}.`, [suffix]),
+  );
+}
+
+/** True when chargeOffer can read this charge aloud in full, so call.js only offers a refund request for a charge it named. */
+export const chargeReadable = (charge) => chargeShows(charge, 'org', undefined) !== null;
+
+export const chargeOffer = (charge, orgName, { timeZone } = {}) => combine(chargeShows(charge, orgName, timeZone),
+  "If you still don't recognize it, I can ask staff to look at a refund, so there is no need to dispute it with your bank. Would you like me to ask staff?", YES_OR_NO);
+export const noCharge = () => combine(claim('PayPal shows no recent charge for your monthly gift.', 'no_charge'), STAFF_HOURS);
+export const chargeUnread = () => combine(claim("PayPal didn't return a charge I can read clearly, so I won't guess.", 'charge_unread'), STAFF_HOURS);
+export const noRefundRequest = () => combine(claim("OK, I won't ask staff for a refund.", 'no_refund_request'), ANYTHING_ELSE);
+
+const FOLLOW_UP = 'Staff will follow up during open hours.';
+
+/**
+ * After the yes. same is true when PayPal's fresh read after the request still has the charge the request names, so
+ * its amount, date and status are read back from that read. Otherwise the line names no fact it can't tie to the request.
+ */
+export function afterRefundRequest(charge, { ok = true, same = false, timeZone } = {}) {
+  if (!ok) return combine(claim("I couldn't pass that request to staff just now, so nothing changed.", 'refund_request_failed'), STAFF_HOURS, ANYTHING_ELSE);
+  const money = same ? derived('charge.amount', charge, 'money') : null;
+  const date = same ? derived('charge.date', charge, 'date', timeZone) : null;
+  const status = same ? derived('charge.status', charge, 'status') : null;
+  if (!money || !date || !status) {
+    return combine('OK.', claim("I've asked staff to look at a refund for the charge I read you.", 'wrote_refund_request'), claim(FOLLOW_UP, 'wrote_refund_request'), ANYTHING_ELSE);
+  }
+  return combine('OK.',
+    part(`I've asked staff to look at a refund of ${money.value} for the charge on ${date.value}.`, [money, date], ['wrote_refund_request', 'refund_matches_read']),
+    part(`PayPal now shows that charge as ${status.value}.`, [status], ['refund_matches_read']),
+    claim(FOLLOW_UP, 'wrote_refund_request'), ANYTHING_ELSE);
+}
+
 export const pinLimit = () => combine(claim("There have been too many wrong PINs from here, so I can't check a PIN right now.", 'pin_limit'), 'Please try again later.');
 
 /**

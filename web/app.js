@@ -50,19 +50,24 @@
     timed_out: 'Timed out, nothing changed', nothing_pending: 'Nothing waiting for a yes', call_ended: 'The call had ended',
     gift_read: 'Checked your gift in PayPal', gift_active: 'PayPal shows the gift active', nothing_to: 'PayPal shows nothing to change',
     invoice_read: 'Checked the draft in PayPal', gift_rechecked: 'Checked PayPal again for this answer',
+    no_charge: 'PayPal shows no recent charge', charge_unread: 'PayPal gave no clear charge',
+    wrote_refund_request: 'Request logged for staff, PayPal unchanged', refund_matches_read: 'Same charge in PayPal after the request',
+    refund_request_failed: 'The request was not logged', no_refund_request: 'You said no, nothing logged',
   };
 
-  const LABELS = { suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending the one-time gift invoice' };
+  const LABELS = { suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending the one-time gift invoice',
+    refund_request: 'asking staff to look at a refund' };
   // The same changes as a request, for the event log's "PayPal accepted the request to ...".
   const REQUESTS = { suspend: 'pause the monthly gift', activate: 'restart the monthly gift', cancel: 'cancel the monthly gift', send_invoice: 'send the one-time gift invoice' };
   const CLAIM_WORDS = window.PledgeClaimWords || {};
-  const READ_NAMES = { subscription: 'the gift', plan: 'the gift amount', invoice: 'the invoice' };
+  const READ_NAMES = { subscription: 'the gift', plan: 'the gift amount', invoice: 'the invoice', charge: "the gift's latest charge" };
   // How the event log says what the line took each request to be.
   const INTENT_WORDS = {
     gift_status: 'Took that as asking about the gift.', stop_gift: 'Took that as a request to stop the gift.',
     cancel_now: 'Took that as a request to cancel now.', pause_gift: 'Took that as a request to pause the gift.',
     resume_gift: 'Took that as a request to restart the gift.', one_time_gift: 'Took that as asking to give once.',
     other_email: 'Took that as a new email address.', how_do_you_know: 'Took that as asking how the line knows.',
+    charge_check: 'Took that as asking about a charge.',
     repeat: 'Took that as asking to hear it again.', help: 'Took that as asking for help.',
     staff_callback: 'Took that as asking for a call back.', goodbye: 'Took that as goodbye.',
     unclear: 'That wasn\'t a request on its own.',
@@ -389,7 +394,10 @@
       case 'proposed': return `Asked for your yes before ${what}.`;
       case 'yes': return 'You said yes, so the line can make this one change.';
       case 'no': return 'You said no.';
-      case 'write': return e.ok ? `PayPal accepted the request to ${request}, reference ${e.debugId || 'none'}.` : `PayPal turned down the request to ${request}, ${e.error || 'error'}.`;
+      // A refund request goes to staff, never to PayPal, so the log never says PayPal accepted it.
+      case 'write':
+        if (e.kind === 'refund_request') return e.ok ? 'Logged your refund request for staff. Nothing changed in PayPal.' : `Couldn't log the refund request, ${e.error || 'error'}.`;
+        return e.ok ? `PayPal accepted the request to ${request}, reference ${e.debugId || 'none'}.` : `PayPal turned down the request to ${request}, ${e.error || 'error'}.`;
       case 'staging_write':
         if (e.kind === 'create_draft') return e.ok ? `Made a draft invoice, ${e.id}. It isn't sent.` : 'Couldn\'t make a draft invoice.';
         return e.ok ? `Deleted the draft invoice ${e.id}.` : `Couldn't delete the draft invoice ${e.id}.`;
@@ -397,6 +405,7 @@
       case 'expired': return 'No answer in time, so nothing changed.';
       case 'withdrawn': return 'The request was set aside.';
       case 'staff_callback': return 'Noted that you want a call back from staff.';
+      case 'refund_request': return `Noted the charge ending in ${String(e.transactionId ?? '').slice(-4)} for staff to look at.`;
       case 'call_end': return END_WORDS[e.reason] ?? `Call ended, ${e.reason}.`;
       default: return null;
     }

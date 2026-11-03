@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { PayPalError, WriteNotAuthorized, safeId, pickVerifyHeaders } from './paypal.js';
+import { PayPalError, WriteNotAuthorized, safeId, pickVerifyHeaders, chargeWindow } from './paypal.js';
 import { MOCK_SUBSCRIPTION_ID, MOCK_PLAN_ID, MOCK_WEBHOOK_ID } from './config.js';
 
 const MOCK_EMAIL = 'sb-maria@personal.example.com';
@@ -21,6 +21,30 @@ function seedSubscription(date) {
     start_time: iso,
     subscriber: { email_address: MOCK_EMAIL, name: { given_name: 'Maria', surname: 'Lopez' }, payer_id: 'MOCKPAYER01' },
     billing_info: { next_billing_time: nextBillingTime(date), failed_payments_count: 0 },
+  };
+}
+
+// The mock's one completed charge, so the charge check has a transaction to read, as a seeded sandbox gift would after its first bill.
+export const MOCK_TRANSACTION_ID = 'MOCKTX00000000042';
+
+/** The first of this month at 10:00 UTC, or of last month when that is still ahead, the gift's latest bill. */
+function lastBillingTime(date) {
+  const thisMonth = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 10, 0, 0);
+  const at = thisMonth <= date.getTime() ? thisMonth : Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1, 10, 0, 0);
+  return new Date(at).toISOString();
+}
+
+/** One transaction in the shape GET /v1/billing/subscriptions/{id}/transactions lists. */
+export function mockCharge({ id = MOCK_TRANSACTION_ID, status = 'COMPLETED', value = '25.00', currency = 'USD', time }) {
+  const money = (v) => ({ currency_code: currency, value: v });
+  const fee = (Math.round(Number(value) * 2.89 + 49) / 100).toFixed(2);
+  return {
+    id,
+    status,
+    amount_with_breakdown: { gross_amount: money(value), fee_amount: money(fee), net_amount: money((Number(value) - Number(fee)).toFixed(2)) },
+    payer_name: { given_name: 'Maria', surname: 'Lopez' },
+    payer_email: MOCK_EMAIL,
+    time,
   };
 }
 
@@ -48,6 +72,7 @@ export function createMockPayPal({ tokens, now = () => new Date(), onWebhook = n
   const subs = new Map([[MOCK_SUBSCRIPTION_ID, seedSubscription(now())]]);
   const plans = new Map([[MOCK_PLAN_ID, seedPlan()]]);
   const invoices = new Map();
+  const charges = new Map([[MOCK_SUBSCRIPTION_ID, [mockCharge({ time: lastBillingTime(now()) })]]]);
   const produced = new Map();
   const events = [];
   const counters = { invoice: 0, debug: 0, event: 0 };
@@ -70,6 +95,16 @@ export function createMockPayPal({ tokens, now = () => new Date(), onWebhook = n
     await wait();
     const found = map.get(id);
     return found ? reply(found) : { notFound: true, debugId: debug(), ms: latencyMs };
+  }
+
+  /** The subscription's charges inside the window, as PayPal lists them. A subscription the mock lacks is a 404. */
+  async function listCharges(id, window) {
+    safeId(id);
+    const { start_time: start, end_time: end } = chargeWindow(window);
+    await wait();
+    if (!subs.has(id)) return { notFound: true, debugId: debug(), ms: latencyMs };
+    const inside = (charges.get(id) ?? []).filter((t) => t.time >= start && t.time <= end);
+    return reply({ transactions: inside, total_items: inside.length, total_pages: 1 });
   }
 
   async function subscriptionWrite(kind, id, token, ctx, from, to) {
@@ -184,6 +219,7 @@ export function createMockPayPal({ tokens, now = () => new Date(), onWebhook = n
     getSubscription: (id) => read(subs, id),
     getPlan: (id) => read(plans, id),
     getInvoice: (id) => read(invoices, id),
+    getSubscriptionCharges: listCharges,
     createDraftInvoice,
     deleteDraftInvoice,
     suspendSubscription: (id, token, ctx) => subscriptionWrite('suspend', id, token, ctx, ['ACTIVE'], 'SUSPENDED'),
@@ -192,6 +228,8 @@ export function createMockPayPal({ tokens, now = () => new Date(), onWebhook = n
     sendInvoice,
     verifyWebhookSignature,
     mockPay,
+    /** Replaces a subscription's charges, for tests of a newer charge, none at all, or one PayPal returns half filled. */
+    mockSetCharges: (id, list) => { charges.set(id, structuredClone(list)); },
     mockSetSubscriptionStatus: (id, status) => {
       const sub = subs.get(id);
       if (sub) subs.set(id, { ...sub, status });

@@ -6,6 +6,7 @@ import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } fro
 import { toSnapshot, PayPalError } from './paypal.js';
 import { liveTemplates } from './vocabulary.js';
 import { buildReceipts, receiptOptions } from './receipt.js';
+import { createRefundDesk } from './refund-desk.js';
 
 export { maskPinText };
 
@@ -24,6 +25,8 @@ export const LIVE_TEMPLATE_HASH = LIVE_TEMPLATES.hash;
 export const LIVE_UNREVIEWED = LIVE_TEMPLATES.unreviewed;
 export const LIVE_TEMPLATE_ERROR = LIVE_TEMPLATES.error ?? null;
 
+// How far back the charge check asks PayPal for the gift's charges. The line never says this window aloud.
+const CHARGE_LOOKBACK_MS = 365 * 24 * 60 * 60 * 1000;
 const RE_READ_TRIES = 3;
 const RE_READ_GAP_MS = 600;
 const MIN_SPOKEN_PIN_DIGITS = 4;
@@ -33,7 +36,8 @@ const VENDOR_MAX = 80;
 const BROWSER_ENGINES = Object.freeze({ chrome: 'chromium', edge: 'chromium', safari: 'webkit', firefox: 'gecko' });
 const EXPECTED_STATUS = Object.freeze({ suspend: 'SUSPENDED', activate: 'ACTIVE', cancel: 'CANCELLED' });
 const WRITER_METHODS = Object.freeze({ suspend: 'suspendSubscription', activate: 'activateSubscription', cancel: 'cancelSubscription', send_invoice: 'sendInvoice' });
-const PENDING_LABELS = Object.freeze({ suspend: 'Pause the monthly gift', activate: 'Restart the monthly gift', cancel: 'Cancel the monthly gift', send_invoice: 'Send the one-time gift invoice' });
+const PENDING_LABELS = Object.freeze({ suspend: 'Pause the monthly gift', activate: 'Restart the monthly gift', cancel: 'Cancel the monthly gift', send_invoice: 'Send the one-time gift invoice',
+  refund_request: 'Ask staff to look at a refund for the charge' });
 const BARE_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'correct', 'ok', 'okay', 'please', 'do', 'go', 'ahead', 'it', 'that', "that's", 'is',
   'right', 'confirm', 'no', 'nope', 'nah', 'thanks', 'thank', 'you', 'not', 'now', 'never', 'mind', 'nevermind', 'keep', 'leave', "don't", 'dont']);
 // Endings an address can have when said as "dotcom", "gmail .com" or "gmail. com". A short list, so "at once. Thanks" stays plain.
@@ -181,6 +185,7 @@ const normalizeSource = (source) => (['voice', 'typed', 'keypad'].includes(sourc
 function formatRecord(call, timeZone) {
   const sub = call.record.subscription;
   const inv = call.record.invoice;
+  const charge = call.record.charge;
   const plan = call.plan;
   return {
     subscription: sub && {
@@ -199,6 +204,15 @@ function formatRecord(call, timeZone) {
       recipientViewUrl: inv.snapshot?.recipient_view_url ?? null,
       debugId: inv.debugId,
     },
+    charge: charge && {
+      transactionId: charge.snapshot?.transaction_id ?? null,
+      status: charge.snapshot?.status ?? null,
+      amount: charge.snapshot ? say.formatMoney(charge.snapshot.amount_value, charge.snapshot.amount_currency ?? undefined) : null,
+      date: say.formatDate(charge.snapshot?.time, timeZone),
+      count: charge.snapshot?.count ?? 0,
+      debugId: charge.debugId,
+      notFound: charge.snapshot === null,
+    },
   };
 }
 
@@ -207,8 +221,10 @@ function projectEvent(event) {
   return rest;
 }
 
-export function createCallService({ config, ledger, paypal, router, gate, now = () => new Date(), sleep = defaultSleep, pinGuard = null }) {
+export function createCallService({ config, ledger, paypal, router, gate, now = () => new Date(), sleep = defaultSleep, pinGuard = null, desk = null }) {
   const calls = new Map();
+  // With no desk, a refund request has no token store, so its write fails and the line says so. buildDeps always passes one.
+  const refundDesk = desk ?? createRefundDesk({ ledger, tokens: null });
   const limits = config.limits;
 
   const log = (call, event) => ledger.append({ ...event, callId: call.id });
@@ -246,13 +262,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   // ---- PayPal reads, each logged as a `read` event ----
 
-  const GETTERS = { subscription: 'getSubscription', plan: 'getPlan', invoice: 'getInvoice' };
+  const GETTERS = { subscription: 'getSubscription', plan: 'getPlan', invoice: 'getInvoice', charge: 'getSubscriptionCharges' };
 
-  async function readSnapshot(ctx, what, id) {
+  async function readSnapshot(ctx, what, id, extra) {
     const base = { type: 'read', turn: ctx.turn, what, id };
     let res;
     try {
-      res = await paypal[GETTERS[what]](id);
+      res = await paypal[GETTERS[what]](id, extra);
     } catch (error) {
       log(ctx.call, { ...base, status: null, snapshot: null, debugId: error?.debugId ?? null, ms: 0, error: describeError(error) });
       throw error;
@@ -262,7 +278,15 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     log(ctx.call, { ...base, status: snapshot?.status ?? null, snapshot, debugId: res.debugId ?? null, ms: res.ms ?? 0, ...notFound });
     if (what === 'subscription') ctx.call.record.subscription = { id, snapshot, debugId: res.debugId ?? null };
     if (what === 'invoice') ctx.call.record.invoice = { id, snapshot, debugId: res.debugId ?? null };
+    if (what === 'charge') ctx.call.record.charge = { id, snapshot, debugId: res.debugId ?? null };
     return snapshot;
+  }
+
+  /** The gift's charges over the last year, as a 'charge' read of the subscription, its latest charge in the snapshot. */
+  function readCharges(ctx, subId) {
+    const end = now();
+    const window = { startTime: new Date(end.getTime() - CHARGE_LOOKBACK_MS).toISOString(), endTime: end.toISOString() };
+    return timed(ctx, () => readSnapshot(ctx, 'charge', subId, window));
   }
 
   async function readGift(ctx, { fresh = false } = {}) {
@@ -429,6 +453,45 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return say.combine(say.otherEmail(), await oneTimeTurn(ctx, amount));
   }
 
+  // ---- Is this charge real? (PICK.md) ----
+
+  /**
+   * Reads the gift's latest charge from PayPal and says its amount, date, status and transaction suffix, then offers to
+   * ask staff to look at a refund. The offer is a proposal like any change, so only a clear yes in the next turn logs it (I1, I6).
+   */
+  async function chargeCheckTurn(ctx) {
+    const subId = config.demoSubscriptionId;
+    if (!subId) {
+      refused(ctx, 'no_subscription');
+      return say.noSubscription();
+    }
+    const charge = await readCharges(ctx, subId);
+    if (charge && charge.count === 0) return say.noCharge();
+    if (!charge || !say.chargeReadable(charge)) return say.chargeUnread();
+    const readBack = propose(ctx, 'refund_request', subId, say.chargeOffer(charge, config.orgName, { timeZone: config.timeZone }), 'charge_check');
+    // The request names the charge this proposal read aloud, never a later one (refund-desk.js).
+    ctx.call.chargeAsked = { pendingId: ctx.call.pending.id, charge };
+    return readBack;
+  }
+
+  /** The yes to a refund request. The desk logs it, then a fresh PayPal read says what PayPal shows for the charge now. */
+  async function refundYesTurn(ctx, approval) {
+    const { call } = ctx;
+    const { pending } = approval;
+    const asked = call.chargeAsked?.pendingId === pending.id ? call.chargeAsked.charge : null;
+    call.chargeAsked = null;
+    const writer = (id, token) => refundDesk.request(id, token, { callId: call.id, turn: ctx.turn, charge: asked });
+    const result = await gate.execute(call, approval, writer, ctx.turn);
+    let fresh = null;
+    try {
+      fresh = await readCharges(ctx, pending.targetId);
+    } catch (error) {
+      if (!(error instanceof PayPalError)) throw error;
+    }
+    const same = Boolean(fresh?.transaction_id) && fresh.transaction_id === asked?.transaction_id;
+    return say.afterRefundRequest(fresh, { ok: result.ok, same, timeZone: config.timeZone });
+  }
+
   // ---- "How do you know?" (proof) ----
 
   // The values a proposal's read-back said, still what PayPal's fresh reads give, so speaking it again stays true.
@@ -455,17 +518,19 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const { call } = ctx;
     const waiting = call.pending;
     const draftId = waiting?.kind === 'send_invoice' ? waiting.targetId : call.lastDraftId;
-    let sub, plan, inv;
+    let sub, plan, inv, charge;
     try {
       ({ sub, plan } = await readGift(ctx, { fresh: true }));
       inv = sub && draftId ? await timed(ctx, () => readSnapshot(ctx, 'invoice', draftId)) : undefined;
+      // A refund request's read-back names a charge, so that charge is read again too.
+      charge = sub && waiting?.kind === 'refund_request' ? await readCharges(ctx, waiting.targetId) : null;
     } catch (error) {
       if (!(error instanceof PayPalError) || !waiting) throw error;
       // A read that failed can't back the read-back, so the change is set aside and no later yes can approve it.
       await dropPending(ctx);
       return say.combine(say.setAside(), say.paypalProblem());
     }
-    if (waiting && sub && stillAsRead(waiting, { subscription: sub, plan, invoice: inv ?? null })) return proofWhilePending(ctx, sub, plan);
+    if (waiting && sub && stillAsRead(waiting, { subscription: sub, plan, invoice: inv ?? null, charge })) return proofWhilePending(ctx, sub, plan);
     const dropped = waiting ? await dropPending(ctx) : null;
     const lead = dropped ? say.setAside() : null;
     if (!sub) {
@@ -516,6 +581,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // The router's amount only. When it heard none, the line asks, rather than reading another number in the turn as one.
       case 'one_time_gift': return oneTimeTurn(ctx, routedAmount(routed, text));
       case 'other_email': return otherEmailTurn(ctx, text, routedAmount(routed, stripEmails(text)));
+      case 'charge_check': return chargeCheckTurn(ctx);
       case 'help': return say.help();
       case 'how_do_you_know': return proofTurn(ctx);
       case 'repeat': return repeatLast(ctx);
@@ -565,6 +631,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const approval = gate.approve(call, text, ctx.turn, ctx.answering, ctx.arrival);
     if (!approval) return call.pending ? askAgain(ctx) : say.nothingPending();
     const { pending } = approval;
+    if (pending.kind === 'refund_request') return refundYesTurn(ctx, approval);
     const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
     const result = await timed(ctx, () => gate.execute(call, approval, writer, ctx.turn));
     // A 4xx is PayPal saying no. A timeout or a 5xx leaves it open, since PayPal may have made the change and lost its
@@ -592,6 +659,10 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   async function noTurn(ctx, text) {
     const pending = gate.decline(ctx.call, text, ctx.turn);
+    if (pending.kind === 'refund_request') {
+      ctx.call.chargeAsked = null;
+      return say.noRefundRequest();
+    }
     if (pending.kind === 'send_invoice') {
       await deleteDraft(ctx, pending.targetId);
       const inv = await timed(ctx, () => readSnapshot(ctx, 'invoice', pending.targetId));
@@ -728,7 +799,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
       id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
       pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
-      noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null }, queue: Promise.resolve(),
+      noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null, charge: null }, queue: Promise.resolve(), chargeAsked: null,
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
       lastFinishedTurn: 0, lastFinishedAt: performance.now(), gapTurns: new Set(),
     };

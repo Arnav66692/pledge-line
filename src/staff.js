@@ -34,6 +34,8 @@ const FIELDS = Object.freeze({
   said: ['facts', 'claims', 'ms', 'repeats'],
   gap: ['gapMs', 'source', 'muted', 'played'],
   call_end: ['reason'],
+  // The charge staff are asked to look at. No payer name or email, which the snapshot never keeps either.
+  refund_request: ['subscriptionId', 'transactionId', 'amountValue', 'amountCurrency', 'chargeTime'],
 });
 
 /** The key check. Both sides are hashed first, so the buffers are always equal length and the key's length never shows. */
@@ -124,6 +126,8 @@ export function summarizeCall(events, config, receipts = buildReceipts(events, r
     paypalNow: paypalNow(events),
     counts: countVerdicts(receipts),
     callback: events.some((e) => e.type === 'staff_callback'),
+    refundRequests: events.filter((e) => e.type === 'refund_request').map((e) => ({ transactionId: e.transactionId ?? null, amountValue: e.amountValue ?? null,
+      amountCurrency: e.amountCurrency ?? null, chargeTime: e.chargeTime ?? null, ts: e.ts ?? null })),
     dryRun: start.dryRun === true,
     mock: mode.paypal === 'mock' || mode.router === 'rules',
   };
