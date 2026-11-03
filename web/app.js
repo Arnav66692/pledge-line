@@ -29,6 +29,15 @@
   // The statuses a change's read-back can land on that the gift card marks, a pause and a restart.
   const MARKED_CHANGES = new Set(['SUSPENDED', 'ACTIVE']);
   const clockFormat = new Intl.DateTimeFormat('en-US', { timeZone: READ_ZONE, hour: 'numeric', minute: '2-digit' });
+  // PayPal read times show to the second, so a read-back after a change reads as later than the read before it.
+  const secondsFormat = new Intl.DateTimeFormat('en-US', { timeZone: READ_ZONE, hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  // Plain words for the claims a chip shows. A claim not named here shows the grader's own meaning.
+  const CLAIM_LABELS = {
+    pin_ok: 'PIN passed', wrote: 'PayPal accepted the change', wrote_suspend: 'PayPal accepted the pause',
+    wrote_activate: 'PayPal accepted the restart', wrote_cancel: 'PayPal accepted the cancel', wrote_send_invoice: 'PayPal accepted the send',
+    gift_rechecked: 'Fresh PayPal read in this reply', gift_read: 'PayPal read of your gift', invoice_read: 'PayPal read of the draft',
+    not_verified: 'No PIN yet', set_aside: 'Request set aside, nothing changed', unchanged: 'Nothing changed in PayPal',
+  };
 
   const LABELS = { suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending the one-time gift invoice' };
   const REASONS = {
@@ -145,16 +154,17 @@
     el.textContent = value === null || value === undefined || value === '' ? fallback : String(value);
   }
 
-  /** "5:42 pm" in Pacific time, or null when there is no usable time. */
-  function clockTime(ts) {
+  /** "5:42 pm" in Pacific time, or "5:42:07 pm" with seconds, or null when there is no usable time. */
+  function clockTime(ts, { seconds = false } = {}) {
     const at = new Date(ts ?? NaN);
     if (Number.isNaN(at.getTime())) return null;
-    const parts = Object.fromEntries(clockFormat.formatToParts(at).map((p) => [p.type, p.value]));
-    return `${parts.hour}:${parts.minute} ${String(parts.dayPeriod ?? '').toLowerCase()}`.trim();
+    const parts = Object.fromEntries((seconds ? secondsFormat : clockFormat).formatToParts(at).map((p) => [p.type, p.value]));
+    const sec = seconds ? `:${parts.second}` : '';
+    return `${parts.hour}:${parts.minute}${sec} ${String(parts.dayPeriod ?? '').toLowerCase()}`.trim();
   }
 
   function renderGiftRead(ts, rawStatus) {
-    const time = clockTime(ts);
+    const time = clockTime(ts, { seconds: true });
     if (!time) return;
     els.subRead.textContent = rawStatus ? `Read from PayPal at ${time}, status ${rawStatus}.` : `Read from PayPal at ${time}.`;
   }
@@ -165,14 +175,15 @@
     els.subChange.textContent = '';
   }
 
-  /** A change's read-back landed. The card keeps a border for the rest of the call, and a short wash that settles. */
-  function markGiftChange() {
+  /** A change's read-back landed. The card keeps a border in the new status's color, and the status word pops once. */
+  function markGiftChange(from, to) {
     els.gift.classList.add('changed');
     els.gift.classList.remove('flash');
     // Reading layout restarts the animation when two changes land in one call.
     void els.gift.offsetWidth;
     els.gift.classList.add('flash');
-    els.subChange.textContent = 'Changed during this call.';
+    const word = (status) => STATUS_WORDS[status] ?? status;
+    els.subChange.textContent = `Changed during this call, ${word(from)} to ${word(to)}.`;
     els.subChange.hidden = false;
   }
 
@@ -185,7 +196,7 @@
       els.subRead.textContent = 'Not read from PayPal yet.';
       return;
     }
-    if (state.giftStatus && status && status !== state.giftStatus && MARKED_CHANGES.has(status)) markGiftChange();
+    if (state.giftStatus && status && status !== state.giftStatus && MARKED_CHANGES.has(status)) markGiftChange(state.giftStatus, status);
     state.giftStatus = status;
   }
 
@@ -220,8 +231,8 @@
     els.pending.hidden = !pending;
     if (!pending) return;
     els.pendingLabel.textContent = `${pending.label}. Nothing changes in PayPal until you say yes.`;
-    const at = new Date(pending.expiresAt);
-    els.pendingExpiry.textContent = `This request times out at ${at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+    const time = clockTime(pending.expiresAt);
+    els.pendingExpiry.textContent = time ? `This request times out at ${time}.` : 'This request times out soon.';
   }
 
   // ---- Receipts, every sentence the line said beside the PayPal read behind it ----
@@ -243,7 +254,7 @@
   function chipLabels(sentence) {
     const groups = new Map();
     for (const fact of listOf(sentence.facts)) {
-      const time = fact.proof ? clockTime(fact.proof.ts) ?? 'in this call' : null;
+      const time = fact.proof ? clockTime(fact.proof.ts, { seconds: true }) ?? 'in this call' : null;
       const key = fact.proof ? `read ${time}` : 'config';
       if (!groups.has(key)) groups.set(key, { key, proofs: [], values: [] });
       const group = groups.get(key);
@@ -256,7 +267,10 @@
       const title = seen.map((p) => `PayPal ${p.what} ${p.id ?? ''}, debug id ${p.debugId ?? 'none'}`.replace(/\s+/g, ' ')).join('. ');
       return { text: `PayPal, ${key}, ${values.join(', ')}`, title };
     });
-    const claims = listOf(sentence.claims).filter((c) => c.proven).map((c) => ({ text: `Checked, ${c.meaning ?? c.name}`, title: '' }));
+    const claims = listOf(sentence.claims).filter((c) => c.proven).map((c) => {
+      const label = CLAIM_LABELS[String(c.name).split('=')[0]];
+      return label ? { text: label, title: `Checked, ${c.meaning ?? c.name}` } : { text: `Checked, ${c.meaning ?? c.name}`, title: '' };
+    });
     return [...reads, ...claims];
   }
 

@@ -256,7 +256,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 
 .receipts-scroll { border-top: 1px solid var(--line); }
 @media (min-width: 760px) {
-  .receipts-scroll { max-height: 78vh; overflow-y: auto; padding-right: 4px; }
+  /* Short enough that the newest reply, at the box's bottom, stays on a 1280 by 800 screen. */
+  .receipts-scroll { max-height: max(320px, calc(100vh - 340px)); overflow-y: auto; padding-right: 4px; }
 }
 
 .receipts { list-style: none; margin: 0; padding: 0; }
@@ -325,15 +326,26 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .gift-read { margin: 2px 0 10px; color: var(--muted); font-size: 0.95rem; }
 .gift-change { margin: -4px 0 10px; font-weight: 600; font-size: 0.95rem; }
 
-/* The moment a change's read-back lands. A calm wash that settles, and a border that stays for the rest of the call. */
+/* The moment a change's read-back lands. The border takes the new status's color and stays for the rest of the call,
+   the status word sits on its own tint, underlined, and it pops once as it lands. */
 .gift.changed { border: 2px solid var(--accent); padding: 13px 15px; }
-.gift.flash { animation: settle 2.4s ease-out 1; }
-@keyframes settle {
-  from { background: var(--accent-soft); }
-  to { background: var(--surface); }
+.gift.changed[data-status="SUSPENDED"] { border-color: var(--warn-ink); }
+.gift.changed .gift-status {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  text-decoration: underline 2px;
+  text-underline-offset: 6px;
+}
+.gift.changed[data-status="SUSPENDED"] .gift-status { background: var(--warn-bg); }
+.gift.flash .gift-status { animation: land 0.6s ease-out 1; }
+@keyframes land {
+  from { transform: scale(1.12); }
+  to { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .gift.flash { animation: none; }
+  .gift.flash .gift-status { animation: none; }
 }
 
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; }
