@@ -18,7 +18,25 @@
     gapLast: $('gap-last'), gapMedian: $('gap-median'), pending: $('pending'), pendingLabel: $('pending-label'), pendingExpiry: $('pending-expiry'),
     subStatus: $('sub-status'), subAmount: $('sub-amount'), subNext: $('sub-next'), subDebug: $('sub-debug'),
     invNumber: $('inv-number'), invStatus: $('inv-status'), invAmount: $('inv-amount'), invDebug: $('inv-debug'), invLink: $('inv-link'),
-    events: $('events'),
+    events: $('events'), gift: $('gift'), subRead: $('sub-read'), subChange: $('sub-change'), demo: $('demo'),
+    receipts: $('receipts'), receiptsSummary: $('receipts-summary'), receiptsScroll: $('receipts-scroll'),
+  };
+
+  // Read times show in Pacific time, the line's own zone, whatever zone the viewer's computer is in.
+  const READ_ZONE = 'America/Los_Angeles';
+  const DEMO_OPEN_KEY = 'pledge-line.demo-open';
+  const STATUS_WORDS = { ACTIVE: 'Active', SUSPENDED: 'Suspended', CANCELLED: 'Cancelled', EXPIRED: 'Expired', APPROVAL_PENDING: 'Waiting for approval' };
+  // The statuses a change's read-back can land on that the gift card marks, a pause and a restart.
+  const MARKED_CHANGES = new Set(['SUSPENDED', 'ACTIVE']);
+  const clockFormat = new Intl.DateTimeFormat('en-US', { timeZone: READ_ZONE, hour: 'numeric', minute: '2-digit' });
+  // PayPal read times show to the second, so a read-back after a change reads as later than the read before it.
+  const secondsFormat = new Intl.DateTimeFormat('en-US', { timeZone: READ_ZONE, hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  // Plain words for the claims a chip shows. A claim not named here shows the grader's own meaning.
+  const CLAIM_LABELS = {
+    pin_ok: 'PIN passed', wrote: 'PayPal accepted the change', wrote_suspend: 'PayPal accepted the pause',
+    wrote_activate: 'PayPal accepted the restart', wrote_cancel: 'PayPal accepted the cancel', wrote_send_invoice: 'PayPal accepted the send',
+    gift_rechecked: 'Fresh PayPal read in this reply', gift_read: 'PayPal read of your gift', invoice_read: 'PayPal read of the draft',
+    not_verified: 'No PIN yet', set_aside: 'Request set aside, nothing changed', unchanged: 'Nothing changed in PayPal',
   };
 
   const LABELS = { suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending the one-time gift invoice' };
@@ -38,7 +56,8 @@
   };
 
   // lastTurn is the turn of the last reply this page received. Each turn says it answers that reply, so a yes only counts for a proposal the caller heard.
-  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0 };
+  // giftStatus is the status the gift card last showed in this call, so a change's read-back can be marked when it lands.
+  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false };
 
   // Engine signals a user-agent override, such as Chrome's device toolbar, does not change. The line checks them against the agent.
   const engineSignals = () => ({ vendor: String(navigator.vendor || ''), chrome: typeof window.chrome !== 'undefined', uaData: 'userAgentData' in navigator });
@@ -135,9 +154,58 @@
     el.textContent = value === null || value === undefined || value === '' ? fallback : String(value);
   }
 
+  /** "5:42 pm" in Pacific time, or "5:42:07 pm" with seconds, or null when there is no usable time. */
+  function clockTime(ts, { seconds = false } = {}) {
+    const at = new Date(ts ?? NaN);
+    if (Number.isNaN(at.getTime())) return null;
+    const parts = Object.fromEntries((seconds ? secondsFormat : clockFormat).formatToParts(at).map((p) => [p.type, p.value]));
+    const sec = seconds ? `:${parts.second}` : '';
+    return `${parts.hour}:${parts.minute}${sec} ${String(parts.dayPeriod ?? '').toLowerCase()}`.trim();
+  }
+
+  function renderGiftRead(ts, rawStatus) {
+    const time = clockTime(ts, { seconds: true });
+    if (!time) return;
+    els.subRead.textContent = rawStatus ? `Read from PayPal at ${time}, status ${rawStatus}.` : `Read from PayPal at ${time}.`;
+  }
+
+  function clearGiftChange() {
+    els.gift.classList.remove('changed', 'flash');
+    els.subChange.hidden = true;
+    els.subChange.textContent = '';
+  }
+
+  /** A change's read-back landed. The card keeps a border in the new status's color, and the status word pops once. */
+  function markGiftChange(from, to) {
+    els.gift.classList.add('changed');
+    els.gift.classList.remove('flash');
+    // Reading layout restarts the animation when two changes land in one call.
+    void els.gift.offsetWidth;
+    els.gift.classList.add('flash');
+    const word = (status) => STATUS_WORDS[status] ?? status;
+    els.subChange.textContent = `Changed during this call, ${word(from)} to ${word(to)}.`;
+    els.subChange.hidden = false;
+  }
+
+  function trackGiftStatus(sub) {
+    const status = sub && !sub.notFound ? sub.status ?? null : null;
+    state.giftShown = Boolean(sub);
+    if (!sub) {
+      state.giftStatus = null;
+      clearGiftChange();
+      els.subRead.textContent = 'Not read from PayPal yet.';
+      return;
+    }
+    if (state.giftStatus && status && status !== state.giftStatus && MARKED_CHANGES.has(status)) markGiftChange(state.giftStatus, status);
+    state.giftStatus = status;
+  }
+
   function renderRecord(record) {
     const sub = record?.subscription;
-    setText(els.subStatus, sub?.notFound ? 'not found' : sub?.status, 'not read yet');
+    trackGiftStatus(sub);
+    els.gift.dataset.status = sub && !sub.notFound ? String(sub.status ?? '') : '';
+    const shown = sub && !sub.notFound && sub.status ? STATUS_WORDS[sub.status] ?? sub.status : null;
+    setText(els.subStatus, sub?.notFound ? 'Not found' : shown, 'not read yet');
     setText(els.subAmount, sub?.amount, 'not read yet');
     setText(els.subNext, sub?.status === 'ACTIVE' ? sub?.nextDate : null, sub ? 'none' : 'not read yet');
     setText(els.subDebug, sub?.debugId, 'none');
@@ -163,8 +231,95 @@
     els.pending.hidden = !pending;
     if (!pending) return;
     els.pendingLabel.textContent = `${pending.label}. Nothing changes in PayPal until you say yes.`;
-    const at = new Date(pending.expiresAt);
-    els.pendingExpiry.textContent = `This request times out at ${at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+    const time = clockTime(pending.expiresAt);
+    els.pendingExpiry.textContent = time ? `This request times out at ${time}.` : 'This request times out soon.';
+  }
+
+  // ---- Receipts, every sentence the line said beside the PayPal read behind it ----
+
+  const listOf = (value) => (Array.isArray(value) ? value : []);
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  function element(tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined) el.textContent = text;
+    return el;
+  }
+
+  /**
+   * One chip per read time behind the sentence's facts, so the plan and gift reads of one minute share a chip with
+   * the facts in the order the sentence says them, then one chip per claim the sentence carries.
+   */
+  function chipLabels(sentence) {
+    const groups = new Map();
+    for (const fact of listOf(sentence.facts)) {
+      const time = fact.proof ? clockTime(fact.proof.ts, { seconds: true }) ?? 'in this call' : null;
+      const key = fact.proof ? `read ${time}` : 'config';
+      if (!groups.has(key)) groups.set(key, { key, proofs: [], values: [] });
+      const group = groups.get(key);
+      if (fact.proof) group.proofs.push(fact.proof);
+      group.values.push(String(fact.value));
+    }
+    const reads = [...groups.values()].map(({ key, proofs, values }) => {
+      if (key === 'config') return { text: `The line's own limit, ${values.join(', ')}`, title: '' };
+      const seen = [...new Map(proofs.map((p) => [p.seq, p])).values()];
+      const title = seen.map((p) => `PayPal ${p.what} ${p.id ?? ''}, debug id ${p.debugId ?? 'none'}`.replace(/\s+/g, ' ')).join('. ');
+      return { text: `PayPal, ${key}, ${values.join(', ')}`, title };
+    });
+    const claims = listOf(sentence.claims).filter((c) => c.proven).map((c) => {
+      const label = CLAIM_LABELS[String(c.name).split('=')[0]];
+      return label ? { text: label, title: `Checked, ${c.meaning ?? c.name}` } : { text: `Checked, ${c.meaning ?? c.name}`, title: '' };
+    });
+    return [...reads, ...claims];
+  }
+
+  function sentenceItem(sentence) {
+    const blocked = sentence.verdict === 'blocked';
+    const item = element('div', `sentence sentence-${blocked ? 'blocked' : sentence.verdict === 'proven' ? 'proven' : 'plain'}`);
+    item.append(element('span', 'sentence-text', String(sentence.text ?? '')));
+    if (sentence.verdict === 'proven') {
+      const chips = element('span', 'chips');
+      for (const { text, title } of chipLabels(sentence)) {
+        const chip = element('span', 'chip chip-proven', text);
+        if (title) chip.title = title;
+        chips.append(chip);
+      }
+      item.append(chips);
+    } else if (blocked) {
+      // Never expected, since the line speaks only what it can prove. If it happens, say so plainly.
+      item.append(element('span', 'chip chip-blocked', 'Not backed by PayPal'));
+      const problems = listOf(sentence.problems);
+      if (problems.length > 0) {
+        const list = element('ul', 'problems');
+        for (const message of problems) list.append(element('li', '', String(message)));
+        item.append(list);
+      }
+    }
+    return item;
+  }
+
+  function receiptItem(receipt) {
+    const item = element('li', 'turn');
+    const time = clockTime(receipt.ts);
+    const name = receipt.turn === 0 ? 'Greeting' : `Reply ${receipt.turn}`;
+    item.append(element('p', 'turn-time', time ? `${name}, ${time}` : name));
+    for (const sentence of listOf(receipt.sentences)) item.append(sentenceItem(sentence));
+    return item;
+  }
+
+  function renderReceipts(receipts) {
+    if (!Array.isArray(receipts)) return;
+    els.receipts.replaceChildren(...receipts.map(receiptItem));
+    const sentences = receipts.flatMap((r) => listOf(r.sentences));
+    const count = (verdict) => sentences.filter((s) => s.verdict === verdict).length;
+    els.receiptsSummary.textContent = sentences.length === 0
+      ? 'Nothing said yet.'
+      : `${plural(sentences.length, 'sentence', 'sentences')} said. ${count('proven')} proven against this call's record, ${count('plain')} with nothing to prove, ${count('blocked')} not backed.`;
+    els.receiptsScroll.scrollTop = els.receiptsScroll.scrollHeight;
+    const lastGiftRead = receipts.flatMap((r) => listOf(r.sentences)).flatMap((s) => listOf(s.facts))
+      .map((f) => f.proof).filter((p) => p && p.what === 'subscription').sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)).at(-1);
+    if (lastGiftRead && state.giftShown) renderGiftRead(lastGiftRead.ts, lastGiftRead.status);
   }
 
   function describe(e) {
@@ -200,6 +355,12 @@
     if (!callId) return;
     try {
       const data = await api(`/api/calls/${callId}`);
+      // A page that moved on to a new call keeps that call's view.
+      if (callId !== state.callId) return;
+      renderReceipts(data.receipts);
+      // The card shows the call's latest gift read, so its time comes from that read, spoken or not.
+      const giftRead = listOf(data.events).filter((e) => e.type === 'read' && e.what === 'subscription' && !e.error).at(-1);
+      if (giftRead && state.giftShown) renderGiftRead(giftRead.ts, giftRead.status);
       els.events.replaceChildren();
       for (const e of [...data.events].reverse()) {
         const text = describe(e);
@@ -238,6 +399,7 @@
     else els.status.textContent = s.script ? `Verified. Running script ${s.script}.` : 'Verified. Ask about your monthly gift.';
     renderPending(s.pending);
     renderRecord(s.record);
+    renderReceipts(s.receipts);
     if (state.ended) stopListening();
     setControls();
   }
@@ -425,9 +587,27 @@
 
   function renderPin() {
     els.pinDots.textContent = state.pin ? '•'.repeat(state.pin.length) : 'No digits yet';
+    els.pinDots.classList.toggle('dots-empty', !state.pin);
+  }
+
+  // Whether Demo controls is open is a per-viewer convenience, so a lost setting only means it starts folded.
+  function rememberDemo() {
+    try {
+      if (window.localStorage.getItem(DEMO_OPEN_KEY) === '1') els.demo.open = true;
+    } catch {
+      // Storage can be blocked. The section still works folded.
+    }
+    els.demo.addEventListener('toggle', () => {
+      try {
+        window.localStorage.setItem(DEMO_OPEN_KEY, els.demo.open ? '1' : '0');
+      } catch {
+        // Nothing to keep.
+      }
+    });
   }
 
   function wire() {
+    rememberDemo();
     els.script.addEventListener('change', () => renderLines());
     els.start.addEventListener('click', () => (state.callId && !state.ended ? endCall() : startCall()));
     els.talk.addEventListener('pointerdown', (event) => { event.preventDefault(); startListening(); });

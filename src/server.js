@@ -11,6 +11,7 @@ import { createRouter } from './router.js';
 import { createCallService, CallNotFound, GapRefused, LIVE_TEMPLATE_HASH, LIVE_UNREVIEWED, LIVE_TEMPLATE_ERROR } from './call.js';
 import { TEMPLATE_HASH } from './template-words.js';
 import { PILOT_SCRIPTS, displayLines } from './pilot-scripts.js';
+import { staffCalls, staffCall, staffKeyMatches } from './staff.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -23,12 +24,17 @@ const HOUR_MS = 3600000;
 const MINUTE_MS = 60000;
 const RATE_KEYS_MAX = 10000;
 const CALL_PATH = /^\/api\/calls\/([0-9a-f-]{36})(?:\/(turn|gap|end))?$/;
+const STAFF_CALLS_PATH = /^\/api\/staff\/calls(?:\/([0-9a-f-]{36}))?$/;
+// The staff page and its files. With no STAFF_KEY they are 404s like every staff route, so the view is simply off.
+const STAFF_FILES = new Set(['staff.html', 'staff.js', 'staff.css']);
+const STAFF_DIRS = new Set(['vendor']);
 const STATIC_TYPES = Object.freeze({
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
 });
 const SECURITY_HEADERS = Object.freeze({
@@ -228,10 +234,15 @@ export function resolveStatic(rawPath, webDir = WEB_DIR) {
   return STATIC_TYPES[path.extname(full)] ? full : null;
 }
 
-function serveStatic(req, res, webDir) {
-  const rawPath = req.url.split('?')[0];
-  const file = resolveStatic(rawPath, webDir);
-  if (!file) return send(res, rawPath.includes('..') ? 400 : 404, { error: 'Not found.' });
+/** True for a file only the staff view uses, which stays a 404 while the staff view is off. */
+export function isStaffFile(file, webDir = WEB_DIR) {
+  const parts = path.relative(webDir, file).split(path.sep);
+  // Lowercased, since a Mac's disk serves /Staff.js as staff.js.
+  const head = parts[0].toLowerCase();
+  return parts.length === 1 ? STAFF_FILES.has(head) : STAFF_DIRS.has(head);
+}
+
+function serveFile(res, file) {
   fs.stat(file, (statError, stat) => {
     if (statError || !stat.isFile()) return send(res, 404, { error: 'Not found.' });
     fs.readFile(file, (readError, data) => {
@@ -239,6 +250,15 @@ function serveStatic(req, res, webDir) {
       send(res, 200, data, STATIC_TYPES[path.extname(file)]);
     });
   });
+}
+
+function serveStatic(req, res, webDir, staffOn) {
+  const rawPath = req.url.split('?')[0];
+  const file = resolveStatic(rawPath, webDir);
+  if (!file) return send(res, rawPath.includes('..') ? 400 : 404, { error: 'Not found.' });
+  // Checked on the resolved file, so an encoded path such as /%73taff.js can't reach it either.
+  if (!staffOn && isStaffFile(file, webDir)) return send(res, 404, { error: 'Not found.' });
+  serveFile(res, file);
 }
 
 /**
@@ -282,6 +302,7 @@ function createApi(deps) {
   const newCalls = createRateLimiter({ limit: config.limits.newCallsPerHour, windowMs: HOUR_MS });
   const turns = createRateLimiter({ limit: config.limits.turnsPerMinute, windowMs: MINUTE_MS });
   const scripts = PILOT_SCRIPTS.map((s) => ({ number: s.number, title: s.title, lines: displayLines(s), expected: s.expected }));
+  const staffRequests = createRateLimiter({ limit: config.limits.staffPerMinute, windowMs: MINUTE_MS });
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
 
   // A second gap for a turn is a 409, and so is one for a reply the line has not finished (Test 4).
@@ -311,6 +332,25 @@ function createApi(deps) {
     return send(res, 200, await calls.end(id, 'client'));
   }
 
+  /**
+   * The staff view. Off, as a 404, when STAFF_KEY is unset. The page itself holds no data. The API needs the key in
+   * x-staff-key, and the limit runs before the key check, so wrong keys are limited too.
+   */
+  function staffRoute(req, res, pathname, ip) {
+    if (!config.staffKey) throw new HttpError(404, 'Not found.');
+    if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+    if (pathname === '/staff') return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'staff.html'));
+    const match = pathname.match(STAFF_CALLS_PATH);
+    if (!match) throw new HttpError(404, 'Not found.');
+    limitOr429(staffRequests, ip);
+    const given = req.headers['x-staff-key'];
+    if (!staffKeyMatches(typeof given === 'string' ? given : '', config.staffKey)) throw new HttpError(401, 'That staff key is not right.');
+    if (!match[1]) return send(res, 200, { calls: staffCalls(deps.ledger, config) });
+    const call = staffCall(deps.ledger, match[1], config);
+    if (!call) throw new HttpError(404, 'That call is not in the record.');
+    return send(res, 200, { call });
+  }
+
   async function webhookRoute(req, res) {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
     const rawBody = await readBody(req, WEBHOOK_LIMIT_BYTES);
@@ -321,6 +361,7 @@ function createApi(deps) {
   }
 
   return async function route(req, res, pathname, ip) {
+    if (pathname === '/staff' || pathname === '/api/staff' || pathname.startsWith('/api/staff/')) return staffRoute(req, res, pathname, ip);
     if (pathname === '/healthz' && req.method === 'GET') return send(res, 200, { ok: true, mode: { paypal: config.paypal.mode, router: config.router.mode } });
     if (pathname === '/api/pilot-scripts' && req.method === 'GET') return send(res, 200, { scripts });
     if (pathname === '/api/webhooks' && req.method === 'GET') return send(res, 200, { webhooks: webhooks.recent(WEBHOOK_LIST_MAX) });
@@ -337,11 +378,11 @@ function createApi(deps) {
     if (match) return callRoute(req, res, ip, match[1], match[2]);
     if (pathname.startsWith('/api/') || pathname.startsWith('/webhooks/')) throw new HttpError(404, 'Not found.');
     if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
-    return serveStatic(req, res, deps.webDir ?? WEB_DIR);
+    return serveStatic(req, res, deps.webDir ?? WEB_DIR, Boolean(config.staffKey));
   };
 }
 
-const redactPath = (pathname) => pathname.replace(/\/api\/calls\/[0-9a-f-]{36}/, '/api/calls/:id');
+const redactPath = (pathname) => pathname.replace(/\/api\/(calls|staff\/calls)\/[0-9a-f-]{36}/, '/api/$1/:id');
 
 export function createServer(deps) {
   const route = createApi(deps);

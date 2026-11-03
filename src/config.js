@@ -38,7 +38,11 @@ export const LIMITS = Object.freeze({
   turnsPerMinute: 60,
   // Wrong PINs from one address in an hour, across all its calls, before PIN entry stops (Render only).
   wrongPinsPerHour: 10,
+  // Staff view requests from one address in a minute, wrong keys included.
+  staffPerMinute: 60,
 });
+// The staff key guards every donor's call record, so a short one is refused.
+export const STAFF_KEY_MIN = 16;
 
 function clean(value) {
   if (typeof value !== 'string') return null;
@@ -106,6 +110,15 @@ function parseLedgerPath(raw, isMock, errors) {
     errors.push(`LEDGER_PATH must not be ${PILOT_LEDGER} when PAYPAL_MODE is mock or ROUTER_MODE is rules. Leave it unset`);
   }
   return ledgerPath;
+}
+
+/** Optional. Unset means the staff view is off and every staff route is a 404. */
+function parseStaffKey(raw, errors) {
+  if (raw === null) return null;
+  if (raw.length < STAFF_KEY_MIN) errors.push(`STAFF_KEY must be at least ${STAFF_KEY_MIN} characters when set`);
+  // The page sends it as a header, and a browser refuses a header with a space or a character outside plain ASCII.
+  if (!/^[\x21-\x7e]+$/.test(raw)) errors.push('STAFF_KEY must use plain letters, digits and marks, with no spaces');
+  return raw;
 }
 
 function parseModes(env, errors) {
@@ -187,6 +200,7 @@ export function loadConfig(env = process.env, { partial = false } = {}) {
     paypal: parsePayPal(env, paypalMode, partial, errors),
     router: parseRouter(env, routerMode, partial, errors),
     pin: parsePin(env, paypalMode, partial, errors),
+    staffKey: parseStaffKey(clean(env.STAFF_KEY), errors),
     demoSubscriptionId: ids.subscriptionId,
     demoPlanId: ids.planId,
     limits: LIMITS,

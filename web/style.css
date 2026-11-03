@@ -1,200 +1,300 @@
-:root {
-  color-scheme: light dark;
-  --bg: #f6f5f1;
-  --surface: #ffffff;
-  --text: #1f2328;
-  --muted: #5b616b;
-  --line: #d9d6cf;
-  --accent: #1d5a8a;
-  --accent-text: #ffffff;
-  --accent-soft: #e4eef6;
-  --talk: #1f6b4f;
-  --talk-active: #b4472e;
-  --warn-bg: #fff4e0;
-  --warn-text: #6b4300;
-  --error: #a1261b;
-  --focus: #e0a100;
-  --radius: 10px;
-  --gutter: 16px;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+/* The donor page. One unseen-style hero over the room, then the call workspace on the same 2rem frame. Many donors are
+   older, so the workspace runs larger than unseen's own body text and keeps solid surfaces wherever text sits. */
+
+/* ---- Modes. Without chrome.js the hero and the workspace simply stack ---- */
+.hero {
+  position: relative; z-index: 3;
+  height: 100svh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 0 1.15rem 3.6rem;
 }
+html[data-mode] .hero { position: fixed; inset: 0; }
+html[data-mode="hero"] { overflow: hidden; }
+html[data-mode="hero"] .ws { visibility: hidden; }
+html[data-mode="call"] .hero { visibility: hidden; pointer-events: none; }
+html[data-mode="call"] .corner { opacity: 0; visibility: hidden; pointer-events: none; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #15171a;
-    --surface: #1e2125;
-    --text: #e8e6e1;
-    --muted: #a3a8b0;
-    --line: #353a41;
-    --accent: #6fa8d6;
-    --accent-text: #0e1418;
-    --accent-soft: #22303b;
-    --talk: #4fae87;
-    --talk-active: #e0805f;
-    --warn-bg: #3a2f17;
-    --warn-text: #f3d7a3;
-    --error: #f08a7e;
-    --focus: #f2c14e;
-  }
+/* ---- Hero ---- */
+.hero__float { display: flex; flex-direction: column; align-items: center; will-change: transform; }
+.hero__title { margin: 0; display: flex; flex-direction: column; align-items: center; font-weight: 400; color: var(--scene-ink); }
+.hero__caps { font-size: 1.09rem; line-height: 1; letter-spacing: -0.01em; text-transform: uppercase; margin-bottom: 1.5rem; }
+.hero__l1 { font-family: var(--serif); font-style: italic; font-size: 7.1rem; line-height: 0.911; letter-spacing: -0.04em; padding: 0 0.1em; }
+.hero__l2 { font-size: 7rem; line-height: 0.95; letter-spacing: -0.02em; padding-bottom: 0.06em; }
+.hero__cta { margin-top: 1.7rem; }
+.hero__note {
+  position: absolute; left: 0; right: 0; bottom: 6.2rem; margin: 0 auto; max-width: 44rem;
+  font-size: 0.8rem; line-height: 1.4; text-transform: uppercase; letter-spacing: 0.01em; color: var(--scene-ink);
 }
+.hero .btn { font-size: 1.05rem; }
 
-* { box-sizing: border-box; }
-
-html, body { margin: 0; padding: 0; }
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  line-height: 1.5;
-  font-size: 16px;
-  overflow-x: hidden;
+/* ---- Workspace ---- */
+.ws {
+  position: relative; z-index: 2;
+  display: grid; gap: 2rem;
+  grid-template-columns: minmax(0, 27rem) minmax(0, 1fr) minmax(0, 27rem);
+  align-items: start;
+  padding: 6.4rem 2rem 2rem;
+  font-size: 1.2rem; line-height: 1.5;
 }
+.ws:focus { outline: none; }
+.panel { min-width: 0; padding: 1.7rem 1.7rem 1.9rem; background: var(--surface); color: var(--ink); }
+.panel h2 { margin: 0 0 1rem; font-size: 2.3rem; line-height: 1.05; font-weight: 400; letter-spacing: -0.025em; }
+.panel h3 { margin: 0 0 0.5rem; font-size: 0.8rem; line-height: 1.3; font-weight: 400; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+.kicker { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
 
-.top, .layout, .foot {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 0 var(--gutter);
-}
-
-.top { padding-top: 24px; padding-bottom: 8px; }
-.top h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.01em; }
-.tagline { margin: 4px 0 0; font-size: 1.1rem; color: var(--muted); }
-
-.note {
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  background: var(--warn-bg);
-  color: var(--warn-text);
-  border-radius: var(--radius);
-  max-width: 60ch;
-}
-
-.layout {
-  display: grid;
-  gap: var(--gutter);
-  grid-template-columns: minmax(0, 1fr);
-  padding-top: 16px;
-  padding-bottom: 24px;
-}
-
-@media (min-width: 900px) {
-  .layout { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; }
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: var(--gutter);
-  min-width: 0;
-}
-
-.card h2 { margin: 0 0 12px; font-size: 1.2rem; }
-.card h3 { margin: 18px 0 6px; font-size: 1rem; }
-
-.field-label, .label { display: block; font-weight: 600; font-size: 0.9rem; margin: 0 0 4px; color: var(--muted); }
-
-select, input[type="text"] {
-  width: 100%;
-  font: inherit;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--text);
-}
-
-button {
-  font: inherit;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--text);
-  padding: 10px 14px;
-  cursor: pointer;
-}
-
-button:disabled { cursor: not-allowed; opacity: 0.5; }
-
-button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-
-.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); width: 100%; margin-top: 12px; font-weight: 600; }
-
-.toggle { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--muted); }
-
-.hint { color: var(--muted); font-size: 0.9rem; margin: 6px 0; }
-
-.lines { margin: 10px 0 0; padding-left: 22px; }
-.lines li { margin: 4px 0; overflow-wrap: anywhere; }
-.lines .expected { list-style: none; margin-left: -22px; color: var(--muted); font-size: 0.9rem; }
-
-.status { margin: 0 0 12px; font-weight: 600; }
-
-.said { margin-bottom: 12px; }
-.reply, .transcript {
-  margin: 0;
-  min-height: 3em;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--bg);
-  overflow-wrap: anywhere;
-}
-.reply { font-size: 1.1rem; }
-
-.talk {
+.label, .field-label {
   display: block;
-  width: 100%;
-  min-height: 88px;
-  margin: 16px 0 4px;
-  font-size: 1.25rem;
-  font-weight: 700;
-  background: var(--talk);
-  border-color: var(--talk);
-  color: #ffffff;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem; line-height: 1.3;
+  text-transform: uppercase; letter-spacing: 0.02em;
+  color: var(--muted);
 }
-.talk.listening { background: var(--talk-active); border-color: var(--talk-active); }
+.hint { margin: 0.4rem 0; font-size: 1.02rem; line-height: 1.45; color: var(--muted); }
 
-.error { color: var(--error); font-weight: 600; margin: 8px 0; }
+/* ---- Controls ---- */
+select, input[type="text"] {
+  width: 100%; min-height: 3.2rem;
+  padding: 0.6rem 0.9rem;
+  font: inherit; font-size: 1.15rem;
+  border: 1px solid var(--ink); border-radius: 0;
+  background: transparent; color: var(--ink);
+}
+.select { position: relative; }
+.select select { appearance: none; -webkit-appearance: none; padding-right: 2.6rem; }
+.select::after {
+  content: ""; position: absolute; right: 1rem; top: 50%; width: 0.55rem; height: 0.55rem; margin-top: -0.4rem;
+  border: solid var(--ink); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none;
+}
+select option { color: #212121; background: #fff; }
+button:disabled { cursor: not-allowed; }
 
-.keypad { margin-top: 16px; }
-.dots { display: block; min-height: 1.6em; font-size: 1.3rem; letter-spacing: 0.3em; margin-bottom: 8px; }
-.keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 320px; }
-.key { min-height: 52px; font-size: 1.2rem; }
-.key.send { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-size: 1rem; }
+.call-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.4rem; }
+.call-head h2 { margin: 0; }
 
-.typed { margin-top: 16px; }
-.typed summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
-.typed-form { margin-top: 8px; }
-.typed-row { display: flex; gap: 8px; }
+/* Mute of the line's voice: a real checkbox drawn as a small disc. */
+.toggle { position: relative; display: inline-flex; align-items: center; gap: 0.55rem; font-size: 0.95rem; color: var(--muted); cursor: pointer; }
+.toggle input { position: absolute; left: 0; top: 50%; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.toggle__disc { position: relative; flex: none; width: 2.2rem; height: 2.2rem; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink); overflow: hidden; }
+.toggle__disc::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--ink); transform: scale(0); transition: transform 0.69s var(--expo); }
+.toggle__disc::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 1.1rem; height: 1.5px; margin: -0.75px 0 0 -0.55rem;
+  background: var(--ink); transform: rotate(-45deg) scaleX(0.35); transition: transform 0.6s var(--expo), background-color 0.4s;
+}
+.toggle input:checked + .toggle__disc::before { transform: scale(1.05); }
+.toggle input:checked + .toggle__disc::after { background: var(--paper); transform: rotate(-45deg); }
+@media (prefers-color-scheme: dark) { .toggle input:checked + .toggle__disc::after { background: #212121; } }
+.toggle input:focus-visible + .toggle__disc { outline: 2px solid var(--focus); outline-offset: 3px; }
+.toggle input:disabled + .toggle__disc { opacity: 0.45; }
+
+.status { margin: 0.6rem 0 1rem; font-size: 1.2rem; }
+#start { min-width: 11rem; }
+
+.said { margin-top: 1.5rem; }
+.reply, .transcript { margin: 0; min-height: 2.6em; overflow-wrap: anywhere; }
+.reply { font-family: var(--serif); font-size: 2.15rem; line-height: 1.12; letter-spacing: -0.01em; }
+.transcript { font-size: 1.2rem; padding-top: 0.6rem; border-top: 1px solid var(--line); min-height: 2.2em; }
+
+/* Hold to talk, a large disc. Idle it is dark. Held, a green fill grows from its centre and a ring breathes. */
+.talk-row { display: flex; align-items: center; gap: 1.2rem; margin: 1.6rem 0 0.4rem; }
+.talk-row .hint { margin: 0; }
+.talk {
+  position: relative; isolation: isolate; flex: none;
+  width: 9.6rem; height: 9.6rem; min-width: 96px; min-height: 96px;
+  padding: 1rem; border: 0; border-radius: 50%;
+  background: none; color: var(--paper);
+  font-size: 1.15rem; line-height: 1.15; text-wrap: balance;
+  cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.talk::before { content: ""; position: absolute; inset: 0; z-index: -2; border-radius: 50%; background: #212121; transition: transform 0.5s var(--expo); }
+.talk::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform 0.69s var(--expo); }
+.talk:hover:not(:disabled)::before { transform: scale(1.04); }
+.talk.listening::after { transform: scale(1.02); }
+.talk.listening { animation: talk-ring 1.4s var(--power3) infinite alternate; outline: 1.5px solid var(--accent); outline-offset: 0.35rem; }
+.talk:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.35rem; }
+.talk:disabled { opacity: 0.45; }
+@keyframes talk-ring { from { outline-offset: 0.2rem; } to { outline-offset: 0.75rem; } }
+@media (prefers-color-scheme: dark) {
+  .talk { color: #212121; }
+  .talk::before { background: var(--paper); }
+}
+
+.error { margin: 0.8rem 0; padding: 0.8rem 1rem; background: var(--error-soft); color: var(--error); font-size: 1.05rem; }
+
+/* PIN keypad: outlined discs. The fill rises on hover, and Send is dark. */
+.keypad { margin-top: 1.8rem; }
+.dots { display: block; min-height: 1.6em; margin-bottom: 0.6rem; font-size: 1.6rem; letter-spacing: 0.3em; }
+.dots-empty { font-size: 1.05rem; letter-spacing: normal; color: var(--muted); }
+.keys { display: grid; grid-template-columns: repeat(3, 4.2rem); gap: 0.7rem 1rem; }
+.key {
+  position: relative; isolation: isolate; overflow: hidden;
+  width: 4.2rem; height: 4.2rem; min-width: 52px; min-height: 52px;
+  padding: 0; border: 0; border-radius: 50%;
+  background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink);
+  font-size: 1.55rem; line-height: 1; cursor: pointer;
+  transition: color 0.5s var(--expo);
+}
+.key::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ink); transform: translateY(102%); transition: transform 0.6s var(--expo); }
+.key:hover:not(:disabled), .key:active:not(:disabled) { color: var(--paper); }
+.key:hover:not(:disabled)::before, .key:active:not(:disabled)::before { transform: none; }
+.key:disabled { opacity: 0.4; }
+.key-word { font-size: 0.95rem; }
+.key.send { background: var(--ink); color: var(--paper); }
+.key.send::before { background: var(--accent); }
+@media (prefers-color-scheme: dark) {
+  .key:hover:not(:disabled), .key:active:not(:disabled), .key.send { color: #212121; }
+}
+
+/* Folded sections: the typed box, demo controls and the event log. */
+.fold { margin-top: 1.6rem; border-top: 1px solid var(--line); }
+.fold summary {
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: 3rem; padding: 0.6rem 0; list-style: none; cursor: pointer;
+  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em;
+}
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary::after { content: "+"; font-size: 1.3rem; line-height: 1; transition: transform 0.6s var(--expo); }
+.fold[open] summary::after { transform: rotate(45deg); }
+.typed-form { margin-top: 0.2rem; }
+.typed-row { display: flex; gap: 0.6rem; align-items: stretch; }
 .typed-row input { flex: 1 1 auto; min-width: 0; }
+.typed-row .pill { flex: none; }
 
-.timing { margin: 16px 0 0; color: var(--muted); font-size: 0.9rem; }
+.demo-body { padding-bottom: 0.3rem; }
+.lines { margin: 0.8rem 0 0; padding-left: 1.4rem; }
+.lines li { margin: 0.25rem 0; overflow-wrap: anywhere; }
+.lines .expected { list-style: none; margin-left: -1.4rem; color: var(--muted); font-size: 1.02rem; }
+.timing { margin: 1rem 0 0; color: var(--muted); font-size: 1.02rem; }
 
-.pending {
-  border: 2px solid var(--accent);
-  background: var(--accent-soft);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  margin-bottom: 8px;
+/* ---- What the line said, with receipts ---- */
+.receipts-summary { margin: 0.4rem 0 1rem; font-size: 1.15rem; }
+.receipts-scroll { border-top: 1px solid var(--ink); }
+@media (min-width: 768px) {
+  /* Short enough that the newest reply, at the box's bottom, stays on a 1280 by 800 screen. */
+  .receipts-scroll { max-height: max(320px, calc(100vh - 21rem)); overflow-y: auto; padding-right: 0.4rem; }
 }
-.pending p { margin: 2px 0; }
-.pending-title { font-weight: 700; }
+.receipts { list-style: none; margin: 0; padding: 0; }
+.turn { padding: 1.2rem 0 1.3rem; border-bottom: 1px solid var(--line); }
+.turn:last-child { border-bottom: 0; }
+.turn-time { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+.sentence { margin: 0 0 0.7rem; }
+.sentence:last-child { margin-bottom: 0; }
+.sentence-text { font-family: var(--serif); font-size: 1.7rem; line-height: 1.18; letter-spacing: -0.005em; margin-right: 0.5rem; }
 
-.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; }
+/* The proof chips are the page's heroes: dark pills, like unseen's active filter, each with a green check. */
+.chips { display: inline; }
+.chip {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  margin: 0.35rem 0.4rem 0 0;
+  padding: 0.38rem 0.85rem 0.38rem 0.7rem;
+  border-radius: 180px;
+  font-family: var(--sans); font-size: 0.9rem; line-height: 1.25; letter-spacing: -0.01em;
+  vertical-align: 0.2rem; overflow-wrap: anywhere;
+}
+.chip-proven { background: #212121; color: var(--pill-on); }
+.chip-proven::before {
+  content: ""; flex: none;
+  width: 0.36rem; height: 0.66rem; margin: 0 0.15rem 0.15rem 0.15rem;
+  border: solid #8fd1b4; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.chip-blocked { background: transparent; color: var(--error); box-shadow: inset 0 0 0 2px var(--error); }
+.problems { margin: 0.3rem 0 0; padding-left: 1.3rem; color: var(--error); font-size: 1.02rem; }
+.sentence-blocked .sentence-text { text-decoration: underline wavy var(--error); text-underline-offset: 4px; }
+@media (prefers-color-scheme: dark) {
+  .chip-proven { background: var(--pill-on); color: #212121; }
+  .chip-proven::before { border-color: #1d6a50; }
+}
+
+/* ---- PayPal's record ---- */
+.pending { margin-bottom: 1.2rem; padding: 1.2rem 1.3rem; background: #212121; color: var(--pill-on); }
+.pending p { margin: 0.15rem 0; }
+.pending .hint { color: #d9d3cf; }
+.pending-title { font-family: var(--serif); font-style: italic; font-size: 2rem; line-height: 1.05; }
+@media (prefers-color-scheme: dark) {
+  .pending { background: var(--pill-on); color: #212121; }
+  .pending .hint { color: #4a4643; }
+}
+
+.gift { margin-bottom: 1.2rem; padding: 1.2rem 1.3rem; background: var(--sunk); border: 2px solid transparent; }
+.gift-status { margin: 0; font-family: var(--serif); font-size: 3.6rem; line-height: 1; letter-spacing: -0.02em; transform-origin: 0 70%; }
+.gift[data-status="ACTIVE"] .gift-status { color: var(--accent); }
+.gift[data-status="SUSPENDED"] .gift-status { color: var(--warn); }
+.gift-read { margin: 0.5rem 0 0.9rem; color: var(--muted); font-size: 1.02rem; }
+.gift-change { margin: -0.4rem 0 0.9rem; font-size: 1.05rem; }
+
+/* The moment a change's read-back lands. The border takes the new status's colour and stays for the rest of the call,
+   the status word sits on its own tint, underlined, and it pops once as it lands. */
+.gift.changed { border-color: var(--accent); }
+.gift.changed[data-status="SUSPENDED"] { border-color: var(--warn); }
+.gift.changed .gift-status {
+  display: inline-block;
+  padding: 0.05em 0.18em 0.1em;
+  background: var(--accent-soft);
+  text-decoration: underline 2px;
+  text-underline-offset: 0.12em;
+}
+.gift.changed[data-status="SUSPENDED"] .gift-status { background: var(--warn-soft); }
+.gift.flash .gift-status { animation: land 0.9s var(--expo-out) 1; }
+@keyframes land {
+  from { transform: scale(1.22); }
+  to { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gift.flash .gift-status { animation: none; }
+}
+
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1rem; margin: 0; font-size: 1.05rem; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; }
+.mono { font-family: var(--mono); font-size: 0.9rem; }
+.ws a { color: var(--ink); text-underline-offset: 0.2em; }
 
-a { color: var(--accent); }
+.events { margin: 0.4rem 0 0; padding: 0; list-style: none; max-height: 28rem; overflow-y: auto; }
+.event { padding: 0.55rem 0; border-bottom: 1px solid var(--line); font-size: 0.98rem; overflow-wrap: anywhere; }
+.event-write, .event-yes { font-weight: 560; }
 
-.events { margin: 6px 0 0; padding-left: 0; list-style: none; max-height: 420px; overflow-y: auto; }
-.event { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.92rem; overflow-wrap: anywhere; }
-.event-write, .event-yes { font-weight: 600; }
+.foot {
+  grid-column: 1 / -1;
+  display: flex; justify-content: space-between; gap: 1rem;
+  margin-top: 1rem; font-size: 0.9rem; color: var(--chrome-ink);
+}
+.foot p { margin: 0; }
 
-.foot { color: var(--muted); font-size: 0.85rem; padding-bottom: 24px; }
+/* On a laptop the receipts and PayPal's record stay in view while the call column scrolls, so the gift card's change
+   is on screen the moment it lands. */
+@media (min-width: 1140px) {
+  .receipts-card, .record { position: sticky; top: 5.4rem; }
+  .record { max-height: calc(100vh - 7.4rem); overflow-y: auto; }
+  .events { max-height: none; overflow: visible; }
+}
+
+/* ---- Two columns, then one ---- */
+@media (max-width: 1139px) {
+  .ws { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .record { grid-column: 1 / -1; }
+}
+
+@media (max-width: 767px) {
+  .hero { padding-bottom: 4.5rem; }
+  .hero__caps { font-size: 0.8rem; max-width: 18rem; line-height: 1.35; margin-bottom: 1.2rem; }
+  .hero__l1 { font-size: 11.5vw; }
+  .hero__l2 { font-size: 10.6vw; letter-spacing: -0.02em; }
+  .hero__note { bottom: 5.4rem; max-width: 17rem; }
+  .ws { grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 5.2rem 1.15rem 2rem; font-size: 1.15rem; }
+  .record { grid-column: auto; }
+  .panel { padding: 1.3rem 1.15rem 1.5rem; }
+  .panel h2 { font-size: 2.2rem; }
+  .reply { font-size: 1.9rem; }
+  .talk-row { gap: 1rem; }
+  .talk { width: 8.6rem; height: 8.6rem; }
+  .keys { grid-template-columns: repeat(3, 4.6rem); gap: 0.8rem 1.2rem; }
+  .key { width: 4.6rem; height: 4.6rem; }
+  .sentence-text { font-size: 1.6rem; }
+  .gift-status { font-size: 3rem; }
+  .foot { flex-direction: column; }
+}
+
+/* A jump from the nav lands below the fixed header, not under the logo. */
+#receipts-title, #record-title { scroll-margin-top: 6rem; }

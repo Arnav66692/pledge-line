@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Anthropic from '@anthropic-ai/sdk';
-import { createRouter, rulesRoute, parseAmountDollars, amountConflict, ROUTE_TOOL, INTENTS, EMPATHY } from '../src/router.js';
+import { createRouter, rulesRoute, parseAmountDollars, amountConflict, ROUTE_TOOL, INTENTS, EMPATHY, SYSTEM_PROMPT } from '../src/router.js';
 
 test('rules routing covers the pilot script lines', () => {
   const table = [
@@ -269,4 +269,29 @@ test('a Gemini model before Gemini 3 gets no thinking level, which it would reje
   const router = createRouter({ mode: 'gemini', apiKey: 'k', model: 'gemini-2.5-flash-lite', fetchImpl: fake.fetchImpl });
   assert.equal((await router.route({ text: 'What can you do?', state: {} })).intent, 'help');
   assert.deepEqual(fake.calls[0].body.generationConfig, { maxOutputTokens: 400 });
+});
+
+test('a caller who asks how the line knows routes to how_do_you_know in rules mode, and every router offers it', () => {
+  for (const line of ['How do you know?', 'Are you sure?', 'Says who?', 'Prove it.', "How can I be sure that's right?", 'Who says?', 'Is that true?']) {
+    assert.deepEqual(rulesRoute(line), { intent: 'how_do_you_know', amountDollars: 0 }, line);
+  }
+  // An action in the same words still wins, so a request is never read as a question about the last reply.
+  assert.equal(rulesRoute('Are you sure? Then cancel my gift.').intent, 'stop_gift');
+  assert.equal(rulesRoute('Are you sure you can pause it?').intent, 'pause_gift');
+  assert.deepEqual(rulesRoute('Is that right? I want to give twenty dollars.', { verified: true }), { intent: 'one_time_gift', amountDollars: 20 });
+  assert.deepEqual(rulesRoute('Is that correct, fifty dollars once?', { verified: true }), { intent: 'one_time_gift', amountDollars: 50 });
+  assert.equal(rulesRoute('How much is my monthly gift?').intent, 'gift_status');
+  assert.ok(INTENTS.includes('how_do_you_know'));
+  assert.ok(ROUTE_TOOL.input_schema.properties.intent.enum.includes('how_do_you_know'));
+  assert.match(SYSTEM_PROMPT, /^how_do_you_know, asks how the line knows what it said/m);
+  assert.ok(!/[;—]/.test(SYSTEM_PROMPT), 'periods and commas only');
+});
+
+test('the Gemini route tool and prompt offer how_do_you_know, and a reply naming it is taken as is', async () => {
+  const fake = fakeFetch([geminiReply({ intent: 'how_do_you_know', amount_dollars: 0, empathy: 'none' })]);
+  const router = createRouter({ mode: 'gemini', apiKey: 'k', model: 'gemini-3.5-flash-lite', fetchImpl: fake.fetchImpl });
+  assert.equal((await router.route({ text: 'Says who?', state: {} })).intent, 'how_do_you_know');
+  const sent = fake.calls[0].body;
+  assert.ok(sent.tools[0].functionDeclarations[0].parameters.properties.intent.enum.includes('how_do_you_know'));
+  assert.match(sent.systemInstruction.parts[0].text, /how_do_you_know/);
 });

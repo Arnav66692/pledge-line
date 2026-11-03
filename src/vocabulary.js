@@ -74,6 +74,14 @@ export const TEMPLATE_RENDERS = Object.freeze({
   expiredNotice: () => [say.expiredNotice()],
   setAside: () => [say.setAside()],
   pinLimit: () => [say.pinLimit()],
+  rechecked: () => [say.rechecked()],
+  // call.js says it only after a read that returned the gift, with the call's own draft or a draft PayPal no longer returns.
+  recheck: () => [
+    ...gift((sub, plan) => say.recheck(sub, plan)),
+    ...gift((sub, plan) => say.recheck(sub, plan, null, { close: false })),
+    ...INVOICES.map((inv) => say.recheck(ACTIVE, PLANS[0], inv)),
+    say.recheck(ACTIVE, PLANS[0], null, { draftGone: true }),
+  ],
   EMPATHY_PHRASES: () => Object.values(say.EMPATHY_PHRASES).map(plain),
   empathyPhrase: () => Object.keys(say.EMPATHY_PHRASES).map((key) => plain(say.filterEmpathy(say.empathyPhrase(key)))),
 });
@@ -189,6 +197,8 @@ export const CLAIMED = Object.freeze({
   'I asked PayPal to send it.': ['wrote_send_invoice'],
   "I can't find that invoice in PayPal now, so I can't confirm it went out.": ['invoice_unread'],
   "I couldn't find a monthly gift in PayPal for this line.": ['no_gift'],
+  // Read Nov 2. It says the line read the gift again just now, which gift_rechecked proves with a read in that turn.
+  "I just checked PayPal's record again.": ['gift_rechecked'],
   'I need a clear yes or no before I change anything.': ['unchanged'],
   'I need your PIN first.': ['not_verified'],
   "I've set that earlier request aside, so nothing changed.": ['set_aside'],

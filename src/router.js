@@ -3,7 +3,7 @@ import { tokenize, numberRuns, runValue, isNumberWord, isWellFormedRun } from '.
 import { EMPATHY_PHRASES, asksForAmount } from './say.js';
 
 export const INTENTS = Object.freeze(['gift_status', 'stop_gift', 'cancel_now', 'pause_gift', 'resume_gift', 'one_time_gift',
-  'other_email', 'repeat', 'help', 'staff_callback', 'goodbye', 'unclear']);
+  'other_email', 'how_do_you_know', 'repeat', 'help', 'staff_callback', 'goodbye', 'unclear']);
 // The model picks one of these keys and say.js speaks the fixed phrase for it (I3).
 export const EMPATHY = Object.freeze(Object.keys(EMPATHY_PHRASES));
 const MAX_TOKENS = 400;
@@ -152,6 +152,8 @@ const RULES = Object.freeze({
   stop: /\b(stop|cancel|cancelling|canceling|end|quit|terminate|discontinue|unsubscribe)\b/,
   insist: /\b(right now|immediately|just cancel|no pause|don't pause|do not pause|not pause|anyway|i said cancel|cancel now)\b/,
   newEmail: /\b(new|different|another|other|updated)\s+(email|e mail|address)\b/,
+  // The caller asks how the line knows what it said, so it reads PayPal again and says what the fresh read shows.
+  proof: /\b(how do you know|how do i know|how would you know|are you sure|you sure|says who|who says|prove it|prove that|show me proof|how can i be sure|how can i trust|is that right|is that true|is that correct)\b/,
   oneTime: /\b(one time|onetime|once|one off|extra gift|another gift|invoice|donate|give)\b/,
   status: /\b(how much|amount|status|when|next|is it active|is my|what is my|what's my|tell me about|check|still)\b/,
   staff: /\b(person|human|someone|somebody|staff|representative|agent|operator|call me back|callback|call back)\b/,
@@ -178,6 +180,8 @@ export function rulesRoute(text, state = {}) {
   // A new address can carry digits, so only an amount said as money counts with it.
   if (has('newEmail')) return { intent: 'other_email', amountDollars: parseAmountDollars(text, { needCurrency: true }) };
   if (has('oneTime') || amountDollars > 0) return { intent: 'one_time_gift', amountDollars };
+  // After the gift rule, so "Is that right? I want to give twenty dollars." keeps its amount.
+  if (has('proof')) return { intent: 'how_do_you_know', amountDollars: 0 };
   if (has('status')) return { intent: 'gift_status', amountDollars: 0 };
   if (has('staff')) return { intent: 'staff_callback', amountDollars: 0 };
   if (has('help')) return { intent: 'help', amountDollars: 0 };
@@ -213,6 +217,7 @@ pause_gift, asks to pause, hold or skip the monthly gift.
 resume_gift, asks to restart, resume or unpause the monthly gift.
 one_time_gift, wants to give a one-time amount. Put the dollar amount from the caller's words in amount_dollars, or 0 if none.
 other_email, asks to use an email that is not the one on file. If an amount is named too, put it in amount_dollars.
+how_do_you_know, asks how the line knows what it said, whether it is sure, or for proof, as in How do you know? Are you sure? Says who? Prove it. How can I be sure that's right?
 repeat, asks to hear that again.
 help, asks what the line can do.
 staff_callback, wants to talk to a person.

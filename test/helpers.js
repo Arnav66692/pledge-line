@@ -18,7 +18,8 @@ after(() => {
 });
 
 export function tempDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pledge-line-test-'));
+  // The real path, since macOS puts tmpdir behind the /var symlink and a copied script then never sees itself as main.
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'pledge-line-test-'));
   made.push(dir);
   return dir;
 }

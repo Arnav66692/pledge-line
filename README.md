@@ -42,6 +42,16 @@ npm run pilot:dry -- --mock
 
 The tests and the mock dry run need no network and no keys.
 
+## The claim audit
+
+`EVAL.md` is a preregistered check of how often a plain AI agent tells a donor something PayPal's record doesn't back, next to Pledge Line on the same 20 calls. It counts amounts, status words, dates and phrases such as "done" or "is now paused" that the mock PayPal doesn't back at the moment they are said, writes with no yes in the line before, and statuses no PayPal read had shown.
+
+```
+npm run audit -- --fake
+```
+
+`--fake` runs the baseline with a scripted fake model, so it needs no key and makes no network call. Its table checks the plumbing and is never a result. The table and a JSON file with every claim land in `.pilot/claim-audit/`. It runs from any checkout, writes only inside `.pilot/claim-audit/`, which git ignores, and refuses to write the pilot ledger. The real run, `npm run audit` with no flag, calls Gemini with `GEMINI_API_KEY`, spaces its requests like the dry run and stops on a 429. Per `EVAL.md` it waits until the pilot is graded and Arnav says go.
+
 ## Run it against the sandbox
 
 Follow `SETUP.md` first. It covers the PayPal sandbox app, the free Gemini key, and Render.
@@ -69,6 +79,16 @@ After Script 5 sends its invoice, the record card links to PayPal's payer page. 
 - A one-time gift needs one clear amount. If the caller corrects it, as in "fifty dollars, I mean sixty, one time", or names two different numbers, as in "fifty and sixty dollars", the line asks for the amount again, whatever amount Haiku heard.
 - The PIN never lands in the log, the browser, a reply or the Haiku router, whether it is typed, said digit by digit, said as numbers like "twenty four sixty eight", or typed as superscript, circled or full-width characters. Keys stay in `.env` and are never logged.
 - The words said before an answer are one of four fixed phrases the line owns. Haiku only picks which one, so it can't put a number or a claim in the line's mouth.
+
+## Receipts and "How do you know?"
+
+- The call state the line returns after every turn carries `receipts`, each sentence the line said with its verdict, proven, plain or blocked, the PayPal read behind each fact, and the claims it carries. They are built from the same ledger events and the same checks `npm run pilot:check` grades with. The page shows them under "What the line said", each proven sentence with a chip naming the PayPal read behind it and its time in PT.
+- A donor who asks "How do you know?", "Are you sure?", "Says who?" or "Prove it." after the PIN hears the line read PayPal again. It says "I just checked PayPal's record again." and reads the gift's amount and status, and the call's draft when there is one, from those fresh reads. A change waiting for a yes stays open only while PayPal still shows what the line read back.
+- `FEATURES.md` has the details.
+
+## The morning after
+
+Set `STAFF_KEY` to at least 16 characters and open `/staff`. A coordinator types the key and sees every call the line took, what the donor wanted, what PayPal changed and what PayPal shows now, with each call's sentences counted as proven, plain or blocked. Picking a call shows every sentence the line said beside the PayPal read behind each fact, with its time and debug id, and each claim with what the grader needed for it. The PIN, PIN turns, full emails, token ids and user agents never reach the page. With `STAFF_KEY` unset the view is off and every staff page is a 404. The table is AG Grid Community, served by the line itself, see `web/vendor/README.md`.
 
 ## The pilot
 

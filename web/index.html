@@ -1,111 +1,218 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-page="line">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pledge Line</title>
   <meta name="description" content="The after-hours donor line for small nonprofits. A PayPal sandbox demo with no real money.">
+  <meta name="theme-color" content="#efe7e0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151918" media="(prefers-color-scheme: dark)">
+  <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/instrument-serif-latin-400-italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/chrome.css">
   <link rel="stylesheet" href="/style.css">
+  <script src="/scene.js" defer></script>
+  <script src="/chrome.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
-<body>
-  <header class="top">
-    <h1>Pledge Line</h1>
-    <p class="tagline">The after-hours donor line for small nonprofits</p>
-    <p class="note">This is a PayPal sandbox demo. No real money moves, and no real donor is called.</p>
+<body class="donor">
+  <a class="skip" href="#workspace" data-go="line">Skip to the call</a>
+  <canvas class="gl" id="scene" aria-hidden="true"></canvas>
+
+  <header class="header">
+    <a class="logo" href="#hero" data-go="hero" aria-label="Pledge Line, back to the start"><span class="logo__a">pledge</span><span class="logo__b">line</span></a>
+    <nav class="header__nav" aria-label="Primary">
+      <a class="nav-item" href="#workspace" data-go="line" data-page-link="line">The line</a>
+      <a class="nav-item" href="#receipts-title" data-go="receipts">Receipts</a>
+      <a class="nav-item" href="/staff" data-page-link="staff">Staff</a>
+    </nav>
+    <button class="disc disc--menu" type="button" aria-expanded="false" aria-controls="menu" data-menu-toggle>
+      <span class="disc__fill" aria-hidden="true"></span>
+      <span class="disc__dots" aria-hidden="true"><i></i><i></i></span>
+      <span class="disc__x" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></span>
+      <span class="visually-hidden">Menu</span>
+    </button>
   </header>
 
-  <main class="layout">
-    <section class="card setup" aria-labelledby="setup-title">
-      <h2 id="setup-title">Start a call</h2>
-      <label class="field-label" for="script">Script</label>
-      <select id="script">
-        <option value="">Free call</option>
-      </select>
-      <p id="script-help" class="hint">Pick a script before you start, so the record knows which one you ran. Say each line after the line stops talking.</p>
-      <ol id="script-lines" class="lines" aria-label="Lines to say"></ol>
-      <button id="start" class="primary" type="button">Start call</button>
-      <label class="toggle"><input id="mute" type="checkbox"> Mute the line's voice</label>
-    </section>
-
-    <section class="card phone" aria-labelledby="phone-title">
-      <h2 id="phone-title">The line</h2>
-      <p id="status" class="status">No call yet. Press Start call.</p>
-      <div class="said">
-        <p class="label">The line says</p>
-        <p id="reply" class="reply" aria-live="polite"></p>
+  <div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu" hidden>
+    <div class="menu__shade" data-menu-close></div>
+    <div class="menu__panel"><div class="menu__inner">
+      <nav class="menu__nav" aria-label="Menu">
+        <ol class="menu__list">
+          <li><a class="menu__item" href="#workspace" data-go="line" data-page-link="line"><sup>01</sup><span class="menu__label">The line</span><span class="menu__line" aria-hidden="true"></span></a></li>
+          <li><a class="menu__item" href="#receipts-title" data-go="receipts"><sup>02</sup><span class="menu__label">Receipts</span><span class="menu__line" aria-hidden="true"></span></a></li>
+          <li><a class="menu__item" href="/staff" data-page-link="staff"><sup>03</sup><span class="menu__label">Staff</span><span class="menu__line" aria-hidden="true"></span></a></li>
+        </ol>
+      </nav>
+      <div class="menu__foot">
+        <p class="menu__contact"><span>The after-hours donor line</span><span>PayPal sandbox. No real money moves.</span></p>
+        <ul class="menu__social">
+          <li>MIT license</li>
+          <li>Sandbox only</li>
+        </ul>
       </div>
-      <div class="said">
-        <p class="label">You said</p>
-        <p id="transcript" class="transcript"></p>
-      </div>
-      <button id="talk" class="talk" type="button" disabled aria-describedby="talk-hint">Hold to talk</button>
-      <p id="talk-hint" class="hint">Hold the button, or the Space bar, while you speak. Let go when you finish.</p>
-      <p id="speech-error" class="error" role="alert" hidden></p>
+    </div></div>
+  </div>
 
-      <div class="keypad" role="group" aria-label="PIN keypad">
-        <p class="label">PIN keypad</p>
-        <output id="pin-dots" class="dots" aria-live="polite">No digits yet</output>
-        <div class="keys">
-          <button type="button" class="key" data-digit="1">1</button>
-          <button type="button" class="key" data-digit="2">2</button>
-          <button type="button" class="key" data-digit="3">3</button>
-          <button type="button" class="key" data-digit="4">4</button>
-          <button type="button" class="key" data-digit="5">5</button>
-          <button type="button" class="key" data-digit="6">6</button>
-          <button type="button" class="key" data-digit="7">7</button>
-          <button type="button" class="key" data-digit="8">8</button>
-          <button type="button" class="key" data-digit="9">9</button>
-          <button type="button" class="key" id="pin-clear" aria-label="Clear the PIN">Clear</button>
-          <button type="button" class="key" data-digit="0">0</button>
-          <button type="button" class="key send" id="pin-send" aria-label="Send the PIN">Send</button>
+  <main id="main">
+    <section class="hero" id="hero" aria-labelledby="hero-title">
+      <div class="hero__float">
+        <h1 class="hero__title" id="hero-title">
+          <span class="visually-hidden">Pledge Line. </span>
+          <span class="hero__caps">the after-hours donor line for small nonprofits</span>
+          <span class="hero__l1">Every word</span>
+          <span class="hero__l2">backed by PayPal</span>
+        </h1>
+        <div class="hero__cta">
+          <button class="btn" type="button" id="open-line" data-go="line">
+            <span class="btn__fill" aria-hidden="true"></span>
+            <span class="btn__label"><span class="btn__t">Start a call</span><span class="btn__t btn__t--in" aria-hidden="true">Start a call</span></span>
+            <span class="btn__icon" aria-hidden="true"><span><svg viewBox="0 0 10 10" focusable="false"><path d="M1.5 1.5l7 7M8.5 3v5.5H3" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span><span><svg viewBox="0 0 10 10" focusable="false"><path d="M1.5 1.5l7 7M8.5 3v5.5H3" stroke="currentColor" stroke-width="1.3" fill="none"/></svg></span></span>
+          </button>
         </div>
       </div>
+      <p class="hero__note">PayPal sandbox demo. No real money moves, and no real donor is called.</p>
+    </section>
 
-      <details id="typed" class="typed">
-        <summary>Type instead</summary>
-        <form id="typed-form" class="typed-form">
-          <label for="typed-text" class="field-label">What you want to say</label>
-          <div class="typed-row">
-            <input id="typed-text" type="text" autocomplete="off" maxlength="500" disabled>
-            <button id="typed-send" type="submit" disabled>Send</button>
+    <div class="ws" id="workspace" tabindex="-1" aria-label="The call">
+      <section class="panel call" aria-labelledby="phone-title">
+        <div class="call-head">
+          <h2 id="phone-title">Your call</h2>
+          <label class="toggle"><input id="mute" type="checkbox"><span class="toggle__disc" aria-hidden="true"></span><span class="toggle__text">Mute the line's voice</span></label>
+        </div>
+        <p id="status" class="status">No call yet. Press Start call.</p>
+        <button id="start" class="pill pill--dark" type="button">Start call</button>
+
+        <div class="said said--reply">
+          <p class="label">The line says</p>
+          <p id="reply" class="reply" aria-live="polite"></p>
+        </div>
+        <div class="said">
+          <p class="label">You said</p>
+          <p id="transcript" class="transcript"></p>
+        </div>
+
+        <div class="talk-row">
+          <button id="talk" class="talk" type="button" disabled aria-describedby="talk-hint">Hold to talk</button>
+          <p id="talk-hint" class="hint">Hold the button, or the Space bar, while you speak. Let go when you finish.</p>
+        </div>
+        <p id="speech-error" class="error" role="alert" hidden></p>
+
+        <div class="keypad" role="group" aria-labelledby="keypad-label">
+          <p class="label" id="keypad-label">PIN keypad</p>
+          <output id="pin-dots" class="dots dots-empty" aria-live="polite">No digits yet</output>
+          <div class="keys">
+            <button type="button" class="key" data-digit="1">1</button>
+            <button type="button" class="key" data-digit="2">2</button>
+            <button type="button" class="key" data-digit="3">3</button>
+            <button type="button" class="key" data-digit="4">4</button>
+            <button type="button" class="key" data-digit="5">5</button>
+            <button type="button" class="key" data-digit="6">6</button>
+            <button type="button" class="key" data-digit="7">7</button>
+            <button type="button" class="key" data-digit="8">8</button>
+            <button type="button" class="key" data-digit="9">9</button>
+            <button type="button" class="key key-word" id="pin-clear" aria-label="Clear the PIN">Clear</button>
+            <button type="button" class="key" data-digit="0">0</button>
+            <button type="button" class="key key-word send" id="pin-send" aria-label="Send the PIN">Send</button>
           </div>
-        </form>
-      </details>
+        </div>
 
-      <p class="timing">Last gap <span id="gap-last">none yet</span>. Median of voice turns <span id="gap-median">none yet</span>.</p>
-    </section>
+        <details id="typed" class="fold typed">
+          <summary>Type instead</summary>
+          <form id="typed-form" class="typed-form">
+            <label for="typed-text" class="field-label">What you want to say</label>
+            <div class="typed-row">
+              <input id="typed-text" type="text" autocomplete="off" maxlength="500" disabled>
+              <button id="typed-send" class="pill pill--dark" type="submit" disabled>Send</button>
+            </div>
+          </form>
+        </details>
 
-    <section class="card record" aria-labelledby="record-title">
-      <h2 id="record-title">PayPal record</h2>
-      <div id="pending" class="pending" hidden>
-        <p class="pending-title">Waiting for your yes</p>
-        <p id="pending-label"></p>
-        <p id="pending-expiry" class="hint"></p>
-      </div>
-      <h3>Monthly gift</h3>
-      <dl class="facts">
-        <dt>Status</dt><dd id="sub-status">not read yet</dd>
-        <dt>Amount</dt><dd id="sub-amount">not read yet</dd>
-        <dt>Next date</dt><dd id="sub-next">not read yet</dd>
-        <dt>Debug id</dt><dd id="sub-debug" class="mono">none</dd>
-      </dl>
-      <h3>One-time gift invoice</h3>
-      <dl class="facts">
-        <dt>Invoice number</dt><dd id="inv-number">none</dd>
-        <dt>Status</dt><dd id="inv-status">none</dd>
-        <dt>Amount</dt><dd id="inv-amount">none</dd>
-        <dt>Debug id</dt><dd id="inv-debug" class="mono">none</dd>
-        <dt>Payer page</dt><dd id="inv-link">none</dd>
-      </dl>
-      <h3>Event log</h3>
-      <p class="hint">Newest first. Every PayPal read and change shows here.</p>
-      <ol id="events" class="events"></ol>
-    </section>
+        <details id="demo" class="fold demo">
+          <summary>Demo controls</summary>
+          <div class="demo-body">
+            <label class="field-label" for="script">Script</label>
+            <div class="select"><select id="script">
+              <option value="">Free call</option>
+            </select></div>
+            <p id="script-help" class="hint">Pick a script before you start, so the record knows which one you ran. Say each line after the line stops talking.</p>
+            <ol id="script-lines" class="lines" aria-label="Lines to say"></ol>
+            <p class="timing">Last gap <span id="gap-last">none yet</span>. Median of voice turns <span id="gap-median">none yet</span>.</p>
+          </div>
+        </details>
+      </section>
+
+      <section class="panel receipts-card" aria-labelledby="receipts-title">
+        <p class="kicker">Every sentence, with its PayPal read</p>
+        <h2 id="receipts-title">What the line said</h2>
+        <p class="hint">Each sentence with a fact in it shows the PayPal read behind it. Times are Pacific.</p>
+        <p id="receipts-summary" class="receipts-summary">Nothing said yet.</p>
+        <div id="receipts-scroll" class="receipts-scroll" tabindex="0" role="region" aria-label="Everything the line said, with receipts">
+          <ol id="receipts" class="receipts"></ol>
+        </div>
+      </section>
+
+      <section class="panel record" aria-labelledby="record-title">
+        <h2 id="record-title">PayPal's record</h2>
+        <div id="pending" class="pending" hidden>
+          <p class="pending-title">Waiting for your yes</p>
+          <p id="pending-label"></p>
+          <p id="pending-expiry" class="hint"></p>
+        </div>
+
+        <article id="gift" class="gift" aria-labelledby="gift-title">
+          <h3 id="gift-title">Monthly gift</h3>
+          <p id="sub-status" class="gift-status">not read yet</p>
+          <p id="sub-read" class="gift-read">Not read from PayPal yet.</p>
+          <p id="sub-change" class="gift-change" hidden></p>
+          <dl class="facts">
+            <dt>Amount</dt><dd id="sub-amount">not read yet</dd>
+            <dt>Next date</dt><dd id="sub-next">not read yet</dd>
+            <dt>Debug id</dt><dd id="sub-debug" class="mono">none</dd>
+          </dl>
+        </article>
+
+        <article class="gift invoice" aria-labelledby="invoice-title">
+          <h3 id="invoice-title">One-time gift invoice</h3>
+          <dl class="facts">
+            <dt>Invoice number</dt><dd id="inv-number">none</dd>
+            <dt>Status</dt><dd id="inv-status">none</dd>
+            <dt>Amount</dt><dd id="inv-amount">none</dd>
+            <dt>Debug id</dt><dd id="inv-debug" class="mono">none</dd>
+            <dt>Payer page</dt><dd id="inv-link">none</dd>
+          </dl>
+        </article>
+
+        <details class="fold log" open>
+          <summary>Event log</summary>
+          <p class="hint">Newest first. Every PayPal read and change shows here.</p>
+          <ol id="events" class="events" tabindex="0" aria-label="Event log, newest first"></ol>
+        </details>
+      </section>
+
+      <footer class="foot">
+        <p>Pledge Line pilot, MIT license. PayPal sandbox only.</p>
+        <p>&copy;2026</p>
+      </footer>
+    </div>
   </main>
 
-  <footer class="foot">
-    <p>Pledge Line pilot, MIT license. PayPal sandbox only.</p>
-  </footer>
+  <div class="corner corner--bl">
+    <button class="disc disc--sound" type="button" id="ambient" aria-pressed="false" title="Background sound">
+      <span class="disc__fill" aria-hidden="true"></span>
+      <span class="disc__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="visually-hidden">Background sound</span>
+    </button>
+  </div>
+  <a class="corner corner--bc orbit" href="#record-title" data-go="record">
+    <span class="orbit__w orbit__w--a" aria-hidden="true"><span>PayPal</span></span>
+    <span class="disc disc--still" aria-hidden="true"><span class="disc__ring"></span></span>
+    <span class="orbit__w orbit__w--b" aria-hidden="true"><span>record</span></span>
+    <span class="visually-hidden">PayPal's record</span>
+  </a>
+  <p class="corner corner--br">&copy;2026</p>
+
+  <div class="cursor" aria-hidden="true"><div class="cursor__inner"><div class="cursor__ring"></div></div></div>
 </body>
 </html>
