@@ -54,7 +54,7 @@
     no_charge: 'PayPal shows no recent charge', charge_unread: 'PayPal gave no clear charge',
     wrote_refund_request: 'Request logged for staff, PayPal unchanged', refund_matches_read: 'Same charge in PayPal after the request',
     refund_request_failed: 'The request was not logged', no_refund_request: 'You said no, nothing logged',
-    hold_covers: "Sponsor's hold checked in PayPal", cover_too_old: 'Older than the staff rule allows', cover_too_big: "Above the staff rule's cap",
+    hold_open: "Sponsor's hold checked in PayPal", cover_too_old: 'Older than the staff rule allows', cover_too_big: "Above the staff rule's cap",
     cover_used: 'Already given back this year', cover_prior: 'Staff have an earlier try', cover_not_ready: 'PayPal shows it can\'t be given back',
     cover_no_hold: 'No open sponsor hold', cover_changed: 'Changed since the offer, no money moved',
     wrote_cover_capture: 'Sponsor fund paid the same amount', cover_capture_read: 'Read back from the sponsor\'s capture',

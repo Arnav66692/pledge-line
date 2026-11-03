@@ -59,6 +59,27 @@ A donor sees a PayPal charge she doesn't recognize and calls. After the PIN she 
 - The staff view lists each refund request with its transaction and amount, and the donor page's event log says the request went to staff and nothing changed in PayPal.
 - The claim audit (EVAL.md) now holds a date or amount to the charges PayPal lists for the gift too, for both arms. The change log there says why and keeps the one unbacked date the old rule counted on E6. It needs Arnav's yes before the real run.
 
+## Covered Month
+
+Added Tue Nov 3 on the `feat/money-move` branch, to merge only after the pilot is graded (after Wed Nov 4 at 9 pm PT). `PICK.md` says why. `SPEC.md` has the contract. It has run only against the mock.
+
+Maria says "I lost my job, I can't do it this month." The line says it is sorry, reads her latest charge from PayPal, and offers to give that amount back with a sponsor's hardship fund paying the same amount to the nonprofit. It says the gift doesn't change and when the next one comes, then asks. On her yes:
+
+1. It reads PayPal once more, the charge list, the charge by its own id and the hold. If anything changed since the offer, it moves nothing and says so.
+2. It captures the amount from the sponsor's hold, with `final_capture: false`, so the hold stays open.
+3. It refunds her charge for that exact amount.
+4. It reads the charge, the capture, the hold, the charge list and the gift again, and says only what those reads show.
+
+Sponsor first, since a refund can fail for want of funds and the capture is what pays for it.
+
+- **The staff rule.** `src/config.js` holds it, up to $50, within 30 days, once a year by default. The line never says the numbers aloud, only why it can't help. A refund PayPal lists on the gift counts toward the year, and so does a cover in the ledger.
+- **One yes, two moves, one token each.** The yes mints one token per move, each bound to its own kind, target and exact amount. Nothing the caller says can change the amount or where the money goes, and a yes with an amount or a card in it is not a yes.
+- **When a move fails.** A capture PayPal refuses runs no refund, and the donor hears no money moved. A refund PayPal refuses sends the sponsor's money back and says so, unless a read shows the refund went through after all, as when an earlier answer was lost, and then staff get it and the sponsor's money stays. A lost answer on either move is never spoken as done, and a later call about that charge is told staff are looking at it.
+- **A double submit.** Two copies of one yes run once, since the first closes the offer. Two calls about one charge can't both run. The PayPal-Request-Id comes from the charge, so a retry replays PayPal's answer, per Keepwell's spike. The sponsor's move also reads its capture before the refund, so a replayed answer for money since given back never counts.
+- **The grader.** `check.js` proves every new sentence from that turn's writes and reads, and fails a move of another amount or target, a move the staff rule turns down, a refund with no capture before it, a return of the sponsor's money with no refused refund, or a move with no fresh read after it. Receipts show each move's read, as in "From PayPal at 1:34:52 pm, $25.00, refunded" beside "Refunded to you".
+- **The fee.** It is not hidden. The "Covered month" card and the staff view say the nonprofit ends one fee short of a gift that stood, with PayPal's own number for the sponsor's payment. The brief's figures are $0.99 at the charity rate, and the mock's fee is $1.21.
+- **The sponsor's id.** The donor's browser never gets the hold id. Staff see it.
+
 ## Unseen look
 
 Added Nov 2 on the `feat/unseen-look` branch. The donor page and the staff view now follow unseen.co's design language. Only the look changed. `app.js`, `staff.js`, every element id, the server routes and the policy are the same, so the pilot grades the same page.

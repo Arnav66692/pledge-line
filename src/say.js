@@ -341,15 +341,15 @@ function nextGift(sub, timeZone) {
 
 /**
  * The offer. The charge's facts come from one read, and the gift stays as it is, so the line says when the next gift
- * comes (a refund never touches the subscription). The hold's amount is not spoken, since PayPal's read gives its whole
- * amount and not what is left, so a claim says the read covers this charge.
+ * comes (a refund never touches the subscription). The hold's amount is not spoken, and the line never says it covers this
+ * charge, since PayPal's read gives its whole amount and not what is left. PayPal refuses a capture past what is left.
  */
 // The amount is declared once, by the charge's own sentence, so a receipt lists it once. It slots in both sentences.
 export function coverOffer(charge, sub, orgName, { timeZone } = {}) {
   const money = derived('charge.amount', charge, 'money');
   return combine(latestCharge(charge, orgName, timeZone),
     part(`I can give that ${money.value} back to you, and a sponsor's hardship fund would pay the same amount to ${orgName}.`),
-    claim("PayPal shows the sponsor's hold covers that amount.", 'hold_covers'),
+    claim("PayPal shows the sponsor's hold is open.", 'hold_open'),
     'This does not change your monthly gift.', nextGift(sub, timeZone),
     'Should I give it back?', YES_OR_NO);
 }

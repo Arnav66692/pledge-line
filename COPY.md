@@ -323,6 +323,10 @@ Now "Your gift, right from PayPal". The first pass kept "Every word backed by Pa
 - `web/style.css` and `web/staff.css`: the two full-sentence notes, the hero note and the staff note, are now in sentence case at a slightly larger size, since capitals are hard to read in a whole sentence. The short labels, such as YOU SAID and REPLY 3, stay in capitals as part of the unseen look.
 - `web/style.css` shows "No one-time gift on this call." in place of the invoice rows until the call has an invoice.
 
+## Added Nov 3 for Covered Month
+
+New strings, not changes to the ones above: the "Covered month" card in `web/index.html` ("No month given back on this call.", "Back to you", "From the sponsor", "Fee not covered"), its outcome and fee sentences in `web/app.js`, the chips and event log lines for each new claim and read, and their hovers in `web/claim-words.js`. Spoken sentences are in `src/say.js` and on the review in `src/vocabulary.js`.
+
 ## What did not change
 
 - Every element id, every event name, the gap timing code, `src/say.js`, `src/vocabulary.js`, `src/pilot-scripts.js` and the template lists. The line still says "suspended" and "say its digits", and the expected line still says "No writes". Those wait until after the pilot.

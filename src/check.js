@@ -373,7 +373,7 @@ const CLAIMS = Object.freeze({
   refund_request_failed: ['a refund request in that turn that failed, and no ok write', (s) => inTurn(s, (e) => e.type === 'write' && !e.ok && e.kind === 'refund_request') && !okWrite(s)],
   no_refund_request: ['a no to a refund request in that turn, and no ok write',
     (s) => !okWrite(s) && inTurn(s, (e) => e.type === 'no' && s.before.some((p) => p.type === 'proposed' && p.pendingId === e.pendingId && p.kind === 'refund_request'))],
-  hold_covers: ["a read in that turn of the sponsor's hold this call runs on that covers the charge read in that turn", (s) => holdIsOpen(s)],
+  hold_open: ["PayPal's latest read of the sponsor's hold this call runs on, open, unexpired and at least the amount of its latest read of the charge", (s) => holdIsOpen(s)],
   cover_too_old: ["a read of the gift's charges in that turn whose latest charge is older than the staff rule's window", (s) => ruleSays(s, 'too_old')],
   cover_too_big: ["a read of the gift's charges in that turn whose latest charge is above the staff rule's cap", (s) => ruleSays(s, 'too_big')],
   cover_used: ["a read of the gift's charges in that turn that shows a refund already, or a cover the ledger holds for this gift", (s) => ruleSays(s, 'used') || refusedFor(s, 'cover_used')],

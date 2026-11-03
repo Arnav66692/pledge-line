@@ -4,7 +4,9 @@ The after-hours donor line for small nonprofits.
 
 A monthly donor opens the line in a browser and proves who she is with a PIN. When she asks to stop her gift, the line reads her amount from PayPal's own record and offers a pause. Only after her separate spoken yes does it call PayPal's suspend, and then it reads the new status back from a fresh PayPal read. A one-time gift becomes a PayPal draft invoice. The line reads the draft back from PayPal, sends it only on yes, and deletes it on no.
 
-A donor who sees a PayPal charge she doesn't recognize can ask the line about it. It reads the gift's latest charge from PayPal and says the amount, the date, the status and the end of the PayPal transaction id. On her yes in the next turn, it asks staff to look at a refund. A charge PayPal shows as refunded or declined gets no offer. The line itself never refunds anything.
+A donor who sees a PayPal charge she doesn't recognize can ask the line about it. It reads the gift's latest charge from PayPal and says the amount, the date, the status and the end of the PayPal transaction id. On her yes in the next turn, it asks staff to look at a refund. A charge PayPal shows as refunded or declined gets no offer.
+
+A donor who can't afford this month can say so. The line reads her last charge, checks the staff rule, and offers to give the month back with a sponsor's hardship fund paying the same amount to the nonprofit. On her yes it captures that amount from the sponsor's PayPal hold, refunds her charge, and reads both back from PayPal. This is the one place the line moves money, and it is sandbox money.
 
 This is a pilot for the PayPal AI Hackathon. It runs against the PayPal sandbox only, so no real money moves.
 
@@ -12,7 +14,7 @@ This is a pilot for the PayPal AI Hackathon. It runs against the PayPal sandbox 
 
 Live in the pilot, once the keys are in `.env`.
 
-- PayPal sandbox REST calls for subscriptions, a subscription's transaction list, invoices and webhook checks. The code refuses any other PayPal address.
+- PayPal sandbox REST calls for subscriptions, a subscription's transaction list, invoices, webhook checks, and Covered Month's capture, refund and reads. The code refuses any other PayPal address.
 - An AI router reads what the caller means. For the pilot it's Google's Gemini on the free tier, or Claude Haiku 5.5 with `ROUTER_MODE=haiku`. It never decides a yes or a no, and it never touches PayPal. Below, Haiku means whichever router model is set.
 - Speech in and out uses the browser's own speech tools. Chrome and Safari can listen. Firefox uses the typed box.
 
@@ -86,6 +88,15 @@ After Script 5 sends its invoice, the record card links to PayPal's payer page. 
 
 After the PIN, try "I see a PayPal charge I don't recognize." In mock mode the fake PayPal holds one completed $25.00 charge on the 1st of the month, transaction ending in 0042. Say yes and the line logs a refund request for staff, reads PayPal again and reads the charge back. Nothing in PayPal changes. `PICK.md` says why this move was picked, `FEATURES.md` has the details and `SPEC.md` the contract.
 
+## Covered Month
+
+After the PIN, try "I lost my job, I can't do it this month." In mock mode the fake PayPal holds the same $25.00 charge and a sponsor's $200.00 hold. Say yes, and the page shows the refund and the sponsor's payment, each from its own PayPal read, under "Covered month". The gift itself doesn't change, so the line says when the next one comes.
+
+- The staff rule is `COVER_MAX_DOLLARS`, `COVER_WINDOW_DAYS` and `COVER_PER_YEAR`, with defaults of $50, 30 days and once a year. `COVER_PER_YEAR=0` turns it off.
+- In the sandbox, the sponsor consents once in the browser. `npm run seed:hold` makes the order and prints the link, then `npm run seed:hold -- --authorize` saves the hold. With no hold, the line says the fund isn't open and moves nothing. A hold lasts 29 days, so seed it within 3 days of filming.
+- The page and the staff view both show the fee a refund leaves behind. PayPal keeps its fee on the refunded gift and takes one on the sponsor's payment, so the nonprofit ends one fee short of a gift that stood.
+- `PICK.md` says why, `FEATURES.md` has the details and `SPEC.md` the contract.
+
 ## Receipts and "How do you know?"
 
 - The call state the line returns after every turn carries `receipts`, each sentence the line said with its verdict, proven, plain or blocked, the PayPal read behind each fact, and the claims it carries. They are built from the same ledger events and the same checks `npm run pilot:check` grades with. The page shows them under "What the line said", each proven sentence with a chip naming the PayPal read behind it and its time in PT.
@@ -104,6 +115,8 @@ The pass bar and how each test is graded live in `PILOT.md`. The bar was set bef
 
 - The charge check reads `GET /v1/billing/subscriptions/{id}/transactions`, whose field names follow PayPal's Subscriptions v1 reference. They are not yet confirmed by a real sandbox call. A newly approved sandbox subscription may list no completed charge until its first bill, so a demo needs a seeded gift that has billed once.
 - The charge check reads only the latest charge, and a donor has to link the charge to this nonprofit before she calls.
+- Covered Month has run only against the mock. Capture with `final_capture: false`, a refund of a subscription's transaction, and their reads are built from PayPal's docs and two other teams' sandbox runs, so it needs its own sandbox spike before filming. It also needs that run to show whether the transaction list shows a refund, since the line's refund proof reads `GET /v2/payments/captures/{id}` and only logs the list.
+- PayPal's read of a hold gives its whole amount, not what is left. A hold drawn down too far is caught when PayPal refuses the capture, which runs first, so the donor hears no money moved.
 
 - After the Nov 2 review, pilot-check reads PILOT.md's checks more strictly than the change log says. Record these in the PILOT.md change log before the graded run if you agree. The bar itself is unchanged.
   - Scripts 1 to 10 come from the latest Chrome or Safari call of each, not any call outside Firefox, so an Edge run is recorded but never replaces a graded call. The Firefox clause still uses the latest Firefox calls of Scripts 2 and 3.

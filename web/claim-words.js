@@ -45,7 +45,7 @@ window.PledgeClaimWords = Object.freeze({
   refund_matches_read: 'the line checked the charges again after the request, and PayPal still shows that same charge',
   refund_request_failed: 'the refund request could not be logged on this reply, and nothing changed',
   no_refund_request: 'the donor said no to a refund request on this reply, and nothing was logged',
-  hold_covers: "the line checked the sponsor's hold in PayPal on this reply, and it covers this charge",
+  hold_open: "the line checked the sponsor's hold in PayPal, and it is open and not expired",
   cover_too_old: "the line checked the gift's charges on this reply, and the latest is older than the staff rule allows",
   cover_too_big: "the line checked the gift's charges on this reply, and the latest is above the staff rule's cap",
   cover_used: 'a charge on this gift was already given back in the last year',

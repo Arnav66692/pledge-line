@@ -34,7 +34,7 @@ async function offered(stack = buildStack()) {
 
 const offerText = 'PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, with the status completed. '
   + "I can give that $25.00 back to you, and a sponsor's hardship fund would pay the same amount to Sunny Hollow Pantry. "
-  + "PayPal shows the sponsor's hold covers that amount. This does not change your monthly gift. The next gift is on December 1. "
+  + "PayPal shows the sponsor's hold is open. This does not change your monthly gift. The next gift is on December 1. "
   + 'Should I give it back? Please say yes or no.';
 
 // ---- Routing ----
@@ -659,7 +659,7 @@ test('a receipt lists the offer amount once', async () => {
 test('the templates tie each result sentence to a claim the grader proves, and no template says refunded on its own', () => {
   assert.deepEqual(TEMPLATE_CLAIMS['PayPal now shows your charge of {gift_charge.amount} as {gift_charge.status}.'], ['cover_refund_read', 'wrote_cover_refund']);
   assert.deepEqual(TEMPLATE_CLAIMS["PayPal shows the sponsor's payment of the same amount to {org}, with the status {capture.status}."], ['cover_capture_read', 'wrote_cover_capture']);
-  assert.deepEqual(TEMPLATE_CLAIMS["PayPal shows the sponsor's hold covers that amount."], ['hold_covers']);
+  assert.deepEqual(TEMPLATE_CLAIMS["PayPal shows the sponsor's hold is open."], ['hold_open']);
   assert.ok(TEMPLATE_SENTENCES.includes("I can give that {charge.amount} back to you, and a sponsor's hardship fund would pay the same amount to {org}."));
   assert.ok(!TEMPLATE_SENTENCES.some((s) => /\b(refunded|captured|paid)\b/.test(s)));
 });

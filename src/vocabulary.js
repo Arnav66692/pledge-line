@@ -252,7 +252,7 @@ export const CLAIMED = Object.freeze({
   'PayPal shows no recent charge for your monthly gift.': ['no_charge'],
   'Staff will follow up during open hours.': ['wrote_refund_request'],
   // Read Nov 3, Covered Month. Each sentence that says money moved or didn't is proved from that turn's own writes and reads.
-  "PayPal shows the sponsor's hold covers that amount.": ['hold_covers'],
+  "PayPal shows the sponsor's hold is open.": ['hold_open'],
   "That charge is too old for the hardship fund, so I can't give it back here.": ['cover_too_old'],
   "That charge is more than the hardship fund can cover, so I can't give it back here.": ['cover_too_big'],
   "A charge on this gift was already given back in the last year, so the hardship fund can't cover another.": ['cover_used'],
