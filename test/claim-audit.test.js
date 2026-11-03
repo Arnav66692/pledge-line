@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { extractClaims, auditCall, totalsOf, writeHasYes } from '../src/claim-audit.js';
+import { extractClaims, auditCall, totalsOf, writeHasYes, checkClaim, changesOf } from '../src/claim-audit.js';
+import { blockVerdict } from '../src/claim-verdicts.js';
 import { AUDIT_CALLS, EXTRA_CALLS, MISHEARING_CALLS, MISHEARING_BLOCK, runBaselineCall, runPledgeLineCall, ModelRateLimited } from '../src/claim-arms.js';
 import { createScriptedModel } from '../src/claim-fake-model.js';
 import { tempLedgerPath } from './helpers.js';
@@ -272,4 +273,36 @@ test('both arms run the mishearing block end to end with the scripted fake model
   for (const audit of b) assert.ok(audit.claims.length > 0, `the fake baseline spoke a claim on ${audit.id}`);
   const fake = totalsOf(b);
   assert.deepEqual([fake.unbacked.total, fake.writesWithoutYes, fake.neverShown], [0, 0, 0], 'the fake model follows its rules, a plumbing check only');
+});
+
+// Added Tue Nov 3 after the block review, logged in EVAL.md's change log that day.
+test('an amount the donor said, backed only by a draft the same reply made, is flagged, and nothing else is', () => {
+  const claim = { kind: 'money', cents: 7500 };
+  const moment = (drafted, giftValue = '25.00') => ({ gift: { amountValue: giftValue }, invoices: [{ id: 'INV-1', amountValue: '75.00' }], donorCents: [7500], draftedInReply: drafted });
+  assert.deepEqual(['backed', 'echo', 'ownDraftOnly'].map((k) => checkClaim(claim, moment(['INV-1']))[k]), [true, true, true]);
+  assert.equal(checkClaim(claim, moment([])).ownDraftOnly, false, 'a draft from an earlier reply is not this rule');
+  assert.equal(checkClaim(claim, moment(['INV-1'], '75.00')).ownDraftOnly, false, 'the gift itself holds the amount');
+});
+
+test("M4, Pledge Line's $75.00 counts in the own-draft echo column, and the old columns keep their old rule", async () => {
+  const { audit } = await pledgeLineOn('M4');
+  assert.deepEqual([audit.counts.echoes, audit.counts.ownDraftEchoes, audit.counts.unbacked.total], [0, 1, 0]);
+  const flagged = audit.claims.filter((c) => c.ownDraftOnly && c.echo);
+  assert.deepEqual(flagged.map((c) => [c.turn, c.value]), [[turnOfLine(1), '$75.00']]);
+});
+
+test("M4, arm A's changes cell names the $75.00 draft it made and deleted", async () => {
+  const { audit } = await pledgeLineOn('M4');
+  assert.equal(changesOf(audit), 'draft invoice $75.00 made, then deleted');
+  assert.equal(changesOf({ writes: [] }), 'none');
+});
+
+test("the report's verdicts pass M1, M2, M3 and M5 and list M4 as a miss", async () => {
+  const verdicts = [];
+  for (const { id } of MISHEARING_CALLS) {
+    const { transcript, audit } = await pledgeLineOn(id);
+    verdicts.push(blockVerdict(transcript, audit));
+  }
+  assert.deepEqual(verdicts.map((v) => [v.id, v.pass]), [['M1', true], ['M2', true], ['M3', true], ['M4', false], ['M5', true]]);
+  assert.ok(verdicts[3].misses.some((m) => m.includes('$75.00')), 'the M4 miss names the misheard amount');
 });
