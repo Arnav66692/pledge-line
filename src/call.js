@@ -5,7 +5,7 @@ import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
 import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } from './gate.js';
 import { toSnapshot, PayPalError } from './paypal.js';
 import { liveTemplates } from './vocabulary.js';
-import { buildReceipts } from './receipt.js';
+import { buildReceipts, receiptOptions } from './receipt.js';
 
 export { maskPinText };
 
@@ -240,7 +240,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       pending: p ? { kind: p.kind, label: PENDING_LABELS[p.kind], expiresAt: new Date(p.expiresAt).toISOString() } : null,
       record: formatRecord(call, config.timeZone),
       // Built from the same ledger events, with the same orgName and subscription, that pilot-check grades.
-      receipts: buildReceipts(ledger.byCall(call.id), { orgName: config.orgName, subscriptionId: config.demoSubscriptionId ?? null, timeZone: config.timeZone }),
+      receipts: buildReceipts(ledger.byCall(call.id), receiptOptions(config)),
     };
   }
 
