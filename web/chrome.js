@@ -212,7 +212,8 @@
     const r = heroL1.getBoundingClientRect();
     if (r.width === 0) return;
     const radius = Math.min(r.height * 0.78, window.innerWidth * 0.14);
-    const x = Math.min(r.right + radius * 0.7 - hero.x, window.innerWidth - radius * 0.75);
+    // Just clear of the last letter, so the pearl sits beside the line and never over its ink.
+    const x = Math.min(r.right + radius * 1.12 - hero.x, window.innerWidth - radius * 0.75);
     const y = r.top + r.height * 0.42 - hero.y - (window.innerWidth < 768 ? radius * 0.9 : 0);
     scene()?.setPearl(x, y, radius);
   }
