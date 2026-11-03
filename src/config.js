@@ -14,6 +14,12 @@ export const MOCK_DEFAULT_PIN = '2468';
 export const STATE_FILE = '.pilot/state.json';
 export const PILOT_LEDGER = '.pilot/ledger.jsonl';
 export const MOCK_LEDGER = '.pilot/mock-ledger.jsonl';
+// The public Vercel demo can only write under /tmp, and loses it on every cold start.
+export const VERCEL_LEDGER = '/tmp/pledge-line/mock-ledger.jsonl';
+// /tmp is /private/tmp on a Mac, so a local run of the demo can put its ledger there too.
+const TMP_DIRS = ['/tmp/', '/private/tmp/'];
+// The Vercel copy is a public demo with no real keys, so a key set there by mistake stops it starting.
+const VERCEL_REFUSED_KEYS = ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY'];
 
 // Script 8 uses these as the wrong PINs, so the real PIN must differ.
 const SCRIPT_8_PINS = new Set(['1111', '2222', '3333']);
@@ -103,7 +109,11 @@ function parseOrgName(raw, errors) {
   return name;
 }
 
-function parseLedgerPath(raw, isMock, errors) {
+function parseLedgerPath(raw, isMock, onVercel, errors) {
+  if (onVercel) {
+    if (raw !== null && !TMP_DIRS.some((dir) => path.resolve(raw).startsWith(dir))) errors.push('LEDGER_PATH must be under /tmp on Vercel. Leave it unset');
+    return raw ?? VERCEL_LEDGER;
+  }
   const ledgerPath = raw ?? (isMock ? MOCK_LEDGER : PILOT_LEDGER);
   // Mock and rules calls never count, so they must never land in the ledger the pilot is graded from.
   if (isMock && path.resolve(ledgerPath) === path.resolve(PILOT_LEDGER)) {
@@ -121,12 +131,27 @@ function parseStaffKey(raw, errors) {
   return raw;
 }
 
-function parseModes(env, errors) {
-  const paypalMode = clean(env.PAYPAL_MODE) ?? 'sandbox';
-  const routerMode = clean(env.ROUTER_MODE) ?? 'haiku';
+function parseModes(env, onVercel, errors) {
+  // On Vercel an unset mode means the demo's mock and rules, never sandbox.
+  const paypalMode = clean(env.PAYPAL_MODE) ?? (onVercel ? 'mock' : 'sandbox');
+  const routerMode = clean(env.ROUTER_MODE) ?? (onVercel ? 'rules' : 'haiku');
   if (!['sandbox', 'mock'].includes(paypalMode)) errors.push('PAYPAL_MODE must be sandbox or mock');
   if (!['haiku', 'gemini', 'rules'].includes(routerMode)) errors.push('ROUTER_MODE must be haiku, gemini or rules');
   return { paypalMode, routerMode };
+}
+
+/**
+ * Vercel runs only the public demo. Mock PayPal, the offline rules router and the mock PIN, so no real key, real PIN
+ * or real money can reach it, and the graded pilot stays on Render.
+ */
+function checkVercel(env, { paypalMode, routerMode }, errors) {
+  if (paypalMode !== 'mock') errors.push('PAYPAL_MODE must be mock on Vercel, the Vercel copy is a public demo');
+  if (routerMode !== 'rules') errors.push('ROUTER_MODE must be rules on Vercel, the Vercel copy is a public demo');
+  for (const name of VERCEL_REFUSED_KEYS) {
+    if (clean(env[name])) errors.push(`${name} must not be set on Vercel, the demo uses no real keys`);
+  }
+  const pin = clean(env.PILOT_PIN);
+  if (pin !== null && pin !== MOCK_DEFAULT_PIN) errors.push('PILOT_PIN must be unset on Vercel, the demo uses the mock PIN');
 }
 
 function parsePin(env, paypalMode, partial, errors) {
@@ -183,19 +208,22 @@ function parseIds(env, paypalMode) {
  */
 export function loadConfig(env = process.env, { partial = false } = {}) {
   const errors = [];
+  const onVercel = Boolean(clean(env.VERCEL));
   const port = parsePort(clean(env.PORT), errors);
-  const { paypalMode, routerMode } = parseModes(env, errors);
+  const { paypalMode, routerMode } = parseModes(env, onVercel, errors);
+  if (onVercel) checkVercel(env, { paypalMode, routerMode }, errors);
   const base = parseBaseUrl(env, port, errors);
   const ids = parseIds(env, paypalMode);
   const config = {
     port,
     host: clean(env.HOST) ?? (clean(env.RENDER) ? '0.0.0.0' : '127.0.0.1'),
-    trustProxy: Boolean(clean(env.RENDER)),
+    // Render and Vercel both put the caller's address at the end of X-Forwarded-For.
+    trustProxy: Boolean(clean(env.RENDER)) || onVercel,
     publicBaseUrl: base.url,
     publicBaseUrlFrom: base.from,
     timeZone: parseTimeZone(clean(env.TIME_ZONE), errors),
     orgName: parseOrgName(clean(env.ORG_NAME), errors),
-    ledgerPath: parseLedgerPath(clean(env.LEDGER_PATH), paypalMode === 'mock' || routerMode === 'rules', errors),
+    ledgerPath: parseLedgerPath(clean(env.LEDGER_PATH), paypalMode === 'mock' || routerMode === 'rules', onVercel, errors),
     stateFile: STATE_FILE,
     paypal: parsePayPal(env, paypalMode, partial, errors),
     router: parseRouter(env, routerMode, partial, errors),

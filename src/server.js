@@ -39,7 +39,7 @@ const STATIC_TYPES = Object.freeze({
   '.webp': 'image/webp',
   '.txt': 'text/plain; charset=utf-8',
 });
-const SECURITY_HEADERS = Object.freeze({
+export const SECURITY_HEADERS = Object.freeze({
   'Content-Security-Policy': "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
@@ -386,10 +386,11 @@ function createApi(deps) {
 
 const redactPath = (pathname) => pathname.replace(/\/api\/(calls|staff\/calls)\/[0-9a-f-]{36}/, '/api/$1/:id');
 
-export function createServer(deps) {
+/** The request handler the local server and the Vercel demo share, so both answer every route the same way. */
+export function createHandler(deps) {
   const route = createApi(deps);
   const log = deps.log ?? createLogger();
-  return http.createServer(async (req, res) => {
+  return async (req, res) => {
     const started = performance.now();
     const pathname = req.url.split('?')[0];
     res.on('finish', () => log.info(`${req.method} ${redactPath(pathname)} ${res.statusCode} ${Math.round(performance.now() - started)}ms`));
@@ -402,7 +403,11 @@ export function createServer(deps) {
       log.error(`500 ${error?.name ?? 'Error'} ${error?.message ?? ''}`);
       send(res, 500, { error: 'Something went wrong on our side.' });
     }
-  });
+  };
+}
+
+export function createServer(deps) {
+  return http.createServer(createHandler(deps));
 }
 
 /**
