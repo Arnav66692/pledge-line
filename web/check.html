@@ -25,7 +25,7 @@
   <main id="main" class="rc-sheet" tabindex="-1">
     <p class="rc-kicker">Check a receipt</p>
     <h1 class="rc-title">Is this the receipt the line gave?</h1>
-    <p class="rc-lead">Choose a receipt file from the line, or drop it here. The line checks it against its own key and says whether anyone changed it, and which sentence. It reads the file to check it and keeps nothing.</p>
+    <p class="rc-lead">Choose a receipt file from the line, or drop it here. The line checks it against its own key and says whether anyone changed it, and where. It reads the file to check it and keeps nothing.</p>
 
     <label id="ck-drop" class="ck-drop" for="ck-file">
       <span class="ck-drop-title">Choose a receipt file</span>
@@ -35,7 +35,7 @@
 
     <div id="ck-result" class="ck-result" role="status" aria-live="polite"></div>
 
-    <p class="rc-hint">A check here can only say the file matches what this line signed. To check a file without this server, save the line's public key from <a href="/receipt-key">/receipt-key</a> as receipt-key.json and run <code>node scripts/check-receipt.js your-file.json --key receipt-key.json</code> from the Pledge Line code.</p>
+    <p class="rc-hint">A check here can only say the file matches what this line signed. Staff can also check a file without this server. Save the line's public key from <a href="/receipt-key">/receipt-key</a> as receipt-key.json and run <code>node scripts/check-receipt.js your-file.json --key receipt-key.json</code> from the Pledge Line code.</p>
   </main>
 </body>
 </html>

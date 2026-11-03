@@ -20,6 +20,7 @@
 .rc-lead { margin: 0 0 1.6rem; font-size: 1.15rem; max-width: 42rem; }
 .rc-hint { margin: 0.4rem 0 1rem; font-size: 1rem; color: var(--muted); }
 .rc-hint code { font-family: var(--mono); font-size: 0.92em; overflow-wrap: anywhere; }
+@media (min-width: 768px) { .rc-hint code { white-space: nowrap; } }
 .rc-mono { font-family: var(--mono); font-size: 0.92em; overflow-wrap: anywhere; }
 
 .rc-meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1.6rem; margin: 0 0 1rem; padding: 1rem 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); }
@@ -38,6 +39,7 @@
 .rc-item { padding: 1rem 0 1.1rem; border-bottom: 1px solid var(--line); break-inside: avoid; }
 .rc-item-head { display: flex; gap: 0.8rem; margin: 0 0 0.3rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
 .rc-n { min-width: 1.6rem; font-variant-numeric: tabular-nums; }
+.rc-time { text-transform: none; }
 .rc-text { margin: 0 0 0.45rem; font-family: var(--serif); font-size: 1.55rem; line-height: 1.2; letter-spacing: -0.005em; overflow-wrap: anywhere; }
 .rc-backing p { margin: 0.15rem 0 0; font-size: 1rem; line-height: 1.45; overflow-wrap: anywhere; }
 .rc-proof { padding-left: 1.2rem; position: relative; }
@@ -57,10 +59,10 @@
 .ck-drop {
   position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem;
   margin: 0 0 1.4rem; padding: 1.6rem 1.6rem;
-  border: 2px dashed var(--ink); border-radius: 1.2rem;
+  border: 1px solid var(--ink); border-radius: 0;
   cursor: pointer;
 }
-.ck-drop.is-over { background: var(--accent-soft); border-style: solid; }
+.ck-drop.is-over { background: var(--accent-soft); }
 .ck-drop:focus-within { outline: 2px solid var(--focus); outline-offset: 3px; }
 .ck-drop-title { font-size: 1.4rem; letter-spacing: -0.01em; }
 .ck-drop-hint { color: var(--muted); font-size: 1rem; }
@@ -94,9 +96,10 @@
 
 @media print {
   :root { color-scheme: light; --ink: #000; --muted: #444; --line: #bbb; --surface: #fff; --backdrop: #fff; --sunk: #fff; --accent: #000; --error: #000; }
-  html { font-size: 11px; }
+  html { font-size: 13px; }
   .rc-page, html:not(.has-gl) body.rc-page { background: #fff; }
-  .rc-top, .rc-actions, .skip, .rc-status { display: none; }
+  .rc-toplink, .rc-actions, .skip, .rc-status { display: none; }
+  .rc-top { max-width: none; padding: 0 0 1rem; }
   .rc-sheet { max-width: none; margin: 0; padding: 0; background: #fff; color: #000; }
   .rc-notes { padding: 0; border: 0; }
   .rc-title { font-size: 2.6rem; }
