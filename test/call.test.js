@@ -854,3 +854,32 @@ test('how_do_you_know says the not-found wording when PayPal returns nothing, an
   assert.equal(eventsOf(stack, callId, 'write').length, 0);
   assert.deepEqual(checkFacts(stack.ledger.byCall(callId), { orgName: stack.config.orgName, subscriptionId: stack.config.demoSubscriptionId }), []);
 });
+
+test('how_do_you_know sets a waiting change aside when a fresh read fails, so a later yes writes nothing and the facts check passes', async () => {
+  const unavailable = () => { throw new PayPalError({ status: 503, name: 'SERVICE_UNAVAILABLE', message: 'try later' }); };
+  for (const [ask, getter] of [['I want to stop my monthly gift.', 'getSubscription'], ['Give fifty dollars once.', 'getInvoice']]) {
+    const stack = buildStack();
+    const callId = await verifiedCall(stack);
+    await say(stack, callId, ask);
+    const original = stack.paypal[getter];
+    stack.paypal[getter] = unavailable;
+    const sure = await say(stack, callId, 'Are you sure?');
+    stack.paypal[getter] = original;
+    assert.match(sure.reply, /^I've set that earlier request aside, so nothing changed\. Sorry, I couldn't get a clear answer from PayPal just now/);
+    assert.equal(stack.calls.get(callId).pending, null);
+    const late = await say(stack, callId, 'Yes.');
+    assert.match(late.reply, /^There's nothing waiting for a yes or no right now\./);
+    assert.equal(eventsOf(stack, callId, 'write').length, 0);
+    assert.deepEqual(graded(stack, callId), { facts: [], writes: [], safety: [], behavior: [], passed: true });
+  }
+});
+
+test('how_do_you_know reads the plan again in that turn, so the amount it speaks is a fresh read', async () => {
+  const stack = buildStack();
+  const callId = await verifiedCall(stack);
+  await say(stack, callId, 'How much is my monthly gift?');
+  const proof = await say(stack, callId, 'How do you know?');
+  const reads = eventsOf(stack, callId, 'read').filter((e) => e.turn === proof.turn).map((e) => e.what).sort();
+  assert.deepEqual(reads, ['plan', 'subscription']);
+  assert.deepEqual(graded(stack, callId), { facts: [], writes: [], safety: [], behavior: [], passed: true });
+});

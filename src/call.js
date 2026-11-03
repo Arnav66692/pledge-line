@@ -265,18 +265,20 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return snapshot;
   }
 
-  async function readGift(ctx) {
+  async function readGift(ctx, { fresh = false } = {}) {
     const { call } = ctx;
     const subId = config.demoSubscriptionId;
     if (!subId) return { sub: null };
-    const hint = call.plan ? null : config.demoPlanId;
+    // A fresh read reads the plan again too, so the amount it speaks comes from that turn's own reads.
+    const hint = fresh ? (call.plan?.id ?? config.demoPlanId) : call.plan ? null : config.demoPlanId;
     const [sub, hinted] = await timed(ctx, () => Promise.all([
       readSnapshot(ctx, 'subscription', subId),
       hint ? readSnapshot(ctx, 'plan', hint).catch(() => null) : Promise.resolve(null),
     ]));
     if (!sub) return { sub: null };
-    if (hinted && hinted.id === sub.plan_id) call.plan = hinted;
-    if (sub.plan_id && call.plan?.id !== sub.plan_id) {
+    const gotPlan = Boolean(hinted) && hinted.id === sub.plan_id;
+    if (gotPlan) call.plan = hinted;
+    if (sub.plan_id && (fresh ? !gotPlan : call.plan?.id !== sub.plan_id)) {
       call.plan = await timed(ctx, () => readSnapshot(ctx, 'plan', sub.plan_id));
     }
     return { sub, plan: call.plan };
@@ -453,8 +455,16 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const { call } = ctx;
     const waiting = call.pending;
     const draftId = waiting?.kind === 'send_invoice' ? waiting.targetId : call.lastDraftId;
-    const { sub, plan } = await readGift(ctx);
-    const inv = sub && draftId ? await timed(ctx, () => readSnapshot(ctx, 'invoice', draftId)) : undefined;
+    let sub, plan, inv;
+    try {
+      ({ sub, plan } = await readGift(ctx, { fresh: true }));
+      inv = sub && draftId ? await timed(ctx, () => readSnapshot(ctx, 'invoice', draftId)) : undefined;
+    } catch (error) {
+      if (!(error instanceof PayPalError) || !waiting) throw error;
+      // A read that failed can't back the read-back, so the change is set aside and no later yes can approve it.
+      await dropPending(ctx);
+      return say.combine(say.setAside(), say.paypalProblem());
+    }
     if (waiting && sub && stillAsRead(waiting, { subscription: sub, plan, invoice: inv ?? null })) return proofWhilePending(ctx, sub, plan);
     const dropped = waiting ? await dropPending(ctx) : null;
     const lead = dropped ? say.setAside() : null;
