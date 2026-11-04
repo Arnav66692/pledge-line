@@ -1,13 +1,234 @@
-/* The donor page. One unseen-style hero over the room, then the call workspace on the same 2rem frame. Many donors are
-   older, so the workspace runs larger than unseen's own body text and keeps solid surfaces wherever text sits. */
+/* The donor page, in a fused design. The words follow Locomotive: a serif display face, a grotesk for text, 2px section
+   rules, a 12 column grid on desktop and 8 on tablet, a 4 column grid on phone, and a letter roll on the navigation only.
+   The live data follows Typesafe: a navy title bar on each data window, 1px rules, zero radius, the receipts as plain
+   rows, and every number, date, status and reference in the terminal face. The palette is PayPal's blue, white and gold
+   only. Gold is a fill, never text. The staff view keeps chrome.css and its own dark look. */
 
-/* ---- Modes. Without chrome.js the hero and the workspace simply stack ---- */
+@font-face { font-family: "Geist Line"; src: url("/fonts/geist-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Instrument Line"; src: url("/fonts/instrument-serif-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Line"; src: url("/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+
+/* Colour. Every text pair is measured in web/contrast.test.js and in the commit message. */
+:root {
+  color-scheme: light;
+  --white: #ffffff;
+  --tint: #f3f8fc;
+  --navy: #003087;
+  --blue: #009cde;
+  --blue-ink: #0070ba;
+  --gold: #ffc439;
+  --ink: var(--navy);
+  --muted: var(--blue-ink);
+  --sans: "Geist Line", "Helvetica Neue", Arial, sans-serif;
+  --serif: "Instrument Line", "Times New Roman", serif;
+  --term: "JetBrains Line", ui-monospace, Menlo, Consolas, monospace;
+  --expo: cubic-bezier(0.87, 0, 0.13, 1);
+  --power3: cubic-bezier(0.65, 0, 0.35, 1);
+  --expo-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Root size steps at fixed widths, as Locomotive does, so the sizes are fixed px per breakpoint. */
+html { font-size: 16px; -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; }
+@media (min-width: 768px) { html { font-size: 17px; } }
+@media (min-width: 1200px) { html { font-size: 18px; } }
+@media (min-width: 1600px) { html { font-size: 19px; } }
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100svh;
+  font-family: var(--sans);
+  font-size: 1.125rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--white);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+sup { font-size: inherit; line-height: 0; }
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; border: 0;
+}
+
+.skip {
+  position: fixed; z-index: 300; left: 1rem; top: 1rem;
+  padding: 0.7rem 1.2rem;
+  background: var(--white); color: var(--navy); text-decoration: none;
+  border: 2px solid var(--navy);
+  transform: translateY(-400%);
+}
+.skip:focus { transform: none; }
+
+/* A 3px blue ring on every control. It is 3.09 to 1 on white, above the 3 to 1 a focus ring needs. */
+:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+
+/* ---- The room. Without WebGL the page keeps a still of it in the same colours ---- */
+.gl {
+  position: fixed; inset: 0; z-index: 0;
+  width: 100%; height: 100lvh;
+  display: block; pointer-events: none;
+}
+html:not(.has-gl) .gl { display: none; }
+html:not(.has-gl) body {
+  background:
+    radial-gradient(30% 34% at 64% 40%, rgb(255 196 57 / 0.42) 0%, transparent 70%),
+    linear-gradient(180deg, #d3eaf8 0%, #ffffff 58%, #ffffff 100%);
+  background-attachment: fixed;
+}
+main { position: relative; z-index: 2; }
+
+/* ---- Header: transparent over the room, a white band with a navy rule once the page has scrolled ---- */
+.header {
+  position: fixed; z-index: 80; top: 0; left: 0; right: 0;
+  display: flex; align-items: center;
+  height: 4.6rem;
+  padding: 0 2.2rem;
+  pointer-events: none;
+}
+.header > * { pointer-events: auto; }
+html.scrolled .header { background: var(--white); border-bottom: 2px solid var(--navy); }
+
+.logo {
+  display: inline-flex; align-items: baseline; gap: 0.12em;
+  min-height: 44px; padding: 0.45rem 0; box-sizing: border-box;
+  font-size: 1.9rem; line-height: 1; letter-spacing: -0.02em;
+  color: var(--ink); text-decoration: none;
+  transition: color 0.5s ease-out, opacity 0.5s var(--expo), transform 0.6s var(--expo);
+}
+.logo__b { font-family: var(--serif); font-size: 1.2em; letter-spacing: 0; }
+/* The logo stays while the page scrolls, so the white band always names the page. chrome.js still sets header-away. */
+html.header-away .logo { opacity: 1; transform: none; pointer-events: auto; }
+
+.header__nav { display: flex; margin-left: auto; transition: opacity 0.5s var(--expo); }
+.nav-item {
+  position: relative; display: block;
+  min-height: 44px; padding: 0.65rem 0.8rem;
+  font-size: 1.1rem; line-height: 1.1;
+  color: var(--ink); text-decoration: none;
+  overflow: hidden;
+}
+.nav-item:last-child { margin-right: 0.8rem; }
+.nav-item__a, .nav-item__b { display: block; white-space: nowrap; }
+.nav-item__a span, .nav-item__b span {
+  display: inline-block;
+  transition: transform 0.53s var(--power3);
+  transition-delay: calc(var(--i, 0) * 14ms);
+}
+.nav-item__b {
+  position: absolute; left: 0.8rem; top: 0.65rem;
+  font-family: var(--serif); font-size: 1.25rem; line-height: 0.95;
+  color: var(--blue-ink);
+}
+.nav-item__b span { transform: translateY(150%); }
+.nav-item:hover .nav-item__a span, .nav-item:focus-visible .nav-item__a span { transform: translateY(-120%); }
+.nav-item:hover .nav-item__b span, .nav-item:focus-visible .nav-item__b span { transform: none; }
+html.scrolled .header__nav { opacity: 0; pointer-events: none; }
+
+/* ---- Square controls: a 3rem navy-ruled box that fills navy on hover, as the Typesafe window buttons do ---- */
+.disc {
+  position: relative; flex: none;
+  width: 3rem; height: 3rem; min-width: 44px; min-height: 44px;
+  display: grid; place-items: center;
+  padding: 0; border: 2px solid var(--navy); border-radius: 0;
+  background: var(--white); color: var(--navy);
+  cursor: pointer;
+}
+.disc:hover { background: var(--navy); color: var(--white); }
+.disc__fill { display: none; }
+.disc__dots { display: flex; flex-direction: column; align-items: center; gap: 0.36rem; transition: transform 0.5s var(--expo), opacity 0.3s; }
+.disc__dots i { display: block; width: 1.3rem; height: 2px; background: currentColor; }
+.disc__x { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: scale(0.6); transition: transform 0.5s var(--expo), opacity 0.3s; }
+.disc svg { width: 1rem; height: 1rem; display: block; }
+.disc--menu[aria-expanded="true"] { background: var(--navy); color: var(--white); }
+.disc--menu[aria-expanded="true"] .disc__dots { opacity: 0; transform: scale(0.3); }
+.disc--menu[aria-expanded="true"] .disc__x { opacity: 1; transform: none; }
+
+/* The sound control: four bars that move while the bed plays, and flat bars when it is off. */
+.disc__bars { display: flex; align-items: center; gap: 0.14rem; height: 1rem; }
+.disc__bars i { width: 0.2rem; height: 100%; background: currentColor; transform: scaleY(0.25); transform-origin: 50% 100%; transition: transform 0.3s var(--expo); }
+.disc--sound.is-playing .disc__bars i { animation: bars 1.1s var(--power3) infinite alternate; }
+.disc--sound.is-playing .disc__bars i:nth-child(2) { animation-delay: -0.35s; }
+.disc--sound.is-playing .disc__bars i:nth-child(3) { animation-delay: -0.7s; }
+.disc--sound.is-playing .disc__bars i:nth-child(4) { animation-delay: -0.2s; }
+.disc--sound[aria-pressed="false"] .disc__bars i { transform: scaleY(0.15); }
+@keyframes bars { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+
+/* ---- Buttons. A top rule and a label, the fill rises on hover, and the label rolls over. ---- */
+.btn {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 0.7rem;
+  min-height: 3.4rem;
+  padding: 0.75rem 1.3rem;
+  border: 2px solid var(--navy); border-radius: 0;
+  background: var(--gold); color: var(--navy);
+  font-size: 1.2rem; line-height: 1; letter-spacing: 0;
+  text-decoration: none; white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.6s var(--expo);
+}
+.btn__fill {
+  position: absolute; inset: 0; z-index: -1;
+  background: var(--navy);
+  transform: translateY(102%);
+  transition: transform 0.8s var(--expo);
+}
+.btn__label { position: relative; display: block; overflow: hidden; padding: 0.12em 0 0.2em; margin: -0.12em 0 -0.2em; }
+.btn__t { display: block; transition: transform 0.61s var(--expo); }
+.btn__t--in { position: absolute; left: 0; top: 0.12em; transform: translateY(-2.5rem); transition-duration: 0.8s; }
+.btn__icon { position: relative; flex: none; width: 0.9rem; height: 0.9rem; overflow: hidden; }
+.btn__icon > span { position: absolute; inset: 0; transition: transform 0.61s var(--expo); }
+.btn__icon > span:last-child { transform: translate(-220%, -220%); }
+.btn__icon svg { width: 100%; height: 100%; display: block; }
+.btn:hover, .btn:focus-visible { color: var(--white); }
+.btn:hover .btn__fill, .btn:focus-visible .btn__fill { transform: none; }
+.btn:hover .btn__t:not(.btn__t--in), .btn:focus-visible .btn__t:not(.btn__t--in) { transform: translateY(250%); }
+.btn:hover .btn__t--in, .btn:focus-visible .btn__t--in { transform: none; }
+.btn:hover .btn__icon > span:first-child, .btn:focus-visible .btn__icon > span:first-child { transform: translate(220%, 220%); }
+.btn:hover .btn__icon > span:last-child, .btn:focus-visible .btn__icon > span:last-child { transform: none; }
+
+/* A block button whose label the page rewrites (Start call, End call). Idle it is navy outline on white. */
+.pill {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 3.4rem; padding: 0.7rem 1.3rem;
+  border: 2px solid var(--navy); border-radius: 0;
+  background: var(--white); color: var(--navy);
+  font-size: 1.15rem; line-height: 1.1; white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.6s var(--expo);
+}
+.pill::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: var(--navy);
+  transform: translateY(102%);
+  transition: transform 0.8s var(--expo);
+}
+.pill:hover:not(:disabled), .pill:focus-visible { color: var(--white); }
+.pill:hover:not(:disabled)::before, .pill:focus-visible::before { transform: none; }
+.pill:disabled { cursor: not-allowed; opacity: 0.45; }
+/* The one main action on the page is gold: Start call. */
+.call #start { background: var(--gold); border-color: var(--navy); color: var(--navy); }
+.call #start::before { background: var(--navy); }
+.call #start:hover:not(:disabled), .call #start:focus-visible { color: var(--white); }
+/* Filled navy for the secondary actions that send words: Send. */
+.pill--dark { background: var(--navy); color: var(--white); }
+.pill--dark::before { background: var(--blue-ink); }
+.pill--dark:hover:not(:disabled), .pill--dark:focus-visible { color: var(--white); }
+
+/* ---- Hero, over the room ---- */
 .hero {
   position: relative; z-index: 3;
   height: 100svh;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center;
-  padding: 0 1.15rem 3.6rem;
+  padding: 0 1.15rem 6rem;
 }
 html[data-mode] .hero { position: fixed; inset: 0; }
 html[data-mode="hero"] { overflow: hidden; }
@@ -15,146 +236,147 @@ html[data-mode="hero"] .ws { visibility: hidden; }
 html[data-mode="call"] .hero { visibility: hidden; pointer-events: none; }
 html[data-mode="call"] .corner { opacity: 0; visibility: hidden; pointer-events: none; }
 
-/* ---- Hero ---- */
 .hero__float { display: flex; flex-direction: column; align-items: center; will-change: transform; }
-.hero__title { margin: 0; display: flex; flex-direction: column; align-items: center; font-weight: 400; color: var(--scene-ink); }
-.hero__caps { font-size: 1.09rem; line-height: 1; letter-spacing: -0.01em; text-transform: uppercase; margin-bottom: 1.5rem; }
-.hero__l1 { font-family: var(--serif); font-style: italic; font-size: 7.1rem; line-height: 0.911; letter-spacing: -0.04em; padding: 0 0.1em; }
-.hero__l2 { font-size: 7rem; line-height: 0.95; letter-spacing: -0.02em; padding-bottom: 0.06em; }
-.hero__cta { margin-top: 1.7rem; }
+.hero__title { margin: 0; display: flex; flex-direction: column; align-items: center; font-weight: 400; color: var(--navy); }
+/* 24px regular is large text under WCAG, so the room behind it needs 3 to 1, and it matches Locomotive's 26px UI size. */
+.hero__caps { font-size: 24px; line-height: 1.2; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 1.4rem; }
+/* Words are upright serif, never italic, as Locomotive sets them. */
+.hero__l1 { font-family: var(--serif); font-weight: 400; font-size: 8rem; line-height: 0.88; letter-spacing: -0.02em; }
+.hero__l2 { font-family: var(--serif); font-weight: 400; font-size: 7.6rem; line-height: 0.92; letter-spacing: -0.02em; padding-bottom: 0.04em; }
+.hero__cta { margin-top: 2rem; }
+/* A white plate, so the note never sits on the room's water or floor. */
 .hero__note {
-  position: absolute; left: 0; right: 0; bottom: 6.2rem; margin: 0 auto; max-width: 44rem;
-  font-size: 0.95rem; line-height: 1.4; color: var(--scene-ink);
+  position: absolute; left: 0; right: 0; bottom: 6.6rem; margin: 0 auto; max-width: 46rem; padding: 0.6rem 1rem;
+  background: var(--white);
+  font-size: 1rem; line-height: 1.45; color: var(--navy);
 }
-.hero .btn { font-size: 1.05rem; }
 
-/* ---- Workspace ---- */
+/* ---- Workspace: the call, the receipts and PayPal's record, on the grid ---- */
 .ws {
   position: relative; z-index: 2;
-  display: grid; gap: 2rem;
-  grid-template-columns: minmax(0, 27rem) minmax(0, 1fr) minmax(0, 27rem);
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: 20px; row-gap: 48px;
   align-items: start;
-  padding: 6.4rem 2rem 2rem;
-  font-size: 1.2rem; line-height: 1.5;
+  padding: 7rem 40px 9rem;
+  font-size: 1.125rem; line-height: 1.5;
 }
 .ws:focus { outline: none; }
-.panel { min-width: 0; padding: 1.7rem 1.7rem 1.9rem; background: var(--surface); color: var(--ink); }
-.panel h2 { margin: 0 0 1rem; font-size: 2.3rem; line-height: 1.05; font-weight: 400; letter-spacing: -0.025em; }
-.panel h3 { margin: 0 0 0.5rem; font-size: 0.8rem; line-height: 1.3; font-weight: 400; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
-.kicker { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+
+/* A Locomotive section: a 2px navy rule on top, then a serif heading and the body. */
+.panel { min-width: 0; padding: 1.2rem 0 0; background: var(--white); border-top: 2px solid var(--navy); }
+.panel h2 { margin: 0 0 1rem; font-family: var(--serif); font-weight: 400; font-size: 2.7rem; line-height: 1; letter-spacing: -0.01em; }
 
 .label, .field-label {
   display: block;
   margin: 0 0 0.45rem;
-  font-size: 0.85rem; line-height: 1.3;
-  text-transform: uppercase; letter-spacing: 0.02em;
+  font-size: 0.95rem; line-height: 1.3;
+  letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--muted);
 }
-.hint { margin: 0.4rem 0; font-size: 1.02rem; line-height: 1.45; color: var(--muted); }
+.hint { margin: 0.4rem 0; font-size: 1.05rem; line-height: 1.45; color: var(--muted); }
 
 /* ---- Controls ---- */
 select, input[type="text"] {
   width: 100%; min-height: 3.2rem;
   padding: 0.6rem 0.9rem;
   font: inherit; font-size: 1.15rem;
-  border: 1px solid var(--ink); border-radius: 0;
-  background: transparent; color: var(--ink);
+  border: 2px solid var(--navy); border-radius: 0;
+  background: var(--white); color: var(--navy);
 }
 .select { position: relative; }
 .select select { appearance: none; -webkit-appearance: none; padding-right: 2.6rem; }
 .select::after {
-  content: ""; position: absolute; right: 1rem; top: 50%; width: 0.55rem; height: 0.55rem; margin-top: -0.4rem;
-  border: solid var(--ink); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none;
+  content: ""; position: absolute; right: 1.1rem; top: 50%; width: 0.55rem; height: 0.55rem; margin-top: -0.4rem;
+  border: solid var(--navy); border-width: 0 2px 2px 0; transform: rotate(45deg); pointer-events: none;
 }
-select option { color: #212121; background: #fff; }
+select option { color: var(--navy); background: var(--white); }
 button:disabled { cursor: not-allowed; }
 
-.call-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.4rem; }
+.call-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1.4rem; margin-bottom: 0.4rem; }
 .call-head h2 { margin: 0; }
 
-/* Mute of the line's voice: a real checkbox drawn as a small disc. */
-.toggle { position: relative; display: inline-flex; align-items: center; gap: 0.55rem; font-size: 0.95rem; color: var(--muted); cursor: pointer; }
+/* Mute of the line's voice: a real checkbox drawn as a navy-ruled square that fills blue when it is on. */
+.toggle { position: relative; display: inline-flex; align-items: center; gap: 0.6rem; font-size: 1rem; color: var(--muted); cursor: pointer; }
 .toggle input { position: absolute; left: 0; top: 50%; width: 1px; height: 1px; margin: 0; opacity: 0; }
-.toggle__disc { position: relative; flex: none; width: 2.2rem; height: 2.2rem; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink); overflow: hidden; }
-.toggle__disc::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--ink); transform: scale(0); transition: transform 0.69s var(--expo); }
+.toggle__disc { position: relative; flex: none; width: 2.75rem; height: 2.75rem; border: 2px solid var(--navy); background: var(--white); }
+.toggle__disc::before { content: ""; position: absolute; inset: 0; background: var(--blue-ink); transform: scale(0); transition: transform 0.5s var(--expo); }
 .toggle__disc::after {
-  content: ""; position: absolute; left: 50%; top: 50%; width: 1.1rem; height: 1.5px; margin: -0.75px 0 0 -0.55rem;
-  background: var(--ink); transform: rotate(-45deg) scaleX(0.35); transition: transform 0.6s var(--expo), background-color 0.4s;
+  content: ""; position: absolute; left: 50%; top: 45%; width: 0.5rem; height: 0.9rem; margin: -0.45rem 0 0 -0.3rem;
+  border: solid var(--navy); border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0);
+  transition: transform 0.4s var(--expo);
 }
-.toggle input:checked + .toggle__disc::before { transform: scale(1.05); }
-.toggle input:checked + .toggle__disc::after { background: var(--paper); transform: rotate(-45deg); }
-@media (prefers-color-scheme: dark) { .toggle input:checked + .toggle__disc::after { background: #212121; } }
-.toggle input:focus-visible + .toggle__disc { outline: 2px solid var(--focus); outline-offset: 3px; }
+.toggle input:checked + .toggle__disc::before { transform: scale(1); }
+.toggle input:checked + .toggle__disc::after { border-color: var(--white); transform: rotate(45deg) scale(1); }
+.toggle input:focus-visible + .toggle__disc { outline: 3px solid var(--blue); outline-offset: 3px; }
 .toggle input:disabled + .toggle__disc { opacity: 0.45; }
 
-.status { margin: 0.6rem 0 1rem; font-size: 1.2rem; }
-#start { min-width: 11rem; }
+.status { margin: 0.7rem 0 1rem; font-size: 1.2rem; }
+#start { min-width: 11.5rem; }
 
-.said { margin-top: 1.5rem; }
+.said { margin-top: 1.6rem; }
 .reply, .transcript { margin: 0; min-height: 2.6em; overflow-wrap: anywhere; }
-.reply { font-family: var(--serif); font-size: 2.15rem; line-height: 1.12; letter-spacing: -0.01em; }
-.transcript { font-size: 1.2rem; padding-top: 0.6rem; border-top: 1px solid var(--line); min-height: 2.2em; }
+.reply { font-family: var(--serif); font-size: 2.7rem; line-height: 1.08; letter-spacing: -0.01em; }
+.transcript { font-size: 1.2rem; padding-top: 0.6rem; border-top: 1px solid var(--navy); min-height: 2.2em; }
 
-/* Hold to talk, a large disc. Idle it is dark. Held, a green fill grows from its centre and a ring breathes. */
+/* Hold to talk: a navy block. Held, a blue fill grows from its centre and an outline breathes. */
 .talk-row { display: flex; align-items: center; gap: 1.2rem; margin: 1.6rem 0 0.4rem; }
 .talk-row .hint { margin: 0; }
 .talk {
   position: relative; isolation: isolate; flex: none;
   width: 9.6rem; height: 9.6rem; min-width: 96px; min-height: 96px;
-  padding: 1rem; border: 0; border-radius: 50%;
-  background: none; color: var(--paper);
+  padding: 1rem; border: 0; border-radius: 0;
+  background: none; color: var(--white);
   font-size: 1.15rem; line-height: 1.15; text-wrap: balance;
   cursor: pointer;
   touch-action: none; user-select: none; -webkit-user-select: none;
 }
-.talk::before { content: ""; position: absolute; inset: 0; z-index: -2; border-radius: 50%; background: #212121; transition: transform 0.5s var(--expo); }
-.talk::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform 0.69s var(--expo); }
-.talk:hover:not(:disabled)::before { transform: scale(1.04); }
-.talk.listening::after { transform: scale(1.02); }
-.talk.listening { animation: talk-ring 1.4s var(--power3) infinite alternate; outline: 1.5px solid var(--accent); outline-offset: 0.35rem; }
-.talk:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.35rem; }
+.talk::before { content: ""; position: absolute; inset: 0; z-index: -2; background: var(--navy); transition: transform 0.5s var(--expo); }
+.talk::after { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--blue-ink); transform: scale(0); transition: transform 0.69s var(--expo); }
+.talk:hover:not(:disabled)::before { transform: scale(1.03); }
+.talk.listening::after { transform: scale(1); }
+.talk.listening { animation: talk-ring 1.4s var(--power3) infinite alternate; outline: 2px solid var(--blue); outline-offset: 0.35rem; }
+.talk:focus-visible { outline: 3px solid var(--blue); outline-offset: 0.35rem; }
 .talk:disabled { opacity: 0.45; }
-@keyframes talk-ring { from { outline-offset: 0.2rem; } to { outline-offset: 0.75rem; } }
-@media (prefers-color-scheme: dark) {
-  .talk { color: #212121; }
-  .talk::before { background: var(--paper); }
+@keyframes talk-ring { from { outline-offset: 0.2rem; } to { outline-offset: 0.7rem; } }
+
+.error {
+  margin: 0.8rem 0; padding: 0.8rem 1rem;
+  background: var(--white); color: var(--navy);
+  border: 2px solid var(--navy); box-shadow: inset 0 0 0 4px var(--gold);
+  font-size: 1.05rem;
 }
 
-.error { margin: 0.8rem 0; padding: 0.8rem 1rem; background: var(--error-soft); color: var(--error); font-size: 1.05rem; }
-
-/* PIN keypad: outlined discs. The fill rises on hover, and Send is dark. */
-.keypad { margin-top: 1.8rem; }
-.dots { display: block; min-height: 1.6em; margin-bottom: 0.6rem; font-size: 1.6rem; letter-spacing: 0.3em; }
-.dots-empty { font-size: 1.05rem; letter-spacing: normal; color: var(--muted); }
-.keys { display: grid; grid-template-columns: repeat(3, 4.2rem); gap: 0.7rem 1rem; }
+/* PIN keypad: navy-ruled square keys with the digits in the terminal face. Each fills navy on hover. */
+.keypad { margin-top: 1.8rem; padding-top: 1.2rem; border-top: 1px solid var(--navy); }
+.dots { display: block; min-height: 1.6em; margin-bottom: 0.6rem; font-family: var(--term); font-size: 1.7rem; letter-spacing: 0.3em; }
+.dots-empty { font-family: var(--sans); font-size: 1.05rem; letter-spacing: normal; color: var(--muted); }
+.keys { display: grid; grid-template-columns: repeat(3, 4.4rem); gap: 0.6rem 0.8rem; }
 .key {
   position: relative; isolation: isolate; overflow: hidden;
-  width: 4.2rem; height: 4.2rem; min-width: 52px; min-height: 52px;
-  padding: 0; border: 0; border-radius: 50%;
-  background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink);
-  font-size: 1.55rem; line-height: 1; cursor: pointer;
+  width: 4.4rem; height: 4.4rem; min-width: 52px; min-height: 52px;
+  padding: 0; border: 2px solid var(--navy); border-radius: 0;
+  background: var(--white); color: var(--navy);
+  font-family: var(--term); font-size: 1.8rem; line-height: 1; cursor: pointer;
   transition: color 0.5s var(--expo);
 }
-.key::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ink); transform: translateY(102%); transition: transform 0.6s var(--expo); }
-.key:hover:not(:disabled), .key:active:not(:disabled) { color: var(--paper); }
-.key:hover:not(:disabled)::before, .key:active:not(:disabled)::before { transform: none; }
+.key::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--navy); transform: translateY(102%); transition: transform 0.6s var(--expo); }
+.key:hover:not(:disabled), .key:active:not(:disabled), .key:focus-visible { color: var(--white); }
+.key:hover:not(:disabled)::before, .key:active:not(:disabled)::before, .key:focus-visible::before { transform: none; }
 .key:disabled { opacity: 0.4; }
-.key-word { font-size: 0.95rem; }
-.key.send { background: var(--ink); color: var(--paper); }
-.key.send::before { background: var(--accent); }
-@media (prefers-color-scheme: dark) {
-  .key:hover:not(:disabled), .key:active:not(:disabled), .key.send { color: #212121; }
-}
+.key-word { font-family: var(--sans); font-size: 1rem; }
+.key.send { background: var(--navy); color: var(--white); }
+.key.send::before { background: var(--blue-ink); }
 
 /* Folded sections: the typed box, demo controls and the event log. */
-.fold { margin-top: 1.6rem; border-top: 1px solid var(--line); }
+.fold { margin-top: 1.6rem; border-top: 1px solid var(--navy); }
 .fold summary {
   display: flex; align-items: center; justify-content: space-between;
   min-height: 3rem; padding: 0.6rem 0; list-style: none; cursor: pointer;
-  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em;
+  font-size: 0.95rem; letter-spacing: 0.04em; text-transform: uppercase;
 }
 .fold summary::-webkit-details-marker { display: none; }
-.fold summary::after { content: "+"; font-size: 1.3rem; line-height: 1; transition: transform 0.6s var(--expo); }
+.fold summary::after { content: "+"; font-family: var(--term); font-size: 1.5rem; line-height: 1; transition: transform 0.6s var(--expo); }
 .fold[open] summary::after { transform: rotate(45deg); }
 .typed-form { margin-top: 0.2rem; }
 .typed-row { display: flex; gap: 0.6rem; align-items: stretch; }
@@ -167,145 +389,220 @@ button:disabled { cursor: not-allowed; }
 .lines .expected { list-style: none; margin-left: -1.4rem; color: var(--muted); font-size: 1.02rem; }
 .timing { margin: 1rem 0 0; color: var(--muted); font-size: 1.02rem; }
 
-/* ---- What the line said, with receipts ---- */
-.receipts-summary { margin: 0.4rem 0 0; padding-bottom: 1rem; font-size: 1.15rem; border-bottom: 1px solid var(--ink); }
+/* ---- What the line said, with receipts: plain rows, one per reply ---- */
+.receipts-summary { margin: 0.4rem 0 0; padding-bottom: 1rem; font-size: 1.1rem; border-bottom: 2px solid var(--navy); }
+.receipts-scroll { margin-top: 0.4rem; min-height: 44px; }
 @media (min-width: 768px) {
-  /* Short enough that the newest reply, at the box's bottom, stays on a 1280 by 800 screen. The list scrolls to its
-     newest reply, so an older line can stop part way up the box. The rule sits on the summary, a little above the box,
-     and the box's top fades out, so a line scrolling away dissolves before it reaches the rule instead of being cut by
-     it. The top padding keeps the first reply clear of the fade while the list is at its top. */
+  /* Short enough that the newest reply stays in view on a 1280 by 800 screen. The list scrolls to its newest reply, and
+     its top fades out so a line scrolling away dissolves rather than being cut by the rule above it. */
   .receipts-scroll {
-    max-height: max(320px, calc(100vh - 21.5rem)); overflow-y: auto;
-    margin-top: 0.5rem; padding: 1.4rem 0.4rem 0 0;
+    max-height: max(320px, calc(100vh - 21rem)); overflow-y: auto;
+    padding: 1.4rem 0.4rem 0 0;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 0.4rem, #000 2.6rem);
     mask-image: linear-gradient(to bottom, transparent 0, transparent 0.4rem, #000 2.6rem);
   }
 }
 .receipts { list-style: none; margin: 0; padding: 0; }
-.turn { padding: 1.2rem 0 1.3rem; border-bottom: 1px solid var(--line); }
+.turn { padding: 1.1rem 0 1.2rem; border-bottom: 1px solid var(--navy); }
 .turn:last-child { border-bottom: 0; }
-.turn-time { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+.turn-time { margin: 0 0 0.5rem; font-family: var(--term); font-size: 1rem; letter-spacing: 0.02em; color: var(--muted); }
 .sentence { margin: 0 0 0.7rem; }
 .sentence:last-child { margin-bottom: 0; }
-.sentence-text { font-family: var(--serif); font-size: 1.7rem; line-height: 1.18; letter-spacing: -0.005em; margin-right: 0.5rem; }
+.sentence-text { display: block; font-family: var(--serif); font-size: 1.9rem; line-height: 1.15; letter-spacing: -0.005em; margin-bottom: 0.45rem; }
+/* Nothing to check: navy, with a navy rule down its left side and no chips. */
+.sentence-plain { padding-left: 0.8rem; border-left: 3px solid var(--navy); }
+.sentence-plain .sentence-text { margin-bottom: 0; }
 
-/* The proof chips are the page's heroes: dark pills, like unseen's active filter, each with a green check. */
-.chips { display: inline; }
+/* The proof chips. Proven is a blue block with a white tick. Not backed is a white chip with a gold band and a navy edge,
+   so its state reads from the band and the words "This didn't check out", not from colour alone. */
+.chips { display: block; }
 .chip {
   display: inline-flex; align-items: center; gap: 0.45rem;
-  margin: 0.35rem 0.4rem 0 0;
-  padding: 0.38rem 0.85rem 0.38rem 0.7rem;
-  border-radius: 180px;
-  font-family: var(--sans); font-size: 0.9rem; line-height: 1.25; letter-spacing: -0.01em;
-  vertical-align: 0.2rem; overflow-wrap: anywhere;
+  margin: 0.3rem 0.4rem 0 0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0;
+  font-family: var(--term); font-size: 1rem; line-height: 1.25; letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
 }
-.chip-proven { background: #212121; color: var(--pill-on); }
+.chip-proven { background: var(--blue-ink); color: var(--white); }
 .chip-proven::before {
   content: ""; flex: none;
   width: 0.36rem; height: 0.66rem; margin: 0 0.15rem 0.15rem 0.15rem;
-  border: solid #8fd1b4; border-width: 0 2px 2px 0;
+  border: solid var(--white); border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
-.chip-blocked { background: transparent; color: var(--error); box-shadow: inset 0 0 0 2px var(--error); }
-.problems { margin: 0.3rem 0 0; padding-left: 1.3rem; color: var(--error); font-size: 1.02rem; }
-.sentence-blocked .sentence-text { text-decoration: underline wavy var(--error); text-underline-offset: 4px; }
-@media (prefers-color-scheme: dark) {
-  .chip-proven { background: var(--pill-on); color: #212121; }
-  .chip-proven::before { border-color: #1d6a50; }
-}
+.chip-blocked { background: var(--white); color: var(--navy); border: 2px solid var(--navy); box-shadow: inset 0 0 0 4px var(--gold); font-family: var(--sans); font-size: 1rem; }
+.problems { margin: 0.3rem 0 0; padding-left: 1.3rem; color: var(--navy); font-size: 1.02rem; }
+.sentence-blocked .sentence-text { text-decoration: underline 2px; text-underline-offset: 0.16em; }
 
 /* ---- PayPal's record ---- */
-.pending { margin-bottom: 1.2rem; padding: 1.2rem 1.3rem; background: #212121; color: var(--pill-on); }
+.pending { margin-bottom: 1.2rem; padding: 1.1rem 1.2rem; background: var(--navy); color: var(--white); }
 .pending p { margin: 0.15rem 0; }
-.pending .hint { color: #d9d3cf; }
-.pending-title { font-family: var(--serif); font-style: italic; font-size: 2rem; line-height: 1.05; }
-@media (prefers-color-scheme: dark) {
-  .pending { background: var(--pill-on); color: #212121; }
-  .pending .hint { color: #4a4643; }
-}
+.pending .hint { color: var(--white); }
+.pending-title { font-family: var(--serif); font-weight: 400; font-size: 2.2rem; line-height: 1.05; }
 
-.gift { margin-bottom: 1.2rem; padding: 1.2rem 1.3rem; background: var(--sunk); border: 2px solid transparent; }
-.gift-status { margin: 0; font-family: var(--serif); font-size: 3.6rem; line-height: 1; letter-spacing: -0.02em; transform-origin: 0 70%; }
-.gift[data-status="ACTIVE"] .gift-status { color: var(--accent); }
-.gift[data-status="SUSPENDED"] .gift-status { color: var(--warn); }
-.gift-read { margin: 0.5rem 0 0.9rem; color: var(--muted); font-size: 1.02rem; }
+/* A Typesafe window: a navy title bar in the terminal face, then a tint body with 1px rules. */
+.gift { margin-bottom: 1.2rem; background: var(--tint); border: 1px solid var(--navy); }
+.gift h3 {
+  margin: 0; padding: 0.35rem 0.8rem;
+  background: var(--navy); color: var(--white);
+  font-family: var(--term); font-weight: 400; font-size: 1.1rem; line-height: 1.25; letter-spacing: 0.02em;
+}
+.gift > :not(h3) { margin-left: 1rem; margin-right: 1rem; }
+.gift-status {
+  margin: 0.9rem 0 0;
+  font-family: var(--term); font-size: 2.4rem; line-height: 1.05; letter-spacing: 0.01em;
+  color: var(--navy); transform-origin: 0 70%;
+}
+.gift[data-status="ACTIVE"] .gift-status { color: var(--blue-ink); }
+.gift[data-status="SUSPENDED"] .gift-status { color: var(--navy); background: var(--gold); padding: 0.05em 0.12em; display: inline-block; }
+.gift-read { margin: 0.5rem 0 0.9rem; color: var(--muted); font-size: 1rem; }
 .gift-change { margin: -0.4rem 0 0.9rem; font-size: 1.05rem; }
+.gift:last-child { margin-bottom: 0; }
 /* With no invoice on the call, app.js leaves its number and status empty, and the card shows one line instead of empty rows. */
-.invoice-none { display: none; margin: 0; font-size: 1.05rem; color: var(--muted); }
+.invoice-none { display: none; margin: 0 0 0.9rem; font-size: 1.05rem; color: var(--muted); }
 .invoice:has(#inv-number:empty):has(#inv-status:empty) .invoice-none { display: block; }
 .invoice:has(#inv-number:empty):has(#inv-status:empty) .facts { display: none; }
 
-/* The moment a change's read-back lands. The border takes the new status's colour and stays for the rest of the call,
-   the status word sits on its own tint, underlined, and it pops once as it lands. */
-.gift.changed { border-color: var(--accent); }
-.gift.changed[data-status="SUSPENDED"] { border-color: var(--warn); }
-.gift.changed .gift-status {
-  display: inline-block;
-  padding: 0.05em 0.18em 0.1em;
-  background: var(--accent-soft);
-  text-decoration: underline 2px;
-  text-underline-offset: 0.12em;
-}
-.gift.changed[data-status="SUSPENDED"] .gift-status { background: var(--warn-soft); }
+/* The moment a change's read-back lands. The window takes a 3px navy edge, and the status word sits on its own tint, underlined, and it pops once. */
+.gift.changed { box-shadow: inset 0 0 0 3px var(--navy); }
+.gift.changed .gift-status { display: inline-block; background: var(--white); padding: 0.05em 0.15em 0.08em; text-decoration: underline 2px; text-underline-offset: 0.12em; }
+.gift.changed[data-status="SUSPENDED"] .gift-status { background: var(--gold); }
 .gift.flash .gift-status { animation: land 0.9s var(--expo-out) 1; }
 @keyframes land {
-  from { transform: scale(1.22); }
+  from { transform: scale(1.12); }
   to { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .gift.flash .gift-status { animation: none; }
 }
 
-.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1rem; margin: 0; font-size: 1.05rem; }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35rem 1rem; margin: 0 0 1rem; font-size: 1rem; }
 .facts dt { color: var(--muted); }
-.facts dd { margin: 0; overflow-wrap: anywhere; }
-.mono { font-family: var(--mono); font-size: 0.9rem; }
-.ws a { color: var(--ink); text-underline-offset: 0.2em; }
+.facts dd { margin: 0; font-family: var(--term); font-size: 1.1rem; overflow-wrap: anywhere; }
+.mono { font-family: var(--term); font-size: 1rem; }
+.ws a { color: var(--blue-ink); text-underline-offset: 0.2em; }
+.ws a:hover { color: var(--navy); }
 
 .events { margin: 0.4rem 0 0; padding: 0; list-style: none; max-height: 28rem; overflow-y: auto; }
-.event { padding: 0.55rem 0; border-bottom: 1px solid var(--line); font-size: 0.98rem; overflow-wrap: anywhere; }
-.event-write, .event-yes { font-weight: 560; }
+.event { padding: 0.5rem 0; border-bottom: 1px solid var(--navy); font-family: var(--term); font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }
+.event-write, .event-yes { text-decoration: underline 2px; text-underline-offset: 0.15em; }
 
 .foot {
   grid-column: 1 / -1;
   display: flex; justify-content: space-between; gap: 1rem;
-  margin-top: 1rem; font-size: 0.9rem; color: var(--chrome-ink);
+  padding-top: 1rem; border-top: 1px solid var(--navy);
+  font-size: 1rem; color: var(--navy);
 }
 .foot p { margin: 0; }
 
-/* On a laptop the receipts and PayPal's record stay in view while the call column scrolls, so the gift card's change
-   is on screen the moment it lands. */
-@media (min-width: 1140px) {
-  .receipts-card, .record { position: sticky; top: 5.4rem; }
-  .record { max-height: calc(100vh - 7.4rem); overflow-y: auto; }
+/* ---- Grid placement: 12 columns from 1200, 8 from 768, 4 on phone, each with fixed px gutters ---- */
+.call { grid-column: 1 / span 4; }
+.receipts-card { grid-column: 5 / span 4; }
+.record { grid-column: 9 / span 4; }
+@media (min-width: 1200px) {
+  .receipts-card, .record { position: sticky; top: 5.8rem; }
+  .record { max-height: calc(100vh - 7.6rem); overflow-y: auto; }
   .events { max-height: none; overflow: visible; }
 }
-
-/* ---- Two columns, then one ---- */
-@media (max-width: 1139px) {
-  .ws { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 1199px) {
+  .ws { grid-template-columns: repeat(8, minmax(0, 1fr)); column-gap: 16px; padding: 6.6rem 32px 8rem; }
   .record { grid-column: 1 / -1; }
 }
-
 @media (max-width: 767px) {
-  .hero { padding-bottom: 4.5rem; }
-  .hero__caps { font-size: 0.8rem; max-width: 18rem; line-height: 1.35; margin-bottom: 1.2rem; }
-  .hero__l1 { font-size: 11.5vw; }
-  .hero__l2 { font-size: 10.6vw; letter-spacing: -0.02em; }
-  .hero__note { bottom: 5.4rem; max-width: 17rem; }
-  .ws { grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 5.2rem 1.15rem 2rem; font-size: 1.15rem; }
-  .record { grid-column: auto; }
-  .panel { padding: 1.3rem 1.15rem 1.5rem; }
-  .panel h2 { font-size: 2.2rem; }
-  .reply { font-size: 1.9rem; }
+  .ws { grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 16px; row-gap: 36px; padding: 6rem 16px 8.5rem; font-size: 1.1rem; }
+  .call, .receipts-card, .record { grid-column: 1 / -1; }
+  .panel h2 { font-size: 2.3rem; }
+  .reply { font-size: 2.2rem; }
   .talk-row { gap: 1rem; }
   .talk { width: 8.6rem; height: 8.6rem; }
-  .keys { grid-template-columns: repeat(3, 4.6rem); gap: 0.8rem 1.2rem; }
+  .keys { grid-template-columns: repeat(3, 4.6rem); gap: 0.6rem 0.9rem; }
   .key { width: 4.6rem; height: 4.6rem; }
-  .sentence-text { font-size: 1.6rem; }
-  .gift-status { font-size: 3rem; }
+  .sentence-text { font-size: 1.75rem; }
+  .gift-status { font-size: 2.6rem; }
   .foot { flex-direction: column; }
 }
 
-/* A jump from the nav lands below the fixed header, not under the logo. */
-#receipts-title, #record-title { scroll-margin-top: 6rem; }
+/* ---- Hero and the mode switch on phone ---- */
+@media (max-width: 767px) {
+  .hero { padding-bottom: 5.5rem; }
+  /* At phone size the caps line is body text, so it gets the same white plate as the note. */
+  .hero__caps { font-size: 0.85rem; max-width: 18rem; line-height: 1.35; margin-bottom: 1.1rem; padding: 0.3rem 0.5rem; background: var(--white); }
+  .hero__l1 { font-size: 3.4rem; }
+  .hero__l2 { font-size: 3.05rem; letter-spacing: -0.02em; }
+  .hero__note { bottom: 4.6rem; max-width: 19rem; font-size: 0.95rem; }
+  .header { height: 4.2rem; padding: 0 1.1rem; }
+  .logo { font-size: 1.7rem; margin-right: auto; }
+  .header__nav { display: none; }
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .hero__l1 { font-size: 6.4rem; }
+  .hero__l2 { font-size: 6rem; }
+}
+
+/* ---- Menu: a full panel that slides in from the right. Desktop keeps the room visible at its left. ---- */
+.menu { position: fixed; inset: 0; z-index: 70; color: var(--navy); }
+.menu[hidden] { display: none; }
+.menu__shade { position: absolute; inset: 0; background: rgb(0 48 135 / 0.3); }
+.menu__panel {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 40rem; max-width: 100%; overflow: hidden;
+  background: var(--white); border-left: 2px solid var(--navy);
+}
+.menu__inner {
+  height: 100%;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 7.5rem 0 0 4.5rem;
+}
+.menu__list { list-style: none; margin: 0; padding: 0; }
+.menu__item {
+  position: relative; display: inline-flex; align-items: flex-start;
+  font-family: var(--serif); font-size: 5.6rem; line-height: 1; letter-spacing: -0.01em;
+  color: var(--navy); text-decoration: none;
+}
+.menu__item sup { display: none; }
+.menu__label { display: inline-flex; white-space: nowrap; }
+.menu__label > span { display: inline-block; transform-origin: 0 100%; }
+.menu__line { position: absolute; left: 0.2rem; right: 0; bottom: 0.2rem; height: 3px; background: currentColor; transform: scaleX(0); transform-origin: 0 50%; }
+.menu__item.is-current { color: var(--blue-ink); }
+.menu__item.is-current .menu__line { transform: scaleX(1); }
+.menu__item:not(.is-current):hover .menu__line, .menu__item:not(.is-current):focus-visible .menu__line { transform: scaleX(1); }
+.menu__foot {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  padding: 0 4.5rem 2.4rem 0; font-size: 1rem; line-height: 1.5;
+}
+.menu__contact { display: flex; flex-direction: column; margin: 0; }
+html.menu-open .header__nav, html.menu-open .corner { opacity: 0; pointer-events: none; }
+html.menu-open .logo { color: var(--navy); }
+@media (max-width: 767px) {
+  .menu__panel { width: 100%; }
+  .menu__inner { padding: 6.5rem 0 0 1.8rem; }
+  .menu__item { font-size: 3.9rem; }
+  .menu__foot { flex-direction: column; align-items: flex-start; gap: 1.2rem; padding: 0 1.8rem 2.2rem 0; }
+}
+
+/* ---- The corners: sound, the record link and the year, on the same frame ---- */
+.corner { position: fixed; z-index: 60; bottom: 1.6rem; margin: 0; transition: opacity 0.6s var(--expo), visibility 0s 0.6s; }
+.corner--bl { left: 2rem; display: flex; align-items: center; gap: 0.8rem; }
+.corner--br { right: 2rem; font-size: 1rem; line-height: 1.5; color: var(--navy); }
+.corner--bc { left: 50%; transform: translateX(-50%); }
+.orbit { display: block; color: var(--navy); text-decoration: none; }
+.orbit .disc { cursor: pointer; }
+.orbit__w { position: absolute; top: 50%; overflow: hidden; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.5; color: var(--navy); transform: translateY(-50%); }
+.orbit__w--a { right: 100%; margin-right: 0.8rem; }
+.orbit__w--b { left: 100%; margin-left: 0.8rem; }
+.orbit__w > span { display: block; transition: transform 0.5s var(--expo); }
+.orbit__w--a > span { transform: translateX(110%); }
+.orbit__w--b > span { transform: translateX(-110%); }
+.orbit:hover .orbit__w > span, .orbit:focus-visible .orbit__w > span { transform: none; }
+.disc__ring { position: relative; width: 1rem; height: 1rem; border: 2px solid currentColor; border-radius: 50%; transition: transform 0.6s var(--expo); }
+.disc__ring::after { content: ""; position: absolute; inset: 0.2rem; border-radius: 50%; background: currentColor; }
+.orbit:hover .disc--still, .orbit:focus-visible .disc--still { background: var(--navy); color: var(--white); }
+
+/* The cursor ring is part of the old look and is not used on the donor page. The pointer stays the system pointer. */
+.cursor { display: none !important; }
+
+/* ---- Reduced motion: every transition and animation stops, including the room's drift and the nav roll. ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-delay: 0s !important; }
+}
