@@ -8,6 +8,7 @@ import { liveTemplates } from './vocabulary.js';
 import { buildReceipts, receiptOptions } from './receipt.js';
 import { createRefundDesk } from './refund-desk.js';
 import { COVER_LEGS, COVER_MONTH, LEG_CAPTURE, LEG_REFUND, LEG_UNWIND, MOVED_STATUSES, YEAR_MS, coverBlock, holdCovers, isRefundedStatus, moneyBinding, requestIds, sameMoney, toCents } from './cover.js';
+import { drillFor, drillRecord } from './drill.js';
 
 export { maskPinText };
 
@@ -197,6 +198,8 @@ function formatRecord(call, timeZone) {
       debugId: sub.debugId,
       notFound: sub.snapshot === null,
     },
+    // The latest pause, restart or cancel the line sent in this call, so the page can mark one PayPal refused (A12).
+    write: call.record.write ?? null,
     invoice: inv && {
       id: inv.id,
       number: inv.snapshot?.number ?? null,
@@ -262,6 +265,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       ended: call.ended,
       pending: p ? { kind: p.kind, label: PENDING_LABELS[p.kind], expiresAt: new Date(p.expiresAt).toISOString() } : null,
       record: formatRecord(call, config.timeZone),
+      drill: call.drill ? { key: call.drill.key, writeId: call.drill.writeId, title: call.drill.title } : null,
       // Built from the same ledger events, with the same orgName and subscription, that pilot-check grades.
       receipts: buildReceipts(ledger.byCall(call.id), receiptOptions(config)),
     };
@@ -393,17 +397,20 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return fn(sub, plan);
   }
 
+  // A drill call sends its suspend to PayPal's test id, and only its suspend. Every read stays on the call's own gift (A12).
+  const suspendTarget = (ctx, sub) => ctx.call.drill?.writeId ?? sub.id ?? config.demoSubscriptionId;
+
   const giftStatusTurn = (ctx) => withGift(ctx, (sub, plan) => say.giftStatus(sub, plan, { timeZone: config.timeZone }));
 
   const stopGiftTurn = (ctx) => withGift(ctx, (sub, plan) => {
     if (ctx.call.pauseOffered || sub.status !== 'ACTIVE') return proposeCancel(ctx, sub, plan);
-    return propose(ctx, 'suspend', sub.id ?? config.demoSubscriptionId, say.pauseOffer(sub, plan), 'pause_offer');
+    return propose(ctx, 'suspend', suspendTarget(ctx, sub), say.pauseOffer(sub, plan), 'pause_offer');
   });
 
   const cancelTurn = (ctx) => withGift(ctx, (sub, plan) => proposeCancel(ctx, sub, plan));
 
   const pauseTurn = (ctx) => withGift(ctx, (sub, plan) => (sub.status === 'ACTIVE'
-    ? propose(ctx, 'suspend', sub.id ?? config.demoSubscriptionId, say.pauseConfirm(sub, plan), 'request')
+    ? propose(ctx, 'suspend', suspendTarget(ctx, sub), say.pauseConfirm(sub, plan), 'request')
     : say.nothingTo('suspend', sub, plan)));
 
   const resumeTurn = (ctx) => withGift(ctx, (sub, plan) => (sub.status === 'SUSPENDED'
@@ -865,13 +872,20 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
         return say.afterWrite('send_invoice', inv, null, outcome);
       }
       const expected = EXPECTED_STATUS[pending.kind];
-      const sub = await rereadUntil(ctx, () => readSnapshot(ctx, 'subscription', pending.targetId), settled((s) => s?.status === expected));
+      call.record.write = { kind: pending.kind, ok: result.ok, unclear, httpStatus: result.error?.status ?? null, debugId: result.debugId ?? null, drill: Boolean(call.drill) };
+      const sub = await rereadUntil(ctx, () => readSnapshot(ctx, 'subscription', readTarget(call, pending)), settled((s) => s?.status === expected));
       return say.afterWrite(pending.kind, sub, call.plan, outcome);
     } catch (error) {
       if (!(error instanceof PayPalError)) throw error;
       // I8: never claim a status PayPal did not return.
       return say.afterWrite(pending.kind, null, call.plan, outcome);
     }
+  }
+
+  /** The gift a write is read back from: the call's own gift for a drill's suspend, else the write's own target (A12). */
+  function readTarget(call, pending) {
+    const drilled = call.drill && pending.kind === call.drill.kind && pending.targetId === call.drill.writeId;
+    return drilled && config.demoSubscriptionId ? config.demoSubscriptionId : pending.targetId;
   }
 
   async function noTurn(ctx, text) {
@@ -1015,13 +1029,15 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return call;
   }
 
-  function start({ script = null, userAgent = '', dryRun = false, clientKey = null, client = null } = {}) {
+  function start({ script = null, userAgent = '', dryRun = false, clientKey = null, client = null, drill = null } = {}) {
+    // A drill is chosen only by name and never with a script, so no graded script can reach it (A12).
+    const chosen = drillFor(drill, { script: script === null || script === undefined || script === '' ? null : script, paypalMode: config.paypal.mode, now: now() });
     const signals = normalizeClient(client);
     const call = {
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
       id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
       pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
-      noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null, charge: null, cover: null }, queue: Promise.resolve(), chargeAsked: null, coverAsked: null,
+      noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null, charge: null, cover: null, write: null }, queue: Promise.resolve(), chargeAsked: null, coverAsked: null, drill: chosen,
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
       lastFinishedTurn: 0, lastFinishedAt: performance.now(), gapTurns: new Set(),
     };
@@ -1034,6 +1050,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // The sponsor's hold and the staff rule this call ran on, so pilot-check holds a cover to them.
       sponsorHoldId: config.cover?.holdId ?? null, coverRule: config.cover ? { maxDollars: config.cover.maxDollars, windowDays: config.cover.windowDays, perYear: config.cover.perYear } : null,
       ...(dryRun ? { dryRun: true } : {}),
+      ...(chosen ? { drill: drillRecord(chosen) } : {}),
     });
     const reply = say.greeting(config.orgName);
     log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, claims: reply.claims, ms: 0 });

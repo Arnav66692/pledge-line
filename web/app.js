@@ -21,7 +21,12 @@
     invNumber: $('inv-number'), invStatus: $('inv-status'), invAmount: $('inv-amount'), invDebug: $('inv-debug'), invLink: $('inv-link'),
     events: $('events'), gift: $('gift'), subRead: $('sub-read'), subChange: $('sub-change'), demo: $('demo'),
     receipts: $('receipts'), receiptsSummary: $('receipts-summary'), receiptsScroll: $('receipts-scroll'),
+    subRefused: $('sub-refused'), subRefusedMark: $('sub-refused-mark'), subRefusedWhy: $('sub-refused-why'),
   };
+  // A fault drill is picked by name from its own group in the picker, never as a script (A12).
+  const DRILL_PREFIX = 'drill:';
+  // The change words for the gift card's mark when PayPal turned a change down or gave no clear answer.
+  const CHANGE_NAMES = { suspend: 'pause', activate: 'restart', cancel: 'cancellation' };
 
   // Read times show in Pacific time, the line's own zone, whatever zone the viewer's computer is in.
   const READ_ZONE = 'America/Los_Angeles';
@@ -106,7 +111,7 @@
 
   // lastTurn is the turn of the last reply this page received. Each turn says it answers that reply, so a yes only counts for a proposal the caller heard.
   // giftStatus is the status the gift card last showed in this call, so a change's read-back can be marked when it lands.
-  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false };
+  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], drills: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false };
 
   // Engine signals a user-agent override, such as Chrome's device toolbar, does not change. The line checks them against the agent.
   const engineSignals = () => ({ vendor: String(navigator.vendor || ''), chrome: typeof window.chrome !== 'undefined', uaData: 'userAgentData' in navigator });
@@ -136,9 +141,12 @@
 
   // ---- Script picker ----
 
+  const drillKeyOf = (value) => (String(value ?? '').startsWith(DRILL_PREFIX) ? String(value).slice(DRILL_PREFIX.length) : null);
+
   function renderLines(number = els.script.value) {
     els.lines.replaceChildren();
-    const script = state.scripts.find((s) => String(s.number) === String(number));
+    const drill = state.drills.find((d) => d.key === drillKeyOf(number));
+    const script = drill ?? state.scripts.find((s) => String(s.number) === String(number));
     const lines = script ? script.lines : ['Enter your PIN on the keypad, then ask about your monthly gift.'];
     for (const line of lines) {
       const item = document.createElement('li');
@@ -148,7 +156,7 @@
     if (script) {
       const item = document.createElement('li');
       item.className = 'expected';
-      item.textContent = `This script should end like this. ${script.expected}.`;
+      item.textContent = `This ${drill ? 'drill' : 'script'} should end like this. ${script.expected}.`;
       els.lines.append(item);
     }
   }
@@ -166,7 +174,28 @@
     } catch {
       state.scripts = [];
     }
+    await loadDrills();
     renderLines();
+  }
+
+  /** The fault drills, in their own group, listed only while the line will start one. They are never scripts. */
+  async function loadDrills() {
+    try {
+      const { drills } = await api('/api/drills');
+      state.drills = Array.isArray(drills) ? drills : [];
+    } catch {
+      state.drills = [];
+    }
+    if (state.drills.length === 0) return;
+    const group = document.createElement('optgroup');
+    group.label = 'Fault drills, never scored';
+    for (const drill of state.drills) {
+      const option = document.createElement('option');
+      option.value = `${DRILL_PREFIX}${drill.key}`;
+      option.textContent = drill.title;
+      group.append(option);
+    }
+    els.script.append(group);
   }
 
   // ---- Speech out ----
@@ -249,8 +278,39 @@
     state.giftStatus = status;
   }
 
-  function renderRecord(record) {
+  /** "HTTP 422, debug id mock-000003", or the error name for an answer with no code, such as a timeout. */
+  function writeAnswer(write) {
+    const code = Number.isInteger(write.httpStatus) && write.httpStatus > 0 ? `HTTP ${write.httpStatus}` : write.error || 'no answer';
+    return `${code}, debug id ${write.debugId || 'none'}`;
+  }
+
+  /**
+   * A calm red mark on the gift card when PayPal turned the call's latest gift change down or gave no clear answer.
+   * The card's status still comes from PayPal's fresh read after it, never from the request.
+   */
+  function renderRefusal(write, drill) {
+    const failed = Boolean(write) && write.ok === false;
+    els.subRefused.hidden = !failed;
+    els.gift.classList.toggle('refused', failed);
+    if (!failed) {
+      els.subRefusedMark.textContent = '';
+      els.subRefusedWhy.textContent = '';
+      return;
+    }
+    const change = CHANGE_NAMES[write.kind] ?? 'change';
+    const answered = Number.isInteger(write.httpStatus) && write.httpStatus > 0;
+    const refused = answered && write.httpStatus >= 400 && write.httpStatus < 500;
+    const where = drill ? ` Fault drill, the ${change} went to PayPal's test id ${drill.writeId}.` : '';
+    // Only a 4xx is PayPal saying no. A failure with no HTTP answer may never have reached PayPal at all.
+    if (refused) els.subRefusedMark.textContent = 'PayPal said no';
+    else els.subRefusedMark.textContent = write.unclear ? 'PayPal didn\'t answer clearly' : 'The change didn\'t go through';
+    const heard = answered ? `PayPal answered the ${change} with HTTP ${write.httpStatus}` : `No PayPal answer came back for the ${change}`;
+    els.subRefusedWhy.textContent = `${heard}, debug id ${write.debugId || 'none'}.${where} The status above is PayPal's fresh read after it.`;
+  }
+
+  function renderRecord(record, drill = null) {
     const sub = record?.subscription;
+    renderRefusal(record?.write ?? null, drill);
     trackGiftStatus(sub);
     els.gift.dataset.status = sub && !sub.notFound ? String(sub.status ?? '') : '';
     const shown = sub && !sub.notFound && sub.status ? STATUS_WORDS[sub.status] ?? sub.status : null;
@@ -331,7 +391,9 @@
       const label = CLAIM_LABELS[name];
       const words = CLAIM_WORDS[name];
       const backing = words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}.` : `Backed by ${c.meaning ?? c.name}`;
-      return label ? { text: label, title: backing } : { text: backing, title: '' };
+      // A change PayPal turned down names the write behind it, with PayPal's answer code and debug id (A12).
+      const write = c.write ? `, ${writeAnswer(c.write)}` : '';
+      return label ? { text: `${label}${write}`, title: backing } : { text: `${backing}${write}`, title: '' };
     });
     return [...reads, ...claims];
   }
@@ -419,7 +481,11 @@
       // A refund request goes to staff, never to PayPal, so the log never says PayPal accepted it.
       case 'write':
         if (e.kind === 'refund_request') return e.ok ? 'Logged your refund request for staff. Nothing changed in PayPal.' : `Couldn't log the refund request, ${e.error || 'error'}.`;
-        return e.ok ? `PayPal accepted the request to ${request}, reference ${e.debugId || 'none'}.` : `PayPal turned down the request to ${request}, ${e.error || 'error'}.`;
+        if (e.ok) return `PayPal accepted the request to ${request}, reference ${e.debugId || 'none'}.`;
+        // A 4xx is PayPal saying no. A 5xx or a lost answer may have gone through, so the log never calls it turned down.
+        return Number.isInteger(e.httpStatus) && e.httpStatus >= 400 && e.httpStatus < 500
+          ? `PayPal turned down the request to ${request}, ${e.error || 'error'}, reference ${e.debugId || 'none'}.`
+          : `PayPal gave no clear answer to the request to ${request}, ${e.error || 'error'}, reference ${e.debugId || 'none'}.`;
       case 'staging_write':
         if (e.kind === 'create_draft') return e.ok ? `Made a draft invoice, ${e.id}. It isn't sent.` : 'Couldn\'t make a draft invoice.';
         return e.ok ? `Deleted the draft invoice ${e.id}.` : `Couldn't delete the draft invoice ${e.id}.`;
@@ -479,9 +545,10 @@
     if (s.locked) els.status.textContent = 'This call is locked after too many wrong PINs.';
     else if (s.ended) els.status.textContent = 'Call ended. Press Start call for a new one.';
     else if (!s.verified) els.status.textContent = 'Enter your PIN on the keypad, or say the numbers.';
+    else if (s.drill) els.status.textContent = 'PIN accepted. This is a fault drill, so ask to pause the gift and say yes.';
     else els.status.textContent = s.script ? `PIN accepted. Say the next line from Script ${s.script} once the line stops talking.` : 'PIN accepted. Go ahead and ask about your monthly gift.';
     renderPending(s.pending);
-    renderRecord(s.record);
+    renderRecord(s.record, s.drill ?? null);
     renderCover(s.record?.cover);
     renderReceipts(s.receipts);
     if (state.ended) stopListening();
@@ -525,8 +592,10 @@
     setBusy(true);
     hideError();
     try {
-      const script = els.script.value ? Number(els.script.value) : null;
-      const data = await api('/api/calls', { script, userAgent: navigator.userAgent, client: engineSignals() });
+      const picked = els.script.value;
+      const drill = drillKeyOf(picked);
+      const script = picked && !drill ? Number(picked) : null;
+      const data = await api('/api/calls', { script, ...(drill ? { drill } : {}), userAgent: navigator.userAgent, client: engineSignals() });
       state.callId = data.callId;
       state.lastTurn = data.turn;
       state.pin = '';
@@ -534,7 +603,7 @@
       // The picker goes back to No script, so a stray second call is never filed under this script.
       // The lines of the running script stay on screen.
       els.script.value = '';
-      renderLines(script ?? '');
+      renderLines(drill ? `${DRILL_PREFIX}${drill}` : script ?? '');
       els.transcript.textContent = '';
       els.reply.textContent = data.reply;
       applyState(data.state);

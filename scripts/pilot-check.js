@@ -10,7 +10,7 @@ import { createPayPal } from '../src/paypal.js';
 import { resourceIdOf } from '../src/server.js';
 import { latestCallsByScript } from '../src/check.js';
 import { DEADLINE, GAP_BAR_MS, formatPt, selectCalls, windowCalls, startedAfter, sweep, stops, timing, pilotTests, outsideLoggedRows,
-  templateTroubles, loggedConfig } from '../src/pilot-grade.js';
+  templateTroubles, loggedConfig, drillCalls } from '../src/pilot-grade.js';
 import { parseHoursLog, effectiveDeadline, loggedHours, rowHours, inWindow, outsideWindow, EXPECTED_ROW, ACCEPTED_FORMS, LOGGED_HOURS } from '../src/hours-log.js';
 
 // A sleeping free Render service takes about a minute to wake.
@@ -524,11 +524,14 @@ function prepare() {
   return { ...run, refusal, block, deadline, picked };
 }
 
-function runNotes({ dryRun, config, picked }) {
+function runNotes({ dryRun, config, picked, events, since }) {
   const { after } = picked;
+  const drills = drillCalls(windowCalls(events, { since, dryRun }));
   const notes = dryRun ? ['This ledger holds only dry-run calls. A dry run never counts toward the bar.'] : [];
   if (!config.pin) notes.push('PILOT_PIN is not set, so the ledger was not searched for the PIN.');
   if (after.length > 0) notes.push(`${after.length} scripted ${after.length === 1 ? 'call' : 'calls'} started after the deadline, so ${after.length === 1 ? 'it is' : 'they are'} recorded, not scored. The writes and safety checks still cover them.`);
+  // A fault drill has no script, so it is never graded. Its suspend went to PayPal's test id on purpose (A12).
+  if (drills.length > 0) notes.push(`The window holds ${drills.length} fault ${drills.length === 1 ? 'drill' : 'drills'}, ${drills.map((d) => `${d.writeId} in call ${d.callId}`).join(', and ')}. A drill is recorded, never scored. The writes and safety checks still cover it, with its suspend to PayPal's test id held to the gift it read.`);
   return notes;
 }
 

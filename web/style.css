@@ -229,6 +229,16 @@ button:disabled { cursor: not-allowed; }
 .gift[data-status="ACTIVE"] .gift-status { color: var(--accent); }
 .gift[data-status="SUSPENDED"] .gift-status { color: var(--warn); }
 .gift-read { margin: 0.5rem 0 0.9rem; color: var(--muted); font-size: 1.02rem; }
+/* "PayPal said no", a calm red mark. The status above it still comes from PayPal's fresh read (A12). */
+.gift.refused { border-color: var(--error); }
+.gift-refused { margin: 0.7rem 0 0.2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+.gift-refused[hidden] { display: none; }
+.gift-refused__mark {
+  display: inline-block; padding: 0.3rem 0.75rem; border-radius: 999px;
+  background: var(--error-soft); color: var(--error); box-shadow: inset 0 0 0 1.5px var(--error);
+  font-size: 0.85rem; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.gift-refused__why { font-size: 1.02rem; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
 .gift-change { margin: -0.4rem 0 0.9rem; font-size: 1.05rem; }
 /* With no invoice on the call, app.js leaves its number and status empty, and the card shows one line instead of empty rows. */
 .invoice-none { display: none; margin: 0; font-size: 1.05rem; color: var(--muted); }

@@ -6,6 +6,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { buildReceipts, receiptOptions } from './receipt.js';
 import { maskPinText, textHasPin } from './numbers.js';
 import { looksLikeEmail } from './call.js';
+import { drillOf } from './drill.js';
 
 // The newest calls the list shows. A night of calls is a few dozen, and each row runs the facts check once.
 export const STAFF_LIST_MAX = 200;
@@ -19,7 +20,7 @@ export const HIDDEN_EMAIL = 'an email address, hidden';
 
 // The fields each event type may show, beside type, seq, ts and turn. Anything else is dropped.
 const FIELDS = Object.freeze({
-  call_start: ['script', 'browser', 'engine', 'mode', 'timeZone', 'orgName', 'subscriptionId', 'templates', 'dryRun'],
+  call_start: ['script', 'browser', 'engine', 'mode', 'timeZone', 'orgName', 'subscriptionId', 'templates', 'dryRun', 'drill'],
   heard: ['source', 'answering', 'arrivedAfter', 'afterReplyMs'],
   route: ['intent', 'amountDollars', 'latencyMs', 'model', 'error'],
   read: ['what', 'id', 'status', 'debugId', 'ms', 'notFound', 'error'],
@@ -113,13 +114,16 @@ export function summarizeCall(events, config, receipts = buildReceipts(events, r
   const start = events.find((e) => e.type === 'call_start') ?? {};
   const end = events.findLast((e) => e.type === 'call_end') ?? null;
   const mode = start.mode ?? {};
+  // A fault drill is never a script, and the list says so, so a coordinator never reads a drill as a donor's call (A12).
+  const drill = drillOf(start);
   return {
     callId: start.callId ?? events[0]?.callId ?? null,
     started: start.ts ?? null,
     ended: end?.ts ?? null,
     endReason: end?.reason ?? null,
     script: Number.isInteger(start.script) ? start.script : null,
-    kind: Number.isInteger(start.script) ? 'script' : 'free',
+    kind: drill ? 'drill' : Number.isInteger(start.script) ? 'script' : 'free',
+    drill: drill ? { key: drill.key, writeId: drill.writeId } : null,
     browser: start.browser ?? 'other',
     verified: events.some((e) => e.type === 'pin_ok'),
     locked: events.some((e) => e.type === 'pin_locked'),

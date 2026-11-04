@@ -10,6 +10,8 @@ const UNTIED = "the receipt can't tie this sentence to the call's PayPal reads";
 const QUOTED = /"([^"]*)"/g;
 
 const listOf = (value) => (Array.isArray(value) ? value : []);
+// The claims that say a write did not go through. Each names the write behind it, with PayPal's code and debug id (A12).
+const FAILED_WRITE_CLAIMS = new Set(['write_failed', 'send_failed', 'write_unclear']);
 const quotedIn = (message) => [...String(message ?? '').matchAll(QUOTED)].map((m) => m[1]).filter((bit) => bit.trim() !== '');
 
 /** A quoted bit of a checkFacts message names the sentence when it is the sentence, with slots or without, or a phrase in it. */
@@ -45,6 +47,15 @@ function factIn(f, text, orgName) {
   return heard.some((x) => x.kind === f.kind && x.value === f.value) || saysPhrase(text, spokenForm(f));
 }
 
+/** The latest failed write of the turn a reply speaks for, as a receipt shows it, or null. */
+function failedWriteOf(list, said) {
+  const turn = Number.isInteger(said.repeats) ? said.repeats : said.turn;
+  const write = list.filter((e) => e.type === 'write' && !e.ok && e.turn === turn && e.seq < said.seq).at(-1);
+  if (!write) return null;
+  return { seq: write.seq ?? null, ts: write.ts ?? null, kind: write.kind, targetId: write.targetId ?? null,
+    httpStatus: Number.isInteger(write.httpStatus) ? write.httpStatus : null, error: write.error ?? null, debugId: write.debugId ?? null };
+}
+
 /** The claims a sentence carries: the ones its template ties to it and the ones the reply declared for it. */
 function claimsOf(sentence, said, templates, ctx) {
   const templated = templates && Object.hasOwn(templates.claims, sentence.slotted) ? templates.claims[sentence.slotted] : [];
@@ -55,7 +66,8 @@ function claimsOf(sentence, said, templates, ctx) {
     const made = declared.find((c) => c.claim === name);
     const meaning = Object.hasOwn(CLAIM_MEANINGS, name.split('=')[0]) ? CLAIM_MEANINGS[name.split('=')[0]] : null;
     const proven = Boolean(made) && templated.includes(name) && claimBacked(ctx.list, said, made, ctx.options);
-    return { name, meaning, proven };
+    const write = proven && FAILED_WRITE_CLAIMS.has(name) ? failedWriteOf(ctx.list, said) : null;
+    return { name, meaning, proven, ...(write ? { write } : {}) };
   });
 }
 
