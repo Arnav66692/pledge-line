@@ -13,6 +13,7 @@
     "dev": "PAYPAL_MODE=mock ROUTER_MODE=rules node --env-file-if-exists=.env src/server.js",
     "test": "node --test \"test/*.test.js\"",
     "seed": "node --env-file-if-exists=.env scripts/seed-sandbox.js",
+    "seed:hold": "node --env-file-if-exists=.env scripts/seed-sponsor-hold.js",
     "pilot:dry": "node --env-file-if-exists=.env scripts/pilot-dry-run.js",
     "pilot:check": "node --env-file-if-exists=.env scripts/pilot-check.js",
     "vocabulary": "node src/vocabulary.js",

@@ -15,7 +15,8 @@
     reply: $('reply'), transcript: $('transcript'), talk: $('talk'), speechError: $('speech-error'),
     pinDots: $('pin-dots'), pinClear: $('pin-clear'), pinSend: $('pin-send'), keys: document.querySelectorAll('.key[data-digit]'),
     typed: $('typed'), typedForm: $('typed-form'), typedText: $('typed-text'), typedSend: $('typed-send'),
-    gapLast: $('gap-last'), gapMedian: $('gap-median'), pending: $('pending'), pendingLabel: $('pending-label'), pendingExpiry: $('pending-expiry'),
+    gapLast: $('gap-last'), gapMedian: $('gap-median'), cover: $('cover'), coverOutcome: $('cover-outcome'), coverRefund: $('cover-refund'), coverSponsor: $('cover-sponsor'), coverFee: $('cover-fee'),
+    pending: $('pending'), pendingLabel: $('pending-label'), pendingExpiry: $('pending-expiry'),
     subStatus: $('sub-status'), subAmount: $('sub-amount'), subNext: $('sub-next'), subDebug: $('sub-debug'),
     invNumber: $('inv-number'), invStatus: $('inv-status'), invAmount: $('inv-amount'), invDebug: $('inv-debug'), invLink: $('inv-link'),
     events: $('events'), gift: $('gift'), subRead: $('sub-read'), subChange: $('sub-change'), demo: $('demo'),
@@ -50,19 +51,35 @@
     timed_out: 'Timed out, nothing changed', nothing_pending: 'Nothing waiting for a yes', call_ended: 'The call had ended',
     gift_read: 'Checked your gift in PayPal', gift_active: 'PayPal shows the gift active', nothing_to: 'PayPal shows nothing to change',
     invoice_read: 'Checked the draft in PayPal', gift_rechecked: 'Checked PayPal again for this answer',
+    no_charge: 'PayPal shows no recent charge', charge_unread: 'PayPal gave no clear charge',
+    wrote_refund_request: 'Request logged for staff, PayPal unchanged', refund_matches_read: 'Same charge in PayPal after the request',
+    refund_request_failed: 'The request was not logged', no_refund_request: 'You said no, nothing logged',
+    hold_open: "Sponsor's hold checked in PayPal", cover_too_old: 'Older than the staff rule allows', cover_too_big: "Above the staff rule's cap",
+    cover_used: 'Already given back this year', cover_prior: 'Staff have an earlier try', cover_not_ready: 'PayPal shows it can\'t be given back',
+    cover_no_hold: 'No open sponsor hold', cover_changed: 'Changed since the offer, no money moved',
+    wrote_cover_capture: 'Sponsor fund paid the same amount', cover_capture_read: 'Read back from the sponsor\'s capture',
+    wrote_cover_refund: 'Refunded to you', cover_refund_read: 'Read back from your charge',
+    cover_capture_failed: 'Sponsor payment turned down, no money moved', cover_capture_unclear: 'No clear answer, no refund ran',
+    cover_refund_failed: 'Refund turned down', wrote_cover_unwind: 'Sponsor payment sent back', cover_unwound: 'Sponsor payment shows returned',
+    cover_unwind_failed: 'Staff have this one', cover_refund_unclear: 'No clear answer, staff have this one', cover_charge_unchanged: 'Your charge read back unchanged',
   };
 
-  const LABELS = { suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending the one-time gift invoice' };
+  const LABELS = { suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending the one-time gift invoice',
+    refund_request: 'asking staff to look at a refund', cover_month: 'giving this month back, with a sponsor covering it' };
   // The same changes as a request, for the event log's "PayPal accepted the request to ...".
-  const REQUESTS = { suspend: 'pause the monthly gift', activate: 'restart the monthly gift', cancel: 'cancel the monthly gift', send_invoice: 'send the one-time gift invoice' };
+  const REQUESTS = { suspend: 'pause the monthly gift', activate: 'restart the monthly gift', cancel: 'cancel the monthly gift', send_invoice: 'send the one-time gift invoice',
+    cover_capture: "take the sponsor's payment", cover_refund: 'refund the charge to you', cover_unwind: "return the sponsor's payment" };
   const CLAIM_WORDS = window.PledgeClaimWords || {};
-  const READ_NAMES = { subscription: 'the gift', plan: 'the gift amount', invoice: 'the invoice' };
+  const COVER_WORDS = { covered: 'This month was given back, and the sponsor paid the same amount.', no_money_moved: "The sponsor's payment didn't go through, so no money moved.",
+    unwound: "The refund didn't go through, so the sponsor's payment went back.", open: 'PayPal gave no clear answer, so staff need to check this.' };
+  const READ_NAMES = { subscription: 'the gift', plan: 'the gift amount', invoice: 'the invoice', charge: "the gift's latest charge", hold: "the sponsor's hold", capture: "the sponsor's payment", gift_charge: 'the charge' };
   // How the event log says what the line took each request to be.
   const INTENT_WORDS = {
     gift_status: 'Took that as asking about the gift.', stop_gift: 'Took that as a request to stop the gift.',
     cancel_now: 'Took that as a request to cancel now.', pause_gift: 'Took that as a request to pause the gift.',
     resume_gift: 'Took that as a request to restart the gift.', one_time_gift: 'Took that as asking to give once.',
     other_email: 'Took that as a new email address.', how_do_you_know: 'Took that as asking how the line knows.',
+    charge_check: 'Took that as asking about a charge.', hardship_cover: "Took that as not being able to afford this month.",
     repeat: 'Took that as asking to hear it again.', help: 'Took that as asking for help.',
     staff_callback: 'Took that as asking for a call back.', goodbye: 'Took that as goodbye.',
     unclear: 'That wasn\'t a request on its own.',
@@ -75,6 +92,7 @@
     other_email: 'the line only sends to the email on file', locked: 'the call is locked', ended: 'the call has ended',
     not_verified: 'the PIN comes first', amount_out_of_range: 'that amount is outside the limits', no_subscription: 'no monthly gift was found',
     too_long: 'that was too long', turn_limit: 'the call reached its limit', pin_limit: 'there were too many wrong PINs from here',
+    cover_used: 'a charge on this gift was already given back in the last year', cover_prior: 'staff already have an earlier try at this charge',
   };
   const SPEECH_ERRORS = {
     'not-allowed': 'The browser blocked the microphone. Allow it in the site settings, or type instead.',
@@ -259,6 +277,15 @@
     }
   }
 
+  /** The month given back and the sponsor's payment, each from its own PayPal read, and the fee a refund leaves behind. */
+  function renderCover(cover) {
+    els.cover.classList.toggle('has-cover', Boolean(cover));
+    setText(els.coverOutcome, cover ? COVER_WORDS[cover.outcome] ?? cover.outcome : null, '');
+    setText(els.coverRefund, cover?.refundStatus ? `${cover.amount}, ${statusText(cover.refundStatus)}` : null, 'none');
+    setText(els.coverSponsor, cover?.captureStatus ? `${cover.amount}, ${statusText(cover.captureStatus)}` : null, 'none');
+    setText(els.coverFee, cover?.captureFee ? `${cover.captureFee}. PayPal keeps its fee on a refunded gift and takes one on the sponsor's payment, so the nonprofit ends this much short of a gift that stood.` : null, 'none');
+  }
+
   function renderPending(pending) {
     els.pending.hidden = !pending;
     if (!pending) return;
@@ -389,7 +416,10 @@
       case 'proposed': return `Asked for your yes before ${what}.`;
       case 'yes': return 'You said yes, so the line can make this one change.';
       case 'no': return 'You said no.';
-      case 'write': return e.ok ? `PayPal accepted the request to ${request}, reference ${e.debugId || 'none'}.` : `PayPal turned down the request to ${request}, ${e.error || 'error'}.`;
+      // A refund request goes to staff, never to PayPal, so the log never says PayPal accepted it.
+      case 'write':
+        if (e.kind === 'refund_request') return e.ok ? 'Logged your refund request for staff. Nothing changed in PayPal.' : `Couldn't log the refund request, ${e.error || 'error'}.`;
+        return e.ok ? `PayPal accepted the request to ${request}, reference ${e.debugId || 'none'}.` : `PayPal turned down the request to ${request}, ${e.error || 'error'}.`;
       case 'staging_write':
         if (e.kind === 'create_draft') return e.ok ? `Made a draft invoice, ${e.id}. It isn't sent.` : 'Couldn\'t make a draft invoice.';
         return e.ok ? `Deleted the draft invoice ${e.id}.` : `Couldn't delete the draft invoice ${e.id}.`;
@@ -397,6 +427,8 @@
       case 'expired': return 'No answer in time, so nothing changed.';
       case 'withdrawn': return 'The request was set aside.';
       case 'staff_callback': return 'Noted that you want a call back from staff.';
+      case 'refund_request': return `Noted the charge ending in ${String(e.transactionId ?? '').slice(-4)} for staff to look at.`;
+      case 'cover_month': return COVER_WORDS[e.outcome] ?? null;
       case 'call_end': return END_WORDS[e.reason] ?? `Call ended, ${e.reason}.`;
       default: return null;
     }
@@ -450,6 +482,7 @@
     else els.status.textContent = s.script ? `PIN accepted. Say the next line from Script ${s.script} once the line stops talking.` : 'PIN accepted. Go ahead and ask about your monthly gift.';
     renderPending(s.pending);
     renderRecord(s.record);
+    renderCover(s.record?.cover);
     renderReceipts(s.receipts);
     if (state.ended) stopListening();
     setControls();

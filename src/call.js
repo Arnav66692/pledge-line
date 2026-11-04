@@ -6,6 +6,8 @@ import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } fro
 import { toSnapshot, PayPalError } from './paypal.js';
 import { liveTemplates } from './vocabulary.js';
 import { buildReceipts, receiptOptions } from './receipt.js';
+import { createRefundDesk } from './refund-desk.js';
+import { COVER_LEGS, COVER_MONTH, LEG_CAPTURE, LEG_REFUND, LEG_UNWIND, MOVED_STATUSES, YEAR_MS, coverBlock, holdCovers, isRefundedStatus, moneyBinding, requestIds, sameMoney, toCents } from './cover.js';
 
 export { maskPinText };
 
@@ -24,6 +26,8 @@ export const LIVE_TEMPLATE_HASH = LIVE_TEMPLATES.hash;
 export const LIVE_UNREVIEWED = LIVE_TEMPLATES.unreviewed;
 export const LIVE_TEMPLATE_ERROR = LIVE_TEMPLATES.error ?? null;
 
+// How far back the charge check asks PayPal for the gift's charges. The line never says this window aloud.
+const CHARGE_LOOKBACK_MS = 365 * 24 * 60 * 60 * 1000;
 const RE_READ_TRIES = 3;
 const RE_READ_GAP_MS = 600;
 const MIN_SPOKEN_PIN_DIGITS = 4;
@@ -33,7 +37,8 @@ const VENDOR_MAX = 80;
 const BROWSER_ENGINES = Object.freeze({ chrome: 'chromium', edge: 'chromium', safari: 'webkit', firefox: 'gecko' });
 const EXPECTED_STATUS = Object.freeze({ suspend: 'SUSPENDED', activate: 'ACTIVE', cancel: 'CANCELLED' });
 const WRITER_METHODS = Object.freeze({ suspend: 'suspendSubscription', activate: 'activateSubscription', cancel: 'cancelSubscription', send_invoice: 'sendInvoice' });
-const PENDING_LABELS = Object.freeze({ suspend: 'Pause the monthly gift', activate: 'Restart the monthly gift', cancel: 'Cancel the monthly gift', send_invoice: 'Send the one-time gift invoice' });
+const PENDING_LABELS = Object.freeze({ suspend: 'Pause the monthly gift', activate: 'Restart the monthly gift', cancel: 'Cancel the monthly gift', send_invoice: 'Send the one-time gift invoice',
+  refund_request: 'Ask staff to look at a refund for the charge', cover_month: 'Give this month back, with a sponsor covering it' });
 const BARE_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'correct', 'ok', 'okay', 'please', 'do', 'go', 'ahead', 'it', 'that', "that's", 'is',
   'right', 'confirm', 'no', 'nope', 'nah', 'thanks', 'thank', 'you', 'not', 'now', 'never', 'mind', 'nevermind', 'keep', 'leave', "don't", 'dont']);
 // Endings an address can have when said as "dotcom", "gmail .com" or "gmail. com". A short list, so "at once. Thanks" stays plain.
@@ -181,6 +186,7 @@ const normalizeSource = (source) => (['voice', 'typed', 'keypad'].includes(sourc
 function formatRecord(call, timeZone) {
   const sub = call.record.subscription;
   const inv = call.record.invoice;
+  const charge = call.record.charge;
   const plan = call.plan;
   return {
     subscription: sub && {
@@ -199,17 +205,34 @@ function formatRecord(call, timeZone) {
       recipientViewUrl: inv.snapshot?.recipient_view_url ?? null,
       debugId: inv.debugId,
     },
+    charge: charge && {
+      transactionId: charge.snapshot?.transaction_id ?? null,
+      status: charge.snapshot?.status ?? null,
+      amount: charge.snapshot ? say.formatMoney(charge.snapshot.amount_value, charge.snapshot.amount_currency ?? undefined) : null,
+      date: say.formatDate(charge.snapshot?.time, timeZone),
+      count: charge.snapshot?.count ?? 0,
+      debugId: charge.debugId,
+      notFound: charge.snapshot === null,
+    },
+    cover: call.record.cover,
   };
 }
 
+/** One event as the donor's browser gets it. Tokens never go, and neither does the id of the sponsor's hold, which is the sponsor's, not the donor's. */
 function projectEvent(event) {
-  const { snapshot, userAgent, tokenId, ...rest } = event;
+  const { snapshot, userAgent, tokenId, tokenIds, legs, holdId, sponsorHoldId, coverRule, ...rest } = event;
+  if (event.type === 'read' && event.what === 'hold') delete rest.id;
+  if (event.type === 'write' && COVER_LEGS.includes(event.kind) && event.kind !== LEG_REFUND) delete rest.targetId;
   return rest;
 }
 
-export function createCallService({ config, ledger, paypal, router, gate, now = () => new Date(), sleep = defaultSleep, pinGuard = null }) {
+export function createCallService({ config, ledger, paypal, router, gate, now = () => new Date(), sleep = defaultSleep, pinGuard = null, desk = null }) {
   const calls = new Map();
+  // With no desk, a refund request has no token store, so its write fails and the line says so. buildDeps always passes one.
+  const refundDesk = desk ?? createRefundDesk({ ledger, tokens: null });
   const limits = config.limits;
+  // The charges a yes is moving money for right now, across calls, so two calls about one charge never both run.
+  const coversRunning = new Set();
 
   const log = (call, event) => ledger.append({ ...event, callId: call.id });
   const refused = (ctx, reason) => log(ctx.call, { type: 'refused', turn: ctx.turn, reason });
@@ -246,13 +269,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   // ---- PayPal reads, each logged as a `read` event ----
 
-  const GETTERS = { subscription: 'getSubscription', plan: 'getPlan', invoice: 'getInvoice' };
+  const GETTERS = { subscription: 'getSubscription', plan: 'getPlan', invoice: 'getInvoice', charge: 'getSubscriptionCharges', hold: 'getSponsorHold', capture: 'getCapture', gift_charge: 'getCapture' };
 
-  async function readSnapshot(ctx, what, id) {
+  async function readSnapshot(ctx, what, id, extra) {
     const base = { type: 'read', turn: ctx.turn, what, id };
     let res;
     try {
-      res = await paypal[GETTERS[what]](id);
+      res = await paypal[GETTERS[what]](id, extra);
     } catch (error) {
       log(ctx.call, { ...base, status: null, snapshot: null, debugId: error?.debugId ?? null, ms: 0, error: describeError(error) });
       throw error;
@@ -262,7 +285,15 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     log(ctx.call, { ...base, status: snapshot?.status ?? null, snapshot, debugId: res.debugId ?? null, ms: res.ms ?? 0, ...notFound });
     if (what === 'subscription') ctx.call.record.subscription = { id, snapshot, debugId: res.debugId ?? null };
     if (what === 'invoice') ctx.call.record.invoice = { id, snapshot, debugId: res.debugId ?? null };
+    if (what === 'charge') ctx.call.record.charge = { id, snapshot, debugId: res.debugId ?? null };
     return snapshot;
+  }
+
+  /** The gift's charges over the last year, as a 'charge' read of the subscription, its latest charge in the snapshot. */
+  function readCharges(ctx, subId) {
+    const end = now();
+    const window = { startTime: new Date(end.getTime() - CHARGE_LOOKBACK_MS).toISOString(), endTime: end.toISOString() };
+    return timed(ctx, () => readSnapshot(ctx, 'charge', subId, window));
   }
 
   async function readGift(ctx, { fresh = false } = {}) {
@@ -429,6 +460,251 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return say.combine(say.otherEmail(), await oneTimeTurn(ctx, amount));
   }
 
+  // ---- Is this charge real? (PICK.md) ----
+
+  /**
+   * Reads the gift's latest charge from PayPal and says its amount, date, status and transaction suffix, then offers to
+   * ask staff to look at a refund. The offer is a proposal like any change, so only a clear yes in the next turn logs it (I1, I6).
+   */
+  async function chargeCheckTurn(ctx) {
+    const subId = config.demoSubscriptionId;
+    if (!subId) {
+      refused(ctx, 'no_subscription');
+      return say.noSubscription();
+    }
+    const charge = await readCharges(ctx, subId);
+    if (charge && charge.count === 0) return say.noCharge();
+    if (!charge || !say.chargeReadable(charge)) return say.chargeUnread();
+    if (say.NO_REFUND_STATUSES.includes(charge.status)) return say.chargeNoOffer(charge, config.orgName, { timeZone: config.timeZone });
+    const readBack = propose(ctx, 'refund_request', subId, say.chargeOffer(charge, config.orgName, { timeZone: config.timeZone }), 'charge_check');
+    // The request names the charge this proposal read aloud, never a later one (refund-desk.js).
+    ctx.call.chargeAsked = { pendingId: ctx.call.pending.id, charge };
+    return readBack;
+  }
+
+  /** The yes to a refund request. The desk logs it, then a fresh PayPal read says what PayPal shows for the charge now. */
+  async function refundYesTurn(ctx, approval) {
+    const { call } = ctx;
+    const { pending } = approval;
+    const asked = call.chargeAsked?.pendingId === pending.id ? call.chargeAsked.charge : null;
+    call.chargeAsked = null;
+    const writer = (id, token) => refundDesk.request(id, token, { callId: call.id, turn: ctx.turn, charge: asked });
+    const result = await gate.execute(call, approval, writer, ctx.turn);
+    let fresh = null;
+    try {
+      fresh = await readCharges(ctx, pending.targetId);
+    } catch (error) {
+      if (!(error instanceof PayPalError)) throw error;
+    }
+    const same = Boolean(fresh?.transaction_id) && fresh.transaction_id === asked?.transaction_id;
+    return say.afterRefundRequest(fresh, { ok: result.ok, same, timeZone: config.timeZone });
+  }
+
+  // ---- Covered Month (PICK.md) ----
+
+  const coverContext = () => ({ rule: config.cover, nowMs: now().getTime(), currency: config.currency });
+
+  /** The covers the ledger holds for this gift. A mock's money restarts with the server, so older mock covers don't count. */
+  const ledgerCovers = (subId) => ledger.byType(COVER_MONTH).filter((e) => e.subscriptionId === subId && (!paypal.historyStart || e.ts >= paypal.historyStart));
+
+  /** Why the ledger, which outlives PayPal's list when PayPal hasn't updated it, turns this charge down, or null. */
+  function ledgerBlock(subId, transactionId) {
+    const covers = ledgerCovers(subId);
+    // A cover that took or may have taken the sponsor's money and is not settled is staff's now, and replaying it could mislead.
+    if (covers.some((e) => e.transactionId === transactionId && e.outcome !== 'no_money_moved')) return covers.some((e) => e.transactionId === transactionId && e.outcome === 'covered') ? 'used' : 'prior';
+    const yearAgo = new Date(now().getTime() - YEAR_MS).toISOString();
+    return covers.filter((e) => e.outcome === 'covered' && e.ts >= yearAgo).length >= config.cover.perYear ? 'used' : null;
+  }
+
+  function turnedDown(ctx, reason) {
+    refused(ctx, `cover_${reason}`);
+    return say.coverTurnedDown(reason);
+  }
+
+  /** The three legs one yes may run, each bound to its target and to the exact amount the line read aloud (I1). */
+  function coverLegs(charge, holdId) {
+    // Two decimals, as PayPal's move calls want, whichever way PayPal's read wrote the amount.
+    const shared = { amountValue: (toCents(charge.amount_value) / 100).toFixed(2), currency: charge.amount_currency, binding: moneyBinding(charge.amount_value, charge.amount_currency) };
+    return [{ kind: LEG_CAPTURE, targetId: holdId, ...shared }, { kind: LEG_REFUND, targetId: charge.transaction_id, ...shared }, { kind: LEG_UNWIND, targetId: holdId, ...shared }];
+  }
+
+  /**
+   * "I lost my job, I can't do it this month." Reads the gift, its latest charge and the sponsor's hold, checks the staff
+   * rule, and offers to give the charge back with the sponsor paying the same amount. The offer is a proposal like any
+   * change, so only a clear yes in the next turn moves money. The rule's numbers are never said aloud.
+   */
+  async function hardshipTurn(ctx) {
+    const subId = config.demoSubscriptionId;
+    if (!subId) {
+      refused(ctx, 'no_subscription');
+      return say.noSubscription();
+    }
+    if (!ctx.empathy) ctx.empathy = say.hardshipSorry();
+    const { holdId } = config.cover;
+    if (!holdId || config.cover.perYear < 1) return say.coverTurnedDown('no_hold');
+    const charge = await readCharges(ctx, subId);
+    if (charge && charge.count === 0) return say.noCharge();
+    if (!charge || !say.chargeReadable(charge)) return say.chargeUnread();
+    const { sub } = await readGift(ctx);
+    if (!sub) {
+      refused(ctx, 'no_subscription');
+      return say.noSubscription();
+    }
+    const block = coverBlock(charge, coverContext());
+    if (block === 'not_ready') return say.coverNotReady(charge, config.orgName, { timeZone: config.timeZone });
+    if (block) return say.coverTurnedDown(block);
+    const prior = ledgerBlock(subId, charge.transaction_id);
+    if (prior) return turnedDown(ctx, prior);
+    const hold = await timed(ctx, () => readSnapshot(ctx, 'hold', holdId));
+    if (!holdCovers(hold, { amountValue: charge.amount_value, currency: charge.amount_currency, nowMs: now().getTime() })) return say.coverTurnedDown('no_hold');
+    const readBack = say.coverOffer(charge, sub, config.orgName, { timeZone: config.timeZone });
+    gate.propose(ctx.call, { kind: COVER_MONTH, targetId: subId, readBack, origin: 'hardship', turn: ctx.turn, legs: coverLegs(charge, holdId) });
+    // The money moves for the charge this proposal read aloud, never a later one.
+    ctx.call.coverAsked = { pendingId: ctx.call.pending.id, charge };
+    return readBack;
+  }
+
+  /** A read after a money move that fails never hides the move, so it gives null and the line says only that it asked. */
+  async function readOrNull(fn) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (!(error instanceof PayPalError)) throw error;
+      return null;
+    }
+  }
+
+  /** The move's own answer has to say it moved the exact amount. A replay of a capture PayPal has refunded since never counts. */
+  function checkedMove(res, amountValue) {
+    const otherAmount = res?.amountValue !== null && res?.amountValue !== undefined && !sameMoney(res.amountValue, amountValue);
+    if (!MOVED_STATUSES.includes(res?.status) || !res?.id || otherAmount) {
+      throw new PayPalError({ status: 422, name: 'NOT_MOVED', message: 'PayPal did not move the exact amount', debugId: res?.debugId ?? null });
+    }
+    return res;
+  }
+
+  /** Every leg's writer, so call.js never calls a write directly (I1). */
+  function legWriter(ctx, method, amounts, extra = {}) {
+    return async (id, token) => checkedMove(await paypal[method](id, token, { callId: ctx.call.id, ...amounts, note: `Hardship cover for a monthly gift to ${config.orgName}`, ...extra }), amounts.amountValue);
+  }
+
+  /**
+   * The sponsor's leg also reads its capture before the donor's refund runs. PayPal can replay an old capture's answer
+   * for this charge's request id, as after a refund that was refused and sent back, and then no new money came in.
+   */
+  function captureWriter(ctx, amounts, transactionId) {
+    const take = legWriter(ctx, 'captureSponsorHold', amounts, { requestId: requestIds.capture(transactionId) });
+    return async (id, token) => {
+      const res = await take(id, token);
+      const now = await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'capture', res.id)));
+      if (now && !MOVED_STATUSES.includes(now.status)) throw new PayPalError({ status: 422, name: 'NOT_MOVED', message: 'PayPal shows that capture no longer holds the money', debugId: res.debugId });
+      return res;
+    };
+  }
+
+  /** The cover as the ledger, the page and the staff view keep it. outcome is covered, no_money_moved, unwound or open. */
+  function closeCover(ctx, approval, charge, fields) {
+    const { call } = ctx;
+    gate.finish(call, approval);
+    const shown = { subscriptionId: approval.pending.targetId, transactionId: charge.transaction_id, holdId: config.cover.holdId, amountValue: charge.amount_value, currency: charge.amount_currency, ...fields };
+    log(call, { type: COVER_MONTH, turn: ctx.turn, ...shown });
+    call.record.cover = {
+      outcome: shown.outcome, amount: say.formatMoney(shown.amountValue, shown.currency), refundStatus: shown.refundStatus ?? null, captureStatus: shown.captureStatus ?? null,
+      transactionId: shown.transactionId, captureFee: say.formatMoney(shown.captureFee, shown.currency),
+    };
+  }
+
+  /** The yes reads PayPal once more, so a charge refunded, a hold voided or a new charge since the offer moves nothing. */
+  async function stillAsOffered(ctx, asked) {
+    const { charge } = asked;
+    const amounts = { amountValue: charge.amount_value, currency: charge.amount_currency, nowMs: now().getTime() };
+    const fresh = await readCharges(ctx, ctx.call.pending.targetId);
+    const direct = await timed(ctx, () => readSnapshot(ctx, 'gift_charge', charge.transaction_id));
+    const hold = await timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId));
+    const same = fresh?.transaction_id === charge.transaction_id && sameMoney(fresh.amount_value, charge.amount_value) && coverBlock(fresh, coverContext()) === null;
+    return same && direct?.status === 'COMPLETED' && sameMoney(direct.amount_value, charge.amount_value) && holdCovers(hold, amounts) && !ledgerBlock(ctx.call.pending.targetId, charge.transaction_id);
+  }
+
+  /** The sponsor's money goes back when the donor's refund was refused, so the sponsor never pays for a month that wasn't given back. */
+  async function unwindCover(ctx, approval, charge, amounts, captured) {
+    const captureId = captured.result.id;
+    // PayPal can refuse a refund that already went through, as when an earlier try's answer was lost. Then the sponsor's
+    // money must stay, or the charity ends a whole gift short, so staff get it.
+    const giftCharge = await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'gift_charge', charge.transaction_id)));
+    if (isRefundedStatus(giftCharge?.status)) {
+      await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)));
+      closeCover(ctx, approval, charge, { outcome: 'open', captureId, refundStatus: giftCharge.status });
+      return say.coverRefundUnclear();
+    }
+    const unwound = await timed(ctx, () => gate.executeLeg(ctx.call, approval, LEG_UNWIND,
+      legWriter(ctx, 'unwindSponsorCapture', amounts, { captureId, requestId: requestIds.unwind(captureId) }), ctx.turn, { captureId }));
+    const capture = await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'capture', captureId)));
+    await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)));
+    closeCover(ctx, approval, charge, { outcome: unwound.ok ? 'unwound' : 'open', captureId, captureStatus: capture?.status ?? null });
+    return say.coverUnwound({ ok: unwound.ok, capture, giftCharge });
+  }
+
+  /** Sponsor first, since a refund can fail for want of funds, then the donor. Each leg's answer decides the next step (L2). */
+  async function moveCover(ctx, approval, asked) {
+    const { call } = ctx;
+    const { charge } = asked;
+    const transactionId = charge.transaction_id;
+    const amounts = { amountValue: approval.pending.legs[0].amountValue, currency: approval.pending.legs[0].currency };
+    const captured = await timed(ctx, () => gate.executeLeg(call, approval, LEG_CAPTURE, captureWriter(ctx, amounts, transactionId), ctx.turn));
+    if (!captured.ok) {
+      await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)));
+      const lost = unanswered(captured);
+      closeCover(ctx, approval, charge, { outcome: lost ? 'open' : 'no_money_moved' });
+      return lost ? say.coverCaptureUnclear() : say.coverCaptureFailed();
+    }
+    const captureId = captured.result.id;
+    const refunded = await timed(ctx, () => gate.executeLeg(call, approval, LEG_REFUND, legWriter(ctx, 'refundCharge', amounts, { requestId: requestIds.refund(transactionId) }), ctx.turn, { captureId }));
+    const lost = unanswered(refunded);
+    if (!refunded.ok && !lost) return unwindCover(ctx, approval, charge, amounts, captured);
+    // A refund PayPal answered, or one whose answer was lost, is read back the same way, and only a read can say it went through (I8).
+    const giftCharge = await readOrNull(() => rereadUntil(ctx, () => readSnapshot(ctx, 'gift_charge', transactionId), (s) => isRefundedStatus(s?.status)));
+    const shown = isRefundedStatus(giftCharge?.status);
+    const capture = await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'capture', captureId)));
+    await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)));
+    await readOrNull(() => readCharges(ctx, approval.pending.targetId));
+    const { sub } = await readOrNull(() => readGift(ctx, { fresh: true })) ?? {};
+    closeCover(ctx, approval, charge, { outcome: refunded.ok || shown ? 'covered' : 'open', captureId, refundId: refunded.result?.id ?? null,
+      refundStatus: giftCharge?.status ?? null, captureStatus: capture?.status ?? null, chargeFee: giftCharge?.fee_value ?? null, captureFee: capture?.fee_value ?? null });
+    if (lost && !shown) return say.coverRefundUnclear();
+    return say.afterCover({ giftCharge, capture, sub, orgName: config.orgName, unclear: lost, timeZone: config.timeZone });
+  }
+
+  /** The one yes. No leg runs until PayPal's fresh reads still match what the line read aloud. */
+  async function coverYesTurn(ctx, approval) {
+    const { call } = ctx;
+    const { pending } = approval;
+    const asked = call.coverAsked?.pendingId === pending.id ? call.coverAsked : null;
+    call.coverAsked = null;
+    const transactionId = asked?.charge?.transaction_id;
+    if (!asked || coversRunning.has(transactionId)) {
+      gate.withdraw(call, ctx.turn);
+      return say.coverChanged();
+    }
+    coversRunning.add(transactionId);
+    try {
+      let still;
+      try {
+        still = await stillAsOffered(ctx, asked);
+      } catch (error) {
+        if (!(error instanceof PayPalError)) throw error;
+        gate.withdraw(call, ctx.turn);
+        return say.paypalProblem();
+      }
+      if (!still) {
+        gate.withdraw(call, ctx.turn);
+        return say.coverChanged();
+      }
+      return await moveCover(ctx, approval, asked);
+    } finally {
+      coversRunning.delete(transactionId);
+    }
+  }
+
   // ---- "How do you know?" (proof) ----
 
   // The values a proposal's read-back said, still what PayPal's fresh reads give, so speaking it again stays true.
@@ -455,17 +731,21 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const { call } = ctx;
     const waiting = call.pending;
     const draftId = waiting?.kind === 'send_invoice' ? waiting.targetId : call.lastDraftId;
-    let sub, plan, inv;
+    let sub, plan, inv, charge, hold;
     try {
       ({ sub, plan } = await readGift(ctx, { fresh: true }));
       inv = sub && draftId ? await timed(ctx, () => readSnapshot(ctx, 'invoice', draftId)) : undefined;
+      // A refund request's or a cover's read-back names a charge, so that charge is read again too.
+      charge = sub && (waiting?.kind === 'refund_request' || waiting?.kind === COVER_MONTH) ? await readCharges(ctx, waiting.targetId) : null;
+      hold = sub && waiting?.kind === COVER_MONTH ? await timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)) : null;
     } catch (error) {
       if (!(error instanceof PayPalError) || !waiting) throw error;
       // A read that failed can't back the read-back, so the change is set aside and no later yes can approve it.
       await dropPending(ctx);
       return say.combine(say.setAside(), say.paypalProblem());
     }
-    if (waiting && sub && stillAsRead(waiting, { subscription: sub, plan, invoice: inv ?? null })) return proofWhilePending(ctx, sub, plan);
+    const holdOk = waiting?.kind !== COVER_MONTH || holdCovers(hold, { amountValue: charge?.amount_value, currency: charge?.amount_currency, nowMs: now().getTime() });
+    if (waiting && sub && holdOk && stillAsRead(waiting, { subscription: sub, plan, invoice: inv ?? null, charge })) return proofWhilePending(ctx, sub, plan);
     const dropped = waiting ? await dropPending(ctx) : null;
     const lead = dropped ? say.setAside() : null;
     if (!sub) {
@@ -516,6 +796,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // The router's amount only. When it heard none, the line asks, rather than reading another number in the turn as one.
       case 'one_time_gift': return oneTimeTurn(ctx, routedAmount(routed, text));
       case 'other_email': return otherEmailTurn(ctx, text, routedAmount(routed, stripEmails(text)));
+      case 'charge_check': return chargeCheckTurn(ctx);
+      case 'hardship_cover': return hardshipTurn(ctx);
       case 'help': return say.help();
       case 'how_do_you_know': return proofTurn(ctx);
       case 'repeat': return repeatLast(ctx);
@@ -565,6 +847,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const approval = gate.approve(call, text, ctx.turn, ctx.answering, ctx.arrival);
     if (!approval) return call.pending ? askAgain(ctx) : say.nothingPending();
     const { pending } = approval;
+    if (pending.kind === 'refund_request') return refundYesTurn(ctx, approval);
+    if (pending.kind === COVER_MONTH) return coverYesTurn(ctx, approval);
     const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
     const result = await timed(ctx, () => gate.execute(call, approval, writer, ctx.turn));
     // A 4xx is PayPal saying no. A timeout or a 5xx leaves it open, since PayPal may have made the change and lost its
@@ -592,6 +876,10 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   async function noTurn(ctx, text) {
     const pending = gate.decline(ctx.call, text, ctx.turn);
+    if (pending.kind === 'refund_request') {
+      ctx.call.chargeAsked = null;
+      return say.noRefundRequest();
+    }
     if (pending.kind === 'send_invoice') {
       await deleteDraft(ctx, pending.targetId);
       const inv = await timed(ctx, () => readSnapshot(ctx, 'invoice', pending.targetId));
@@ -635,6 +923,11 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       return askAgain(ctx, say.otherEmail());
     }
     if (routed.intent === 'repeat' || routed.intent === 'unclear') return askAgain(ctx);
+    // "Yes, refund me" or "I want my money back" answers the refund offer, not a new charge check, so the line asks
+    // for a clear yes or no again rather than setting the offer aside and reading the same charge once more.
+    if (routed.intent === 'charge_check' && call.pending.kind === 'refund_request') return askAgain(ctx, say.needYesOrNo());
+    // The same for "I can't afford it" or "I want my money back" while the cover waits.
+    if (['charge_check', 'hardship_cover'].includes(routed.intent) && call.pending.kind === COVER_MONTH) return askAgain(ctx, say.needYesOrNo());
     // "Are you sure?" while a change waits reads PayPal again and keeps the change open when PayPal still agrees.
     if (routed.intent === 'how_do_you_know') return proofTurn(ctx);
     // Anything else moves past the proposal, so it is dropped and a later yes can never approve it.
@@ -728,7 +1021,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
       id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
       pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
-      noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null }, queue: Promise.resolve(),
+      noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null, charge: null, cover: null }, queue: Promise.resolve(), chargeAsked: null, coverAsked: null,
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
       lastFinishedTurn: 0, lastFinishedAt: performance.now(), gapTurns: new Set(),
     };
@@ -738,6 +1031,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       browser: call.browser, mode: { paypal: config.paypal.mode, router: config.router.mode }, timeZone: config.timeZone, orgName: config.orgName,
       // The configured subscription and the template list, so pilot-check can grade the call with what it ran on (R4-2, R4-3).
       subscriptionId: config.demoSubscriptionId ?? null, templates: LIVE_TEMPLATE_HASH,
+      // The sponsor's hold and the staff rule this call ran on, so pilot-check holds a cover to them.
+      sponsorHoldId: config.cover?.holdId ?? null, coverRule: config.cover ? { maxDollars: config.cover.maxDollars, windowDays: config.cover.windowDays, perYear: config.cover.perYear } : null,
       ...(dryRun ? { dryRun: true } : {}),
     });
     const reply = say.greeting(config.orgName);

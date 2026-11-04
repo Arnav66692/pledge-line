@@ -9,6 +9,7 @@ import { createMockPayPal } from './paypal-mock.js';
 import { createTokens, createGate } from './gate.js';
 import { createRouter } from './router.js';
 import { createCallService, CallNotFound, GapRefused, LIVE_TEMPLATE_HASH, LIVE_UNREVIEWED, LIVE_TEMPLATE_ERROR } from './call.js';
+import { createRefundDesk } from './refund-desk.js';
 import { TEMPLATE_HASH } from './template-words.js';
 import { PILOT_SCRIPTS, displayLines } from './pilot-scripts.js';
 import { staffCalls, staffCall, staffKeyMatches } from './staff.js';
@@ -183,7 +184,8 @@ export function buildDeps(config, overrides = {}) {
   const gate = createGate({ ledger, tokens, now, pendingTtlMs: config.limits.pendingTtlMs });
   // Only the public Render service needs it. Locally the line listens on this computer alone, and Script 8 uses three wrong PINs.
   const pinGuard = config.trustProxy ? createPinGuard({ limit: config.limits.wrongPinsPerHour, windowMs: HOUR_MS, now: () => now().getTime() }) : null;
-  const calls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
+  const desk = createRefundDesk({ ledger, tokens });
+  const calls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, desk, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
   return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now };
 }
 

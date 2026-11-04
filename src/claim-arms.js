@@ -67,7 +67,10 @@ function freshPayPal({ startStatus, now }) {
   return { tokens, paypal };
 }
 
-/** The gift and the call's invoices as the mock holds them right now. Reading the mock directly logs nothing. */
+// Wide enough to hold every charge the mock lists, which it only ever dates at or before now.
+const ALL_CHARGES = Object.freeze({ startTime: '2000-01-01T00:00:00Z', endTime: '2100-01-01T00:00:00Z' });
+
+/** The gift, its charges and the call's invoices as the mock holds them right now. Reading the mock directly logs nothing. */
 async function recordOf(paypal, invoiceIds = []) {
   const sub = (await paypal.getSubscription(MOCK_SUBSCRIPTION_ID)).data ?? null;
   const plan = sub ? (await paypal.getPlan(sub.plan_id)).data ?? null : null;
@@ -78,7 +81,10 @@ async function recordOf(paypal, invoiceIds = []) {
     const inv = (await paypal.getInvoice(id)).data;
     if (inv) invoices.push({ id, status: inv.status, amountValue: inv.amount?.value ?? null });
   }
-  return { gift, invoices };
+  // Change log, Nov 3: PayPal's charges for the gift, so a charge's date or amount the line reads aloud is held to them (EVAL.md).
+  const listed = sub ? (await paypal.getSubscriptionCharges(MOCK_SUBSCRIPTION_ID, ALL_CHARGES)).data?.transactions ?? [] : [];
+  const charges = listed.map((t) => ({ amountValue: t.amount_with_breakdown?.gross_amount?.value ?? null, time: t.time ?? null }));
+  return { gift, invoices, charges };
 }
 
 const cents = (texts) => texts.flatMap((text) => amountsIn(text).map((a) => a.cents));
