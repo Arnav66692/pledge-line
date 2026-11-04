@@ -38,14 +38,14 @@ async function serve(env) {
   return { deps, base: `http://127.0.0.1:${server.address().port}` };
 }
 
-const post = (base, route, body) => fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const post = (base, route, body, secret = null) => fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(secret ? { 'x-call-secret': secret } : {}) }, body: JSON.stringify(body) });
 
 /** A call through HTTP, as the page makes it: a pause and its yes, a new email, the PIN said aloud, a callback. */
 async function httpCall(base, { end = true } = {}) {
   const start = await (await post(base, '/api/calls', { script: null, userAgent: AGENT, client: { vendor: 'Google Inc.', chrome: true, uaData: true } })).json();
   let answering = start.turn;
   const say = async (text, source = 'typed') => {
-    const result = await (await post(base, `/api/calls/${start.callId}/turn`, { text, source, answering })).json();
+    const result = await (await post(base, `/api/calls/${start.callId}/turn`, { text, source, answering }, start.sessionSecret)).json();
     answering = result.turn;
   };
   await say(PIN, 'keypad');
@@ -308,7 +308,8 @@ test('POST /api/calls gives the page a 128-bit secret for its own call, and only
   assert.equal(res.headers.get('content-security-policy'), CSP);
   const text = await res.text();
   assert.equal(text, receiptFile(on.deps.ledger.byCall(call.callId), on.deps.config, on.deps.receiptSigner).text);
-  assert.equal(JSON.parse(text).call.id, call.callId);
+  assert.equal(JSON.parse(text).call.id, signer.receiptIdFor(call.callId));
+  assert.notEqual(JSON.parse(text).call.id, call.callId);
   assert.deepEqual(contentOf(text), expectedContent(on.deps.ledger.byCall(call.callId), on.deps.config));
   // The secret is never written down.
   assert.doesNotMatch(fs.readFileSync(on.deps.ledger.path, 'utf8'), new RegExp(call.receiptSecret));
@@ -358,14 +359,14 @@ test('the receipt file holds nothing private, and only the call\'s own subscript
   const words = JSON.stringify({ ...head, sentences: file.sentences.map(({ link, sig, ...rest }) => rest) });
   assert.doesNotMatch(words, new RegExp(PIN), 'no PIN');
   assert.doesNotMatch(words, /4\s*8\s*2\s*6\s*1\s*3|four eight two six/i, 'no PIN digits');
-  for (const secret of [FILE_EMAIL, NEW_EMAIL, 'sb-maria', 'bob.new', '@', 'receipt-test-agent', 'Mozilla', AGENT, call.receiptSecret, KEY]) {
+  for (const secret of [FILE_EMAIL, NEW_EMAIL, 'sb-maria', 'bob.new', '@', 'receipt-test-agent', 'Mozilla', AGENT, call.receiptSecret, call.sessionSecret, KEY]) {
     assert.ok(!text.includes(secret), `no ${secret}`);
   }
   for (const field of ['snapshot', 'tokenId', 'userAgent', 'pendingId', 'recipient_email', 'subscriber', 'clientKey', 'heard']) {
     assert.doesNotMatch(text, new RegExp(`"${field}"`), `no ${field} field`);
   }
   const ids = new Set(text.match(UUID));
-  assert.deepEqual([...ids], [call.callId], 'the only uuid is the call number, so no token or pending id');
+  assert.equal(ids.has(call.callId), false, 'the live call ID must never appear in a shareable file');
   const events = on.deps.ledger.byCall(call.callId);
   const own = new Set([on.deps.config.demoSubscriptionId, on.deps.config.demoPlanId,
     ...events.filter((e) => e.type === 'staging_write' && e.kind === 'create_draft' && e.id).map((e) => e.id)]);
@@ -376,6 +377,38 @@ test('the receipt file holds nothing private, and only the call\'s own subscript
   assert.ok(file.sentences.some((s) => s.text.includes('s b at personal dot example dot com')));
 });
 
+test('a shared receipt cannot open or operate the donor call, with or without receipt signing', async () => {
+  for (const server of [on, off]) {
+    const own = await httpCall(server.base, { end: false });
+    const second = await httpCall(server.base, { end: false });
+    assert.match(own.sessionSecret, /^[0-9a-f]{64}$/);
+    assert.notEqual(own.sessionSecret, second.sessionSecret);
+    const basePath = `${server.base}/api/calls/${own.callId}`;
+    const requests = [
+      ['', { method: 'GET' }],
+      ['/turn', { method: 'POST', body: JSON.stringify({ text: 'Yes.', source: 'typed' }) }],
+      ['/gap', { method: 'POST', body: JSON.stringify({ turn: 1, gapMs: 1000, source: 'voice' }) }],
+      ['/end', { method: 'POST', body: '{}' }],
+    ];
+    const before = server.deps.ledger.byCall(own.callId).length;
+    for (const secret of [undefined, '', 'wrong', second.sessionSecret, own.receiptSecret]) {
+      for (const [suffix, options] of requests) {
+        const headers = { 'Content-Type': 'application/json', ...(secret ? { 'x-call-secret': secret } : {}) };
+        const res = await fetch(basePath + suffix, { ...options, headers });
+        assert.equal(res.status, 401, `${suffix} rejects a missing, unrelated, or receipt credential`);
+        assert.doesNotMatch(await res.text(), /Sunny Hollow|sentences|heard/);
+      }
+    }
+    assert.equal(server.deps.ledger.byCall(own.callId).length, before, 'unauthorized requests have no side effects');
+    const authorized = await fetch(basePath, { headers: { 'x-call-secret': own.sessionSecret } });
+    assert.equal(authorized.status, 200);
+    const data = await authorized.text();
+    assert.match(data, /"events"/);
+    assert.ok(!data.includes(own.sessionSecret));
+    assert.ok(!fs.readFileSync(server.deps.ledger.path, 'utf8').includes(own.sessionSecret));
+  }
+});
+
 test('the check route says a receipt is untouched, and names the sentence an edit changed', async () => {
   const text = await (await getReceipt(on.base, call.callId, call.receiptSecret)).text();
   const check = async (body) => (await fetch(`${on.base}/api/receipts/check`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body })).json();
@@ -383,7 +416,7 @@ test('the check route says a receipt is untouched, and names the sentence an edi
   assert.equal(good.keyId, signer.keyId);
   assert.equal(good.check.ok, true);
   assert.equal(good.check.signedByThisLine, true);
-  assert.equal(good.check.callId, call.callId);
+  assert.equal(good.check.callId, signer.receiptIdFor(call.callId));
   const lines = text.split('\n');
   lines[4] = lines[4].replace(/"text":"([^"])/, '"text":"X');
   const bad = await check(lines.join('\n'));

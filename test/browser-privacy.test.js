@@ -39,6 +39,7 @@ function browser() {
   }
   const window = { SpeechRecognition, location: { search: '' }, localStorage: { getItem: () => null, setItem() {} }, addEventListener() {} };
   const pin = '2468';
+  const sessionSecret = 'a'.repeat(64);
   let verified = false;
   let turn = 0;
   const events = [];
@@ -47,7 +48,8 @@ function browser() {
   const json = (data) => ({ ok: true, json: async () => data });
   const fetch = async (path, options = {}) => {
     if (path === '/api/pilot-scripts') return json({ scripts: [] });
-    if (path === '/api/calls') return json({ callId: 'demo', turn: 0, reply: 'Enter your PIN.', state: state() });
+    if (path === '/api/calls') return json({ callId: 'demo', sessionSecret, turn: 0, reply: 'Enter your PIN.', state: state() });
+    if (path.startsWith('/api/calls/demo')) assert.equal(options.headers?.['x-call-secret'], sessionSecret, 'call requests use the page session secret');
     if (path.endsWith('/gap')) return json({ ok: true });
     if (path.endsWith('/turn')) {
       const input = JSON.parse(options.body);

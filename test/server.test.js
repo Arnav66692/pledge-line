@@ -42,7 +42,20 @@ function rawGet(path) {
   });
 }
 
-const postJson = (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+const sessions = new Map();
+const callHeaders = (path) => {
+  const id = path.match(/^\/api\/calls\/([0-9a-f-]{36})/)?.[1];
+  return id && sessions.has(id) ? { 'x-call-secret': sessions.get(id) } : {};
+};
+const postJson = async (path, body) => {
+  const response = await fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...callHeaders(path) }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  if (path === '/api/calls' && response.ok) {
+    const started = await response.clone().json();
+    sessions.set(started.callId, started.sessionSecret);
+  }
+  return response;
+};
+const getCall = (id) => fetch(`${base}/api/calls/${id}`, { headers: callHeaders(`/api/calls/${id}`) });
 
 test('static files are served from web/ with the right types and security headers', async () => {
   const page = await rawGet('/');
@@ -142,7 +155,7 @@ test('bad JSON is a 400 and an oversized body is a 413', async () => {
   const big = await postJson('/api/calls', JSON.stringify({ pad: 'x'.repeat(20000) }));
   assert.equal(big.status, 413);
   const unknown = await fetch(`${base}/api/calls/00000000-0000-4000-8000-000000000000`);
-  assert.equal(unknown.status, 404);
+  assert.equal(unknown.status, 401);
   const health = await (await fetch(`${base}/healthz`)).json();
   assert.deepEqual(health, { ok: true, mode: { paypal: 'mock', router: 'rules' } });
 });
@@ -157,14 +170,14 @@ test('the PIN never appears in replies, call state, events or the ledger file', 
     assert.equal(res.status, 200);
     bodies.push(await res.text());
   }
-  const state = await (await fetch(`${base}/api/calls/${start.callId}`)).text();
+  const state = await (await getCall(start.callId)).text();
   bodies.push(state);
   assert.ok(JSON.parse(state).verified);
   // The same PIN in compound words, before the PIN passes, in a second call.
   const second = await (await postJson('/api/calls', { script: 1 })).json();
   const spoken = await (await postJson(`/api/calls/${second.callId}/turn`, { text: 'forty eight twenty six thirteen', source: 'voice' })).json();
   assert.equal(spoken.state.verified, true);
-  bodies.push(JSON.stringify(spoken), await (await fetch(`${base}/api/calls/${second.callId}`)).text());
+  bodies.push(JSON.stringify(spoken), await (await getCall(second.callId)).text());
   for (const body of bodies) {
     assert.equal(body.includes(PIN), false, body);
     assert.doesNotMatch(body, /forty eight twenty six thirteen|four eight two six one three/, body);
@@ -226,8 +239,13 @@ test('on Render, wrong PINs add up across calls from one address and then stop P
   const d = buildDeps(config, { ledgerPath: tempLedgerPath(), log: silent, sleep: async () => {} });
   const own = await listen(d);
   const as = (address) => ({ 'Content-Type': 'application/json', 'X-Forwarded-For': address });
-  const startCall = async (address) => (await (await fetch(`${own.url}/api/calls`, { method: 'POST', headers: as(address), body: '{}' })).json()).callId;
-  const sayPin = async (address, callId, text) => (await fetch(`${own.url}/api/calls/${callId}/turn`, { method: 'POST', headers: as(address), body: JSON.stringify({ text, source: 'keypad' }) })).json();
+  const ownSessions = new Map();
+  const startCall = async (address) => {
+    const started = await (await fetch(`${own.url}/api/calls`, { method: 'POST', headers: as(address), body: '{}' })).json();
+    ownSessions.set(started.callId, started.sessionSecret);
+    return started.callId;
+  };
+  const sayPin = async (address, callId, text) => (await fetch(`${own.url}/api/calls/${callId}/turn`, { method: 'POST', headers: { ...as(address), 'x-call-secret': ownSessions.get(callId) }, body: JSON.stringify({ text, source: 'keypad' }) })).json();
   try {
     let callId = null;
     for (let miss = 0; miss < config.limits.wrongPinsPerHour; miss += 1) {

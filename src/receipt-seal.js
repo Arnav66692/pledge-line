@@ -33,6 +33,7 @@ const CALL_LABEL = `${LABEL} call\n`;
 const SENTENCE_LABEL = `${LABEL} sentence\n`;
 const SEAL_LABEL = `${LABEL} seal\n`;
 const ACCESS_LABEL = `${LABEL} access`;
+const PUBLIC_ID_LABEL = `${LABEL} public-id`;
 const SENTENCES_OPEN = ',"sentences":[';
 const SENTENCES_CLOSE = ']}';
 const VERDICTS = new Set(['proven', 'plain', 'blocked']);
@@ -82,6 +83,7 @@ export function createReceiptSigner(seedHex) {
   const publicDer = createPublicKey(privateKey).export({ format: 'der', type: 'spki' });
   const publicRaw = publicDer.subarray(SPKI_PREFIX.length);
   const accessKey = createHmac('sha256', seedBytes).update(ACCESS_LABEL).digest();
+  const publicIdKey = createHmac('sha256', seedBytes).update(PUBLIC_ID_LABEL).digest();
   const keyId = keyIdOf(publicRaw);
   const publicHex = hex(publicRaw);
   return Object.freeze({
@@ -92,6 +94,8 @@ export function createReceiptSigner(seedHex) {
     sign: (message) => hex(sign(null, Buffer.from(message, 'utf8'), privateKey)),
     /** The call's receipt secret, 128 bits. Only the page that started the call is given it. */
     secretFor: (callId) => hex(createHmac('sha256', accessKey).update(String(callId)).digest().subarray(0, 16)),
+    /** A stable, non-reversible identifier for the shareable file; never an API call ID. */
+    receiptIdFor: (callId) => hex(createHmac('sha256', publicIdKey).update(String(callId)).digest().subarray(0, 16)),
   });
 }
 

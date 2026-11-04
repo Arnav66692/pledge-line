@@ -1,4 +1,4 @@
-import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
+import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import * as say from './say.js';
 import { readGift as readGiftAmount, settleGiftRoute } from './router.js';
 import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
@@ -1039,9 +1039,12 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     // A drill is chosen only by name and never with a script, so no graded script can reach it (A12).
     const chosen = drillFor(drill, { script: script === null || script === undefined || script === '' ? null : script, paypalMode: config.paypal.mode, now: now() });
     const signals = normalizeClient(client);
+    // This bearer secret is independent of both the call ID and shareable receipt secret. It exists only in memory.
+    const sessionSecret = randomBytes(32).toString('hex');
+    const sessionHash = createHash('sha256').update(sessionSecret).digest();
     const call = {
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
-      id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
+      id: randomUUID(), sessionHash, script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
       pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
       noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null, charge: null, cover: null, write: null }, queue: Promise.resolve(), chargeAsked: null, coverAsked: null, drill: chosen,
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
@@ -1063,7 +1066,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const reply = say.greeting(config.orgName);
     log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, claims: reply.claims, ms: 0 });
     call.lastSaid = reply;
-    return { callId: call.id, reply: reply.text, turn: 0, state: stateFor(call) };
+    return { callId: call.id, sessionSecret, reply: reply.text, turn: 0, state: stateFor(call) };
   }
 
   async function expirePending(call) {
@@ -1091,6 +1094,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   return {
     start,
+    // Hash even a missing/invalid credential before comparing fixed-length buffers. Unknown calls use a dummy hash.
+    authenticate: (callId, given) => {
+      const actual = typeof given === 'string' ? given : '';
+      const hash = createHash('sha256').update(actual).digest();
+      const expected = calls.get(callId)?.sessionHash ?? Buffer.alloc(32);
+      return actual.length > 0 && timingSafeEqual(hash, expected);
+    },
     /**
      * The arrival facts are taken before the turn waits in the queue, so they say which replies existed when it
      * arrived (I1). receivedAt is when the HTTP server got the request. Tests and the dry run send none.

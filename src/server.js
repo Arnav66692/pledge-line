@@ -358,6 +358,8 @@ function createApi(deps) {
   }
 
   async function callRoute(req, res, ip, id, action) {
+    const secret = req.headers['x-call-secret'];
+    if (!calls.authenticate(id, typeof secret === 'string' ? secret : '')) throw new HttpError(401, 'That call session is not available.');
     if (!action) {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
       return send(res, 200, calls.get(id));
