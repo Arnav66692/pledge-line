@@ -118,22 +118,25 @@ const clip = (value, max) => (typeof value === 'string' ? value.slice(0, max) : 
 
 /** Verifies and logs PayPal webhooks. PayPal delivers at least once, so copies dedupe by event id. */
 export function createWebhookHandler({ paypal, ledger, webhookId, log }) {
-  const verifiedIds = new Set();
+  // Reload accepted IDs from the ledger so a provider retry after a process restart stays idempotent.
+  const verifiedIds = new Set(ledger.byType('webhook').filter((e) => e.verified && e.eventId).map((e) => e.eventId));
   const inflight = new Map();
 
   function record(entry) {
-    ledger.append({ type: 'webhook', ...entry });
+    ledger.append({ type: 'webhook', ...entry }, { durable: true });
     log.info(`webhook ${entry.eventType} ${entry.resourceId} verified=${entry.verified}`);
   }
 
   async function verifyOnce(entry, headers, rawBody) {
-    if (verifiedIds.has(entry.eventId)) {
-      log.info(`webhook ${entry.eventType} ${entry.resourceId} duplicate`);
-      return;
-    }
     const { verified, verifyStatus } = await paypal.verifyWebhookSignature({ headers, rawBody, webhookId });
-    if (verified) verifiedIds.add(entry.eventId);
+    // The id is untrusted until this delivery is verified. A forged body must not inherit a prior event's status.
+    if (verified && verifiedIds.has(entry.eventId)) {
+      log.info(`webhook ${entry.eventType} ${entry.resourceId} duplicate`);
+      return { verified: true, verifyStatus: 'DUPLICATE' };
+    }
     record({ ...entry, verified, verifyStatus });
+    if (verified) verifiedIds.add(entry.eventId);
+    return { verified, verifyStatus };
   }
 
   async function handle({ rawBody, headers }) {
@@ -151,12 +154,17 @@ export function createWebhookHandler({ paypal, ledger, webhookId, log }) {
     };
     if (!entry.eventId) {
       record({ ...entry, verified: false, verifyStatus: 'BAD_BODY' });
-      return;
+      return { verified: false, verifyStatus: 'BAD_BODY' };
     }
     const before = inflight.get(entry.eventId) ?? Promise.resolve();
     const run = before.then(() => verifyOnce(entry, headers, rawBody));
-    inflight.set(entry.eventId, run.catch(() => {}));
-    await run;
+    const settled = run.catch(() => {});
+    inflight.set(entry.eventId, settled);
+    try {
+      return await run;
+    } finally {
+      if (inflight.get(entry.eventId) === settled) inflight.delete(entry.eventId);
+    }
   }
 
   function recent(limit = WEBHOOK_LIST_MAX) {
@@ -406,10 +414,12 @@ function createApi(deps) {
   async function webhookRoute(req, res) {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
     const rawBody = await readBody(req, WEBHOOK_LIMIT_BYTES);
-    send(res, 200, { ok: true });
-    setImmediate(() => {
-      webhooks.handle({ rawBody, headers: req.headers }).catch((error) => deps.log.error(`webhook handling failed ${error?.name ?? 'Error'}`));
-    });
+    // Never acknowledge before verification and ledger persistence. A transient PayPal or storage error receives
+    // a non-2xx response so the delivery can be retried. Invalid signatures are not accepted as payment evidence.
+    const result = await webhooks.handle({ rawBody, headers: req.headers });
+    if (result.verified) return send(res, 200, { ok: true });
+    const invalid = ['BAD_BODY', 'EMPTY_BODY', 'MISSING_HEADERS', 'FAILURE'].includes(result.verifyStatus);
+    return send(res, invalid ? 400 : 503, { ok: false });
   }
 
   return async function route(req, res, pathname, ip) {

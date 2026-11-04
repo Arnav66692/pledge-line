@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { createPayPal, buildVerifyBody } from '../src/paypal.js';
 import { createMockPayPal } from '../src/paypal-mock.js';
 import { createTokens } from '../src/gate.js';
@@ -82,12 +83,13 @@ test('the invoice id is read from resource.id, else resource.invoice.id', () => 
   assert.equal(resourceIdOf({}), null);
 });
 
-async function webhookServer() {
+async function webhookServer({ verify } = {}) {
   const config = loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'rules' });
   const ledger = createLedger({ path: tempLedgerPath() });
   const tokens = createTokens();
   const deliveries = [];
   const paypal = createMockPayPal({ tokens, onWebhook: (d) => { deliveries.push(d); } });
+  if (verify) paypal.verifyWebhookSignature = verify;
   const log = { info: () => {}, error: () => {} };
   const webhooks = createWebhookHandler({ paypal, ledger, webhookId: config.paypal.webhookId, log });
   const gate = createGate({ ledger, tokens });
@@ -99,7 +101,7 @@ async function webhookServer() {
   const token = tokens.mint({ callId: 'c1', pendingId: 'p1', kind: 'send_invoice', targetId: draft.id });
   await paypal.sendInvoice(draft.id, token, { callId: 'c1' });
   await paypal.mockPay(draft.id);
-  return { server, base, ledger, delivery: deliveries[0], invoiceId: draft.id };
+  return { server, base, ledger, paypal, delivery: deliveries[0], invoiceId: draft.id };
 }
 
 const post = (base, rawBody, headers) => fetch(`${base}/webhooks/paypal`, { method: 'POST', body: rawBody, headers: { 'content-type': 'application/json', ...headers } });
@@ -112,7 +114,7 @@ async function waitFor(check) {
   throw new Error('timed out waiting');
 }
 
-test('the webhook endpoint answers 200 at once, verifies, and dedupes copies of one event', async () => {
+test('the webhook endpoint verifies and persists before acknowledging, and dedupes copies', async () => {
   const { server, base, ledger, delivery, invoiceId } = await webhookServer();
   try {
     const { 'content-type': type, ...signed } = delivery.headers;
@@ -124,10 +126,12 @@ test('the webhook endpoint answers 200 at once, verifies, and dedupes copies of 
     await new Promise((resolve) => { setTimeout(resolve, 50); });
     assert.equal(ledger.byType('webhook').length, 1, 'the verified copy is kept once');
     const event = JSON.parse(delivery.rawBody.toString('utf8'));
+    const forgedDuplicate = Buffer.from(JSON.stringify({ ...event, resource: { ...event.resource, status: 'REFUNDED' } }));
+    assert.equal((await post(base, forgedDuplicate, signed)).status, 400, 'an accepted id never authenticates a changed delivery');
     const forged = Buffer.from(JSON.stringify({ ...event, id: 'WH-FORGED-1', resource: { ...event.resource, status: 'REFUNDED' } }));
-    await post(base, forged, signed);
-    await post(base, Buffer.from('not json'), signed);
-    await waitFor(() => ledger.byType('webhook').length === 3);
+    assert.equal((await post(base, forged, signed)).status, 400);
+    assert.equal((await post(base, Buffer.from('not json'), signed)).status, 400);
+    await waitFor(() => ledger.byType('webhook').length === 4);
     const list = (await (await fetch(`${base}/api/webhooks`)).json()).webhooks;
     const paid = list.find((w) => w.eventId === event.id);
     assert.equal(paid.verified, true);
@@ -139,4 +143,91 @@ test('the webhook endpoint answers 200 at once, verifies, and dedupes copies of 
   } finally {
     server.close();
   }
+});
+
+test('a transient verification failure is retriable and never acknowledged as paid', async () => {
+  const { server, base, ledger, delivery } = await webhookServer({ verify: async () => ({ verified: false, verifyStatus: 'ERROR_TIMEOUT' }) });
+  try {
+    const response = await post(base, delivery.rawBody, delivery.headers);
+    assert.equal(response.status, 503);
+    assert.equal(ledger.byType('webhook')[0].verified, false);
+  } finally {
+    server.close();
+  }
+});
+
+test('the endpoint does not acknowledge while signature verification is pending', async () => {
+  let begin;
+  let finish;
+  const started = new Promise((resolve) => { begin = resolve; });
+  const verified = new Promise((resolve) => { finish = resolve; });
+  const { server, base, ledger, delivery } = await webhookServer({ verify: async () => { begin(); return verified; } });
+  try {
+    let acknowledged = false;
+    const request = post(base, delivery.rawBody, delivery.headers).then((response) => { acknowledged = true; return response; });
+    await started;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(acknowledged, false);
+    assert.equal(ledger.byType('webhook').length, 0);
+    finish({ verified: true, verifyStatus: 'SUCCESS' });
+    assert.equal((await request).status, 200);
+    assert.equal(ledger.byType('webhook')[0].verified, true);
+  } finally {
+    finish({ verified: false, verifyStatus: 'ERROR_TEST' });
+    server.close();
+  }
+});
+
+test('a verified retry after restart uses the existing ledger entry', async () => {
+  const { server, base, ledger, paypal, delivery } = await webhookServer();
+  try {
+    assert.equal((await post(base, delivery.rawBody, delivery.headers)).status, 200);
+    const restartedLedger = createLedger({ path: ledger.path });
+    const restarted = createWebhookHandler({ paypal, ledger: restartedLedger, webhookId: 'WH-MOCK-WEBHOOK', log: { info() {}, error() {} } });
+    const result = await restarted.handle(delivery);
+    assert.equal(result.verified, true);
+    assert.equal(restartedLedger.byType('webhook').length, 1);
+  } finally {
+    server.close();
+  }
+});
+
+test('a storage failure does not mark an event as accepted', async () => {
+  let writes = 0;
+  const ledger = { byType: () => [], append: () => { writes += 1; throw new Error('disk unavailable'); } };
+  const handler = createWebhookHandler({ paypal: { verifyWebhookSignature: async () => ({ verified: true, verifyStatus: 'SUCCESS' }) }, ledger, webhookId: 'WH', log: { info() {}, error() {} } });
+  const delivery = { rawBody: Buffer.from('{"id":"event-1"}'), headers: {} };
+  await assert.rejects(handler.handle(delivery), /disk unavailable/);
+  await assert.rejects(handler.handle(delivery), /disk unavailable/);
+  assert.equal(writes, 2, 'failed persistence does not add the event to deduplication');
+});
+
+test('a torn ledger tail cannot swallow a later acknowledged event on restart', () => {
+  const file = tempLedgerPath();
+  const ledger = createLedger({ path: file });
+  ledger.append({ type: 'call_start', callId: 'before' });
+  fs.appendFileSync(file, '{"type":"torn');
+  const afterCrash = createLedger({ path: file });
+  afterCrash.append({ type: 'webhook', eventId: 'event-1', verified: true }, { durable: true });
+  const afterRestart = createLedger({ path: file });
+  assert.equal(afterRestart.byType('webhook')[0].eventId, 'event-1');
+  assert.equal(afterRestart.byType('call_start').length, 1);
+});
+
+test('a partial failed write cannot swallow a retry in the same process', () => {
+  const file = tempLedgerPath();
+  const ledger = createLedger({ path: file });
+  ledger.append({ type: 'call_start', callId: 'before' });
+  const write = fs.writeFileSync;
+  try {
+    fs.writeFileSync = (fd, data, ...options) => {
+      write(fd, String(data).slice(0, 12), ...options);
+      throw new Error('partial write');
+    };
+    assert.throws(() => ledger.append({ type: 'webhook', eventId: 'failed', verified: true }, { durable: true }), /partial write/);
+  } finally {
+    fs.writeFileSync = write;
+  }
+  ledger.append({ type: 'webhook', eventId: 'retried', verified: true }, { durable: true });
+  assert.equal(createLedger({ path: file }).byType('webhook')[0].eventId, 'retried');
 });
