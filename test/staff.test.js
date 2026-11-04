@@ -72,6 +72,17 @@ test('every staff route and file is a 404 when STAFF_KEY is unset', async () => 
   assert.equal((await fetch(`${off.base}/`)).status, 200);
 });
 
+test('donor navigation only links to staff when the view is enabled', async () => {
+  for (const path of ['/', '/index.html', '/%69ndex.html?from=demo']) {
+    const hidden = await (await fetch(`${off.base}${path}`)).text();
+    const visible = await (await fetch(`${on.base}${path}`)).text();
+    assert.equal((hidden.match(/href="\/staff"/g) ?? []).length, 0, path);
+    assert.equal((visible.match(/href="\/staff"/g) ?? []).length, 2, path);
+    assert.ok(hidden.includes('href="#workspace"'), 'other navigation remains available');
+    assert.ok(!visible.includes(STAFF_KEY), 'the key is never added to the page');
+  }
+});
+
 test('a wrong, short, long or missing key gets 401', async () => {
   for (const key of [null, '', 'nope', `${STAFF_KEY}x`, STAFF_KEY.slice(0, -1), STAFF_KEY.toUpperCase()]) {
     for (const path of ['/api/staff/calls', `/api/staff/calls/${callId}`]) {

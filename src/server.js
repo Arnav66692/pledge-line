@@ -270,12 +270,16 @@ export function isReceiptFile(file, webDir = WEB_DIR) {
   return parts.length === 1 && RECEIPT_FILES.has(parts[0].toLowerCase());
 }
 
-function serveFile(res, file) {
+function serveFile(res, file, { hideStaffLinks = false } = {}) {
   fs.stat(file, (statError, stat) => {
     if (statError || !stat.isFile()) return send(res, 404, { error: 'Not found.' });
     fs.readFile(file, (readError, data) => {
       if (readError) return send(res, 500, { error: 'Something went wrong on our side.' });
-      send(res, 200, data, STATIC_TYPES[path.extname(file)]);
+      // Render the donor navigation on the server. It stays correct without JavaScript and never sends the key.
+      const body = hideStaffLinks
+        ? data.toString('utf8').replace(/<!-- staff-only:start -->[\s\S]*?<!-- staff-only:end -->/g, '')
+        : data;
+      send(res, 200, body, STATIC_TYPES[path.extname(file)]);
     });
   });
 }
@@ -287,7 +291,8 @@ function serveStatic(req, res, webDir, staffOn, receiptsOn) {
   // Checked on the resolved file, so an encoded path such as /%73taff.js can't reach it either.
   if (!staffOn && isStaffFile(file, webDir)) return send(res, 404, { error: 'Not found.' });
   if (!receiptsOn && isReceiptFile(file, webDir)) return send(res, 404, { error: 'Not found.' });
-  serveFile(res, file);
+  const donorPage = path.relative(webDir, file).toLowerCase() === 'index.html';
+  serveFile(res, file, { hideStaffLinks: donorPage && !staffOn });
 }
 
 /**
