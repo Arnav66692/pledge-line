@@ -113,6 +113,35 @@ test('a number that is not clearly the gift asks a short question and creates no
   }
 });
 
+test('a past donation and a request to give again asks which gift, regardless of the router intent', async () => {
+  const line = 'I donated last year and want to give twenty five dollars now';
+  assert.equal(rulesRoute(line).intent, 'unclear');
+  const choices = [null, ...['gift_status', 'one_time_gift', 'unclear'].map((intent) =>
+    geminiSays(() => ({ intent, amount_dollars: 25 })))];
+  for (const router of choices) {
+    const stack = router ? buildStack({ router }) : buildStack();
+    const callId = await verifiedCall(stack);
+    const { reply } = await say(stack, callId, line);
+    assert.equal(reply, 'Would you like to check your gift or make a new one-time gift?');
+    assert.deepEqual(eventsOf(stack, callId, 'staging_write'), []);
+    assert.deepEqual(eventsOf(stack, callId, 'write'), []);
+    assert.deepEqual(eventsOf(stack, callId, 'read'), []);
+    assert.deepEqual(checkFacts(stack.ledger.byCall(callId), { subscriptionId: stack.config.demoSubscriptionId }), []);
+  }
+});
+
+test('a mixed request sets a pending action aside before asking for clarification', async () => {
+  const stack = buildStack();
+  const callId = await verifiedCall(stack);
+  await say(stack, callId, 'Pause my gift.');
+  const { reply, state } = await say(stack, callId, 'I donated last year and want to give twenty five dollars now');
+  assert.match(reply, /Would you like to check your gift or make a new one-time gift\?/);
+  assert.equal(state.pending, null);
+  await say(stack, callId, 'Yes.');
+  assert.deepEqual(eventsOf(stack, callId, 'write'), []);
+  assert.deepEqual(eventsOf(stack, callId, 'staging_write'), []);
+});
+
 test('whatever Gemini returns, a number that is not clearly the gift asks and creates nothing', async () => {
   for (const [line, slip, why] of NOT_THE_GIFT) {
     const stack = buildStack({ router: geminiSays(() => ({ intent: 'one_time_gift', amount_dollars: slip })) });

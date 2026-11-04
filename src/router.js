@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { EMPATHY_PHRASES, asksForAmount } from './say.js';
-import { parseAmountDollars, readGift, aboutExistingGift, opensGift } from './amount.js';
+import { parseAmountDollars, readGift, aboutExistingGift, opensGift, mixedGiftRequest } from './amount.js';
 
 export { parseAmountDollars, amountConflict, readGift, aboutExistingGift, settleGiftRoute } from './amount.js';
 
@@ -43,6 +43,7 @@ const rulesText = (text) => String(text ?? '').toLowerCase().replace(/[‘’]/g
  * amount.js says it is clearly the gift, so "I'm 75" never is, and a question about the gift she has reads that gift.
  */
 export function rulesRoute(text, state = {}) {
+  if (mixedGiftRequest(text)) return { intent: 'unclear', amountDollars: 0, clarifyGift: true };
   const t = rulesText(text);
   const reading = readGift(text, { answersQuestion: asksForAmount(state?.lastSaid) });
   const amountDollars = reading.amount;

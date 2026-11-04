@@ -10,11 +10,11 @@ export const TEMPLATE_WORDS = Object.freeze([
   'follow', 'for', 'from', 'fund', 'get', 'gift', 'give', 'given', 'go', 'good', 'goodbye', 'guess', 'hard',
   'hardship', 'has', 'have', 'hear', 'help', 'here', 'hold', 'holds', 'hours', 'how', 'i', "i'm", "i've",
   'if', 'in', 'instead', 'invoice', 'is', "isn't", 'it', 'its', 'just', 'keep', 'keypad', 'last', 'later',
-  'latest', 'like', 'limit', 'line', 'link', 'locked', 'longer', 'look', 'looking', 'lot', 'many', 'match',
-  'me', 'means', 'minute', 'money', 'month', 'monthly', 'more', 'move', 'moved', 'moves', 'much', 'need',
-  'never', 'new', 'next', 'no', 'not', 'noted', 'nothing', 'now', 'number', 'of', 'ok', 'old', 'on', 'once',
-  'only', 'open', 'or', 'out', 'pass', 'pause', 'pausing', 'pay', 'payment', 'paypal', "paypal's", 'pin',
-  'pins', 'please', 'reached', 'read', 'real', 'recent', 'recognize', 'record', 'refund', 'request',
+  'latest', 'like', 'limit', 'line', 'link', 'locked', 'longer', 'look', 'looking', 'lot', 'make', 'many',
+  'match', 'me', 'means', 'minute', 'money', 'month', 'monthly', 'more', 'move', 'moved', 'moves', 'much',
+  'need', 'never', 'new', 'next', 'no', 'not', 'noted', 'nothing', 'now', 'number', 'of', 'ok', 'old', 'on',
+  'once', 'only', 'open', 'or', 'out', 'pass', 'pause', 'pausing', 'pay', 'payment', 'paypal', "paypal's",
+  'pin', 'pins', 'please', 'reached', 'read', 'real', 'recent', 'recognize', 'record', 'refund', 'request',
   'restart', 'restarting', 'return', 'right', 'safe', 'safety', 'same', 'sandbox', 'say', 'see', 'send',
   'set', 'shorter', 'should', 'shows', 'since', 'so', 'something', 'sorry', 'sponsor', "sponsor's", 'staff',
   'start', 'status', 'stays', 'still', 'stop', 'take', 'taken', 'tell', 'than', 'thank', 'thanks', 'that',
@@ -176,6 +176,7 @@ export const TEMPLATE_SENTENCES = Object.freeze([
   'What would you like to do?',
   'Would you like me to ask staff?',
   'Would you like me to pause it?',
+  'Would you like to check your gift or make a new one-time gift?',
   'You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift.',
   'You can ask me to pause your monthly gift instead.',
   'You can restart it any time.',
@@ -271,4 +272,4 @@ export const TEMPLATE_CLAIMS = Object.freeze({
 });
 
 // The hash call_start logs, so pilot-check holds each call to the list it was spoken with (R4-2).
-export const TEMPLATE_HASH = '9baf860638c0';
+export const TEMPLATE_HASH = '8d845a57f47f';

@@ -94,7 +94,7 @@ Added Tue Nov 3 on the `feat/self-resolving` branch, to merge only after the pil
 
 The other things a caller can be told no about, such as a new email or a wrong PIN, are rules working and don't show here. With no read after a fault, "now" says the line can't say what PayPal shows, or names the older read it points at, and never a status no read gave. No row carries a token, a PayPal id or the sponsor's hold.
 
-`run` labels a mock call or a dry run, and `FAULT_DRILL` labels a fault drill, from what `call_start` logged. `src/fault-drill.js` stages one fault on the mock, once, and `loadConfig` refuses it in any other mode. A real sandbox call gets no label. `web/app.js` draws the timeline with `textContent` only, on the gift cards' surface, and its gap timing code did not change. It was checked at 1440 and 375 px, in dark and light. The staff view does not show it yet.
+`run` labels a mock call or a dry run, and `FAULT_DRILL` labels a fault drill, from what `call_start` logged. `src/fault-drill.js` stages a fault on the mock at most once per call, and `loadConfig` refuses it in any other mode. A real sandbox call gets no label. `web/app.js` draws the timeline with `textContent` only, on the gift cards' surface, and its gap timing code did not change. It was checked at 1440 and 375 px, in dark and light. The staff view does not show it yet.
 
 ## A question when an amount is unclear
 
