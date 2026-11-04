@@ -137,11 +137,6 @@
     return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
   };
 
-  function shownText(text, source) {
-    if (source === 'keypad') return '•'.repeat(Math.min(text.length, PIN_MAX));
-    return state.verified ? text : text.replace(/\d/g, '•');
-  }
-
   // ---- Script picker ----
 
   const drillKeyOf = (value) => (String(value ?? '').startsWith(DRILL_PREFIX) ? String(value).slice(DRILL_PREFIX.length) : null);
@@ -535,12 +530,18 @@
     }
   }
 
-  async function refreshEvents(callId = state.callId) {
+  async function refreshEvents(callId = state.callId, transcriptTurn = null) {
     if (!callId) return;
     try {
       const data = await api(`/api/calls/${callId}`);
       // A page that moved on to a new call keeps that call's view.
       if (callId !== state.callId) return;
+      // Never display raw input: the server has the PIN and masks it before recording a heard event.
+      // Until that event arrives, keep the neutral placeholder rather than revealing an interim transcript.
+      if (transcriptTurn !== null) {
+        const heard = listOf(data.events).find((e) => e.type === 'heard' && e.turn === transcriptTurn);
+        if (heard) els.transcript.textContent = heard.source === 'keypad' ? 'PIN entered.' : heard.text;
+      }
       renderReceipts(data.receipts);
       renderRecovery(data.recovery);
       // The card shows the call's latest gift read, so its time comes from that read, spoken or not.
@@ -688,7 +689,7 @@
     const clean = text.trim();
     if (!clean || !canSend() || state.busy) return;
     const callId = state.callId;
-    els.transcript.textContent = shownText(clean, source);
+    els.transcript.textContent = source === 'keypad' ? 'PIN entered.' : 'Checking what you said…';
     setBusy(true);
     try {
       const data = await api(`/api/calls/${callId}/turn`, { text: clean, source, answering: state.lastTurn });
@@ -697,7 +698,7 @@
       applyState(data.state);
       const muted = isMuted();
       speak(data.reply, (played) => logGap(callId, data.turn, startedAt, source, muted, played));
-      await refreshEvents(callId);
+      await refreshEvents(callId, data.turn);
     } catch (error) {
       els.status.textContent = error.message;
     } finally {
@@ -741,7 +742,8 @@
         else interim += result[0].transcript;
       }
       session.interimText = interim;
-      els.transcript.textContent = shownText(`${session.finalText}${interim}`.trim(), 'voice');
+      // Interim recognition can contain a PIN before we know its full form. Do not render it.
+      els.transcript.textContent = 'Listening…';
     };
     rec.onerror = (event) => {
       session.error = event.error;
