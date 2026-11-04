@@ -121,8 +121,9 @@ html.header-away .logo { opacity: 1; transform: none; pointer-events: auto; }
   transition: transform 0.53s var(--power3);
   transition-delay: calc(var(--i, 0) * 14ms);
 }
+/* The roll's second word is clipped to its own box, so its resting position never shows under the link. */
 .nav-item__b {
-  position: absolute; left: 0.8rem; top: 0.65rem;
+  position: absolute; inset: 0; padding: 0.65rem 0.8rem; overflow: hidden;
   font-family: var(--serif); font-size: 1.25rem; line-height: 0.95;
   color: var(--blue-ink);
 }
@@ -506,7 +507,8 @@ button:disabled { cursor: not-allowed; }
   .events { max-height: none; overflow: visible; }
 }
 @media (max-width: 1199px) {
-  .ws { grid-template-columns: repeat(8, minmax(0, 1fr)); column-gap: 16px; padding: 6.6rem 32px 8rem; }
+  /* Two columns: the receipts card stretches to the height of the call, so the white ground has no gap beside it. */
+  .ws { grid-template-columns: repeat(8, minmax(0, 1fr)); column-gap: 16px; padding: 6.6rem 32px 8rem; align-items: stretch; }
   .record { grid-column: 1 / -1; }
 }
 @media (max-width: 767px) {
