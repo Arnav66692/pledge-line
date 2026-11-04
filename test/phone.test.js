@@ -566,3 +566,53 @@ test('the pilot scripts route the same by phone as typed, and each one passes it
   }
   assert.ok(byPhone.deps.ledger.byType('call_start').every((e) => e.script === null && e.channel === 'phone'));
 });
+
+// ---- Found by the attack pass ----
+
+test('signed webhooks saved from one call and replayed after a restart never pass the PIN or reach a write', async () => {
+  const first = await serve();
+  const caller = first.phone();
+  const inProgress = (extra) => ({ ...caller.standard('in-progress'), ...extra });
+  await caller.dial();
+  const saved = [[caller.action, inProgress({ Digits: PIN, FinishedOnKey: '#' })]];
+  await caller.press(PIN);
+  saved.push([caller.action, inProgress({ SpeechResult: 'I want to stop my monthly gift.', Confidence: '0.92' })]);
+  await caller.say('I want to stop my monthly gift.');
+  saved.push([caller.action, inProgress({ SpeechResult: 'Yes.', Confidence: '0.92' })]);
+  await caller.say('Yes.');
+  assert.equal(first.deps.ledger.byType('write').length, 1, 'the real call wrote once');
+
+  // The same token, a new process, and no memory of the call. Each webhook goes twice, and the clock runs past every floor.
+  const second = await serve();
+  const replayer = second.phone();
+  for (const [url, fields] of [saved[0], ...saved]) {
+    second.clock.advance(60000);
+    const res = await replayer.post(url, fields);
+    assert.equal(res.status, 200);
+    assert.ok(parseTwiml(res.text).spoken.startsWith(AUTOMATED), 'each one only gets the greeting');
+  }
+  assert.equal(second.deps.ledger.byType('pin_ok').length, 0);
+  assert.equal(second.deps.ledger.byType('proposed').length, 0);
+  assert.equal(second.deps.ledger.byType('write').length, 0);
+  assert.equal(second.deps.ledger.byType('heard').length, 0, 'none of them is a turn');
+});
+
+test('a late webhook for a call the sweep has forgotten hangs up in silence, not with an error Twilio reads out', async () => {
+  const { deps, clock, fake } = await verifiedPhone();
+  const late = fake.action;
+  await fake.hangUp();
+  clock.advance(LIMITS.callIdleMs + 1000);
+  await deps.calls.sweep();
+  const res = await fake.post(late, { ...fake.standard('in-progress'), SpeechResult: 'Yes.', Confidence: '0.92' });
+  assert.equal(res.status, 200);
+  const doc = parseTwiml(res.text);
+  assert.equal(doc.spoken, '');
+  assert.equal(doc.hangup, true);
+  assert.equal(deps.ledger.byType('write').length, 0);
+});
+
+test('the Gather asks for input in the form Twilio lists', async () => {
+  const { phone } = await serve();
+  const doc = await phone().dial();
+  assert.equal(doc.gather.input, 'dtmf speech');
+});

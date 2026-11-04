@@ -1,7 +1,7 @@
 // A real phone number for the line. Twilio posts a webhook for each thing the caller does, and this file turns each one
 // into a turn in call.js, then speaks what call.js returned as TwiML. No words are written here, so the gate, the
 // templates and the grader are the same as in the browser. TWILIO-SETUP.md has the steps and the prices.
-import { createHmac, createHash, timingSafeEqual } from 'node:crypto';
+import { createHmac, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const VOICE_PATH = '/phone/voice';
 const TURN_PATH = '/phone/turn';
@@ -21,6 +21,7 @@ const DIGITS_MAX = 32;
 const SESSION_MAX_AGE_MS = 3600000;
 const SESSIONS_MAX = 2000;
 const CALLER_KEY_CHARS = 32;
+const CALL_KEY_BYTES = 16;
 
 // How long the line waits, in seconds. A proposal gets a fixed speech pause, not auto, which stops at the first pause,
 // so "yes... wait, no" reaches the gate whole and is not a yes. A PIN said aloud gets time between its digits.
@@ -90,6 +91,7 @@ export function createPhoneLine({ config, calls, log, monotonic = () => performa
   const sessions = new Map();
   const { voice, authToken } = config.phone;
   const urlFor = (path) => signedUrl(config.publicBaseUrl, path);
+  const turnUrl = (turn, callKey) => urlFor(`${TURN_PATH}?turn=${turn}&call=${callKey}`);
 
   const say = (text) => `<Say voice="${xml(voice)}">${xml(text)}</Say>`;
 
@@ -97,13 +99,14 @@ export function createPhoneLine({ config, calls, log, monotonic = () => performa
    * The line's reply as TwiML. The rule that matters is where the <Say> goes. While a proposal waits for a yes it sits
    * before an empty <Gather>, so the line isn't listening until the whole read-back has been spoken, and a yes said over
    * it is never heard (I1, I6). Everything else sits inside the <Gather>, so a caller can key the PIN over the greeting.
-   * The action URL names the turn being answered, Twilio signs it, and it keys the retry cache.
+   * The action URL names the turn being answered, Twilio signs it, and it keys the retry cache. It also carries this
+   * call's random key, so a signed webhook saved from before a restart can't walk a new call through the PIN and a yes.
    */
-  function twimlFor({ reply, turn, state }) {
+  function twimlFor({ reply, turn, state }, callKey) {
     if (state.ended || state.locked) return doc(`${say(reply)}<Hangup/>`);
-    const action = xml(urlFor(`${TURN_PATH}?turn=${turn}`));
+    const action = xml(turnUrl(turn, callKey));
     const { timeout, speechTimeout } = waitFor(state);
-    const attrs = `input="speech dtmf" action="${action}" method="POST" timeout="${timeout}" speechTimeout="${speechTimeout}" language="en-US" finishOnKey="#" actionOnEmptyResult="true"`;
+    const attrs = `input="dtmf speech" action="${action}" method="POST" timeout="${timeout}" speechTimeout="${speechTimeout}" language="en-US" finishOnKey="#" actionOnEmptyResult="true"`;
     // Without hints, since a hint of "yes" would pull an unclear word toward the one word that changes something.
     const gather = state.pending ? `${say(reply)}<Gather ${attrs}/>` : `<Gather ${attrs}>${say(reply)}</Gather>`;
     return doc(`${gather}<Redirect method="POST">${action}</Redirect>`);
@@ -129,7 +132,8 @@ export function createPhoneLine({ config, calls, log, monotonic = () => performa
     }
     prune();
     const started = calls.start({ channel: 'phone', phoneSid: sid, userAgent: 'twilio', clientKey: key });
-    const session = { callId: started.callId, results: new Map(), startTwiml: twimlFor(started), lastSeen: wallClock() };
+    const callKey = randomBytes(CALL_KEY_BYTES).toString('hex');
+    const session = { callId: started.callId, callKey, results: new Map(), startTwiml: twimlFor(started, callKey), lastSeen: wallClock() };
     sessions.set(sid, session);
     return { twiml: session.startTwiml };
   }
@@ -150,8 +154,9 @@ export function createPhoneLine({ config, calls, log, monotonic = () => performa
     const key = String(turn);
     if (session.results.has(key)) return session.results.get(key);
     const { text, source, silent } = callerInput(fields);
-    const run = calls.turn(session.callId, { text, source, silent, answering: turn }, { receivedAt, spoken: true })
-      .then(twimlFor)
+    // In a new Promise, so a call the sweep already forgot ends in the catch below and not in a JSON error Twilio would read out.
+    const run = new Promise((resolve) => { resolve(calls.turn(session.callId, { text, source, silent, answering: turn }, { receivedAt, spoken: true })); })
+      .then((result) => twimlFor(result, session.callKey))
       .catch(async (error) => {
         // Only the name, since a message could hold what the caller said. The call ends rather than speak words of ours.
         log.error(`phone turn failed ${error?.name ?? 'Error'}`);
@@ -163,7 +168,7 @@ export function createPhoneLine({ config, calls, log, monotonic = () => performa
   }
 
   /** The turn's TwiML, or a silent hold that comes back for it, so a slow turn doesn't hit Twilio's 15 seconds. */
-  async function withinBudget(run, turn, wait) {
+  async function withinBudget(run, turn, callKey, wait) {
     let timer;
     const late = new Promise((resolve) => {
       timer = setTimeout(() => resolve(null), wait);
@@ -173,7 +178,7 @@ export function createPhoneLine({ config, calls, log, monotonic = () => performa
     clearTimeout(timer);
     if (done !== null) return done;
     log.info('phone turn on hold');
-    return doc(`<Pause length="${HOLD_PAUSE_SECONDS}"/><Redirect method="POST">${xml(urlFor(`${TURN_PATH}?turn=${turn}&hold=1`))}</Redirect>`);
+    return doc(`<Pause length="${HOLD_PAUSE_SECONDS}"/><Redirect method="POST">${xml(`${turnUrl(turn, callKey)}&hold=1`)}</Redirect>`);
   }
 
   async function voiceHook(fields) {
@@ -203,8 +208,10 @@ export function createPhoneLine({ config, calls, log, monotonic = () => performa
     // A restart loses the calls in memory, so whatever this webhook carries, a yes or a PIN, starts over with the greeting.
     if (!session) return { status: 200, twiml: startCall(fields).twiml };
     session.lastSeen = wallClock();
+    // Signed, but not for this call as it now stands, so it is a saved webhook or one from before a restart. Never a turn.
+    if (query.get('call') !== session.callKey) return { status: 200, twiml: session.startTwiml };
     const run = runOnce(session, sid, turn, fields, receivedAt);
-    return { status: 200, twiml: await withinBudget(run, turn, query.has('hold') ? holdBudgetMs : budgetMs) };
+    return { status: 200, twiml: await withinBudget(run, turn, session.callKey, query.has('hold') ? holdBudgetMs : budgetMs) };
   }
 
   async function statusHook(fields) {
