@@ -69,6 +69,7 @@ export const TEMPLATE_RENDERS = Object.freeze({
   noSubscription: () => [say.noSubscription()],
   noEmail: () => [say.noEmail()],
   amountOutOfRange: () => [say.amountOutOfRange(LIMITS.invoiceMinDollars, LIMITS.invoiceMaxDollars)],
+  askAmount: () => [say.askAmount()],
   amountForFile: () => [say.amountForFile()],
   nothingPending: () => [say.nothingPending()],
   needYesOrNo: () => [say.needYesOrNo()],

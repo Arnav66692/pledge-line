@@ -20,9 +20,11 @@ export const HIDDEN_EMAIL = 'an email address, hidden';
 
 // The fields each event type may show, beside type, seq, ts and turn. Anything else is dropped.
 const FIELDS = Object.freeze({
-  call_start: ['script', 'browser', 'engine', 'mode', 'timeZone', 'orgName', 'subscriptionId', 'templates', 'dryRun', 'drill'],
+  call_start: ['script', 'browser', 'engine', 'mode', 'timeZone', 'orgName', 'subscriptionId', 'templates', 'dryRun', 'drill', 'faultDrill'],
   heard: ['source', 'answering', 'arrivedAfter', 'afterReplyMs'],
   route: ['intent', 'amountDollars', 'latencyMs', 'model', 'error'],
+  // Code set the router's amount aside, and why. The caller's words are on the heard event, under its own rules.
+  amount_unclear: ['why', 'intent', 'routerIntent', 'routerAmount', 'namedDollars'],
   read: ['what', 'id', 'status', 'debugId', 'ms', 'notFound', 'error'],
   proposed: ['pendingId', 'kind', 'targetId', 'origin'],
   yes: ['pendingId'],
@@ -127,7 +129,8 @@ export function summarizeCall(events, config, receipts = buildReceipts(events, r
     browser: start.browser ?? 'other',
     verified: events.some((e) => e.type === 'pin_ok'),
     locked: events.some((e) => e.type === 'pin_locked'),
-    intents: unique(events.filter((e) => e.type === 'route' && typeof e.intent === 'string').map((e) => e.intent)),
+    // What the line acted on, so a question code sent to the gift's status never reads as a one-time gift.
+    intents: unique(events.filter((e) => e.type === 'route' && typeof e.intent === 'string').map((e) => events.find((u) => u.type === 'amount_unclear' && u.turn === e.turn)?.intent ?? e.intent)),
     writes: writesOf(events),
     refusals: unique(events.filter((e) => e.type === 'refused').map((e) => e.reason)),
     paypalNow: paypalNow(events),

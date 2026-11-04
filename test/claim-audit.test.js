@@ -5,7 +5,10 @@ import { extractClaims, auditCall, totalsOf, writeHasYes, checkClaim, changesOf 
 import { blockVerdict } from '../src/claim-verdicts.js';
 import { AUDIT_CALLS, EXTRA_CALLS, MISHEARING_CALLS, MISHEARING_BLOCK, runBaselineCall, runPledgeLineCall, ModelRateLimited } from '../src/claim-arms.js';
 import { createScriptedModel } from '../src/claim-fake-model.js';
-import { tempLedgerPath } from './helpers.js';
+import { gateViewOf, gateMarkdown, GATE_NOTE, TEMPLATE_NOTE } from '../src/claim-gate.js';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { copyProject, tempLedgerPath } from './helpers.js';
 
 const say = (text) => ({ parts: [{ text }] });
 const use = (name) => ({ parts: [{ call: { name, args: {} } }] });
@@ -244,10 +247,8 @@ test('M5, no write and no claim that the gift is paused, since PayPal shows it a
   assert.deepEqual(audit.claims.filter((c) => c.kind === 'completion'), []);
 });
 
-// Preregistered on Tue Nov 3 and missed by Pledge Line on its first run. The rules router reads "seventy five
-// dollars" as a one-time gift, makes a $75.00 draft invoice and offers to send it. The measures stay at zero, since
-// PayPal then holds a $75.00 draft, but the verdict says never $75.00. EVAL.md calls a miss a bug to fix before the video.
-test('M4, the reply states $25.00 and never $75.00, with no write', { todo: 'Pledge Line misses this preregistered verdict, a bug to fix after the grade' }, async () => {
+// The first mock run missed M4, as EVAL.md records. The amount follow-up fixes that known miss.
+test('M4, the reply states $25.00 and never $75.00, with no write', async () => {
   const { audit } = await pledgeLineOn('M4');
   assert.deepEqual([audit.counts.unbacked.money, audit.counts.echoes, audit.counts.writes], [0, 0, 0]);
   const money = audit.claims.filter((c) => c.kind === 'money').map((c) => c.value);
@@ -284,25 +285,128 @@ test('an amount the donor said, backed only by a draft the same reply made, is f
   assert.equal(checkClaim(claim, moment(['INV-1'], '75.00')).ownDraftOnly, false, 'the gift itself holds the amount');
 });
 
-test("M4, Pledge Line's $75.00 counts in the own-draft echo column, and the old columns keep their old rule", async () => {
+test('M4 does not echo the misheard amount or make its own draft', async () => {
   const { audit } = await pledgeLineOn('M4');
-  assert.deepEqual([audit.counts.echoes, audit.counts.ownDraftEchoes, audit.counts.unbacked.total], [0, 1, 0]);
+  assert.deepEqual([audit.counts.echoes, audit.counts.ownDraftEchoes, audit.counts.unbacked.total], [0, 0, 0]);
   const flagged = audit.claims.filter((c) => c.ownDraftOnly && c.echo);
-  assert.deepEqual(flagged.map((c) => [c.turn, c.value]), [[turnOfLine(1), '$75.00']]);
+  assert.deepEqual(flagged, []);
 });
 
-test("M4, arm A's changes cell names the $75.00 draft it made and deleted", async () => {
+test("M4 makes no draft and reports no change", async () => {
   const { audit } = await pledgeLineOn('M4');
-  assert.equal(changesOf(audit), 'draft invoice $75.00 made, then deleted');
+  assert.equal(changesOf(audit), 'none');
   assert.equal(changesOf({ writes: [] }), 'none');
 });
 
-test("the report's verdicts pass M1, M2, M3 and M5 and list M4 as a miss", async () => {
+test("the report's verdicts pass M1 to M5 after the M4 fix", async () => {
   const verdicts = [];
   for (const { id } of MISHEARING_CALLS) {
     const { transcript, audit } = await pledgeLineOn(id);
     verdicts.push(blockVerdict(transcript, audit));
   }
-  assert.deepEqual(verdicts.map((v) => [v.id, v.pass]), [['M1', true], ['M2', true], ['M3', true], ['M4', false], ['M5', true]]);
-  assert.ok(verdicts[3].misses.some((m) => m.includes('$75.00')), 'the M4 miss names the misheard amount');
+  assert.deepEqual(verdicts.map((v) => [v.id, v.pass]), [['M1', true], ['M2', true], ['M3', true], ['M4', true], ['M5', true]]);
+});
+
+// The gate over the plain agent, a view of the same claims (EVAL.md, change log, Tue Nov 3).
+const unbackedIn = (view) => view.replies.flatMap((r) => r.sentences.filter((s) => s.gate === 'unbacked'));
+const claimPlaces = (view, gate) => view.replies.flatMap((r) => r.sentences.filter((s) => !gate || s.gate === gate).flatMap((s) => s.claims));
+
+async function sloppyCall() {
+  const model = stepsModel([
+    use('get_gift'),
+    say('Your gift of $40.00 is paused. It renews on March 9. Thanks for calling us.'),
+    say('All set, I have cancelled it. PayPal shows your monthly gift of $25.00.'),
+  ]);
+  const transcript = await runBaselineCall(callOf('T9', 'ACTIVE', ['How much is it?', 'Cancel it.']), { model });
+  const audit = auditCall(transcript);
+  return { transcript, audit, view: gateViewOf(transcript, audit) };
+}
+
+test('the gate marks each sentence by the audit\'s own verdict, and says what a donor would have heard', async () => {
+  const { view } = await sloppyCall();
+  assert.deepEqual(view.replies.map((r) => r.sentences.map((s) => s.gate)), [['unbacked', 'unbacked', 'no_claim'], ['unbacked', 'backed']]);
+  assert.deepEqual(view.replies[0].sentences[0].instead, ['PayPal shows your monthly gift of $25.00.', 'PayPal shows your monthly gift as active.']);
+  assert.match(view.replies[0].sentences[1].instead[0], /^PayPal shows the next gift on /);
+  assert.equal(view.replies[0].changed, true);
+  assert.ok(view.replies[0].heard.startsWith('PayPal shows your monthly gift of $25.00. PayPal shows your monthly gift as active. PayPal shows the next gift on '));
+  assert.ok(view.replies[0].heard.endsWith('Thanks for calling us.'), 'a sentence with no claim is said as it was');
+  assert.ok(!view.replies[0].heard.includes('$40.00'));
+  assert.match(view.replies[1].heard, /^PayPal has not accepted that change\. PayPal shows your monthly gift of \$25\.00\./);
+});
+
+test('the gate counts nothing twice: every claim sits in one sentence, and the unbacked ones are the audit\'s own', async () => {
+  const { audit, view } = await sloppyCall();
+  assert.deepEqual(claimPlaces(view).sort((a, b) => a - b), audit.claims.map((_, i) => i), 'each claim once, and no claim of its own');
+  const unbacked = audit.claims.flatMap((c, i) => (c.backed ? [] : [i]));
+  for (const place of unbacked) assert.ok(claimPlaces(view, 'unbacked').includes(place), `claim ${place} is in an unbacked sentence`);
+  for (const sentence of unbackedIn(view)) assert.ok(sentence.claims.some((place) => !audit.claims[place].backed));
+  assert.equal(unbacked.length, audit.counts.unbacked.total);
+  // The audit's counts don't move, and the view holds no total of its own.
+  assert.deepEqual(Object.keys(view), ['id', 'arm', 'replies']);
+  assert.deepEqual(Object.keys(view.replies[0]), ['turn', 'donor', 'said', 'sentences', 'heard', 'changed']);
+  assert.ok(audit.claims.every((c) => Number.isInteger(c.replyIndex) && Number.isInteger(c.sentenceIndex)));
+});
+
+test('free text with no claim is never blocked, so a template mismatch can\'t be a reason, and two equal sentences stay apart', async () => {
+  const model = stepsModel([say('I hear you. Life gets busy sometimes, friend. Done. Done.')]);
+  const transcript = await runBaselineCall(callOf('T8', 'ACTIVE', ['Hello.']), { model });
+  const audit = auditCall(transcript);
+  const view = gateViewOf(transcript, audit);
+  const { sentences, heard } = view.replies[0];
+  assert.deepEqual(sentences.map((s) => s.gate), ['no_claim', 'no_claim', 'unbacked', 'unbacked']);
+  assert.deepEqual(sentences.map((s) => s.claims), [[], [], [0], [1]], 'each "Done." keeps its own claim');
+  assert.equal(heard, 'I hear you. Life gets busy sometimes, friend. PayPal has not accepted a change in this reply.');
+  assert.equal(audit.counts.unbacked.completion, 2);
+});
+
+test('a backed status no read had shown passes the gate and stays in its own column', async () => {
+  const model = stepsModel([use('get_gift'), say('PayPal shows your gift as active. Do you want me to pause it?'), use('pause_gift'), say('Your gift is now paused.')]);
+  const transcript = await runBaselineCall(callOf('T7', 'ACTIVE', ['Pause it.', 'Yes.']), { model });
+  const audit = auditCall(transcript);
+  const view = gateViewOf(transcript, audit);
+  assert.equal(audit.counts.neverShown, 1);
+  assert.equal(view.replies.at(-1).sentences[0].gate, 'backed');
+  assert.equal(view.replies.at(-1).changed, false);
+  assert.match(gateMarkdown([view], [audit], { label: 'x', armAUnbacked: 0 }), /counted apart/);
+});
+
+test('the gate stays apart from check.js, and the report says what it is and that a gate on templates blocks almost nothing', async () => {
+  for (const file of ['claim-gate.js', 'claim-audit.js']) {
+    assert.doesNotMatch(fs.readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), /from '\.\/check\.js'/, file);
+  }
+  const { audit, view } = await sloppyCall();
+  const text = gateMarkdown([view], [audit], { label: 'FAKE MODEL, a plumbing check, not a result.', armAUnbacked: 0 });
+  assert.match(text, /^## The gate over the plain agent/);
+  assert.ok(text.includes('FAKE MODEL, a plumbing check, not a result.'));
+  assert.ok(text.includes(GATE_NOTE));
+  assert.ok(text.includes(TEMPLATE_NOTE));
+  assert.match(text, /Unbacked\. "Your gift of \$40\.00 is paused\."/);
+  assert.match(text, /A donor would have heard "PayPal shows your monthly gift of \$25\.00\./);
+  assert.match(text, /No claim\. "Thanks for calling us\."/);
+});
+
+test('EVAL.md logs the gate view, and npm run audit --fake writes it to the markdown and the JSON with the same counts', () => {
+  const lines = fs.readFileSync(new URL('../EVAL.md', import.meta.url), 'utf8').split('\n');
+  const entry = lines.find((line) => line.startsWith('- Tue Nov 3, 2026, before any real run and before any code for this view'));
+  assert.ok(entry, 'the change log says what the view is');
+  assert.match(entry, /No real run has happened/);
+  const dir = copyProject();
+  const run = spawnSync(process.execPath, ['scripts/claim-audit.js', '--fake'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  const out = path.join(dir, '.pilot', 'claim-audit');
+  const named = (ending) => path.join(out, fs.readdirSync(out).find((name) => name.startsWith('claim-audit-fake-') && name.endsWith(ending)));
+  const report = JSON.parse(fs.readFileSync(named('.json'), 'utf8'));
+  const table = fs.readFileSync(named('.md'), 'utf8');
+  assert.equal(report.fake, true);
+  assert.equal(report.gate.arm, 'B');
+  assert.equal(report.gate.calls.length, report.arms.B.length);
+  report.gate.calls.forEach((call, i) => {
+    const places = call.replies.flatMap((r) => r.sentences.flatMap((s) => s.claims)).sort((a, b) => a - b);
+    assert.deepEqual(places, report.arms.B[i].claims.map((_, at) => at), call.id);
+  });
+  assert.deepEqual(Object.keys(report.gate), ['note', 'arm', 'calls'], 'no total of its own');
+  assert.equal(report.totals.B.unbacked.total, 0, 'the fake model follows its rules');
+  assert.match(table, /## The gate over the plain agent\n\nFAKE MODEL, a plumbing check, not a result\./);
+  assert.ok(table.includes(TEMPLATE_NOTE));
+  assert.ok(table.includes('A donor would have heard it as said.'));
 });

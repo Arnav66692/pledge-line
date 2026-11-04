@@ -9,6 +9,7 @@ import { AUDIT_CALLS, MISHEARING_BLOCK, runPledgeLineCall, runBaselineCall, Mode
 import { createScriptedModel } from '../src/claim-fake-model.js';
 import { auditCall, totalsOf, changesOf } from '../src/claim-audit.js';
 import { blockVerdict } from '../src/claim-verdicts.js';
+import { gateViewOf, gateMarkdown, GATE_NOTE } from '../src/claim-gate.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, '.pilot', 'claim-audit');
@@ -128,7 +129,7 @@ function verdictLines(verdicts) {
   return verdicts.map((v) => `| ${v.id} | ${v.pass ? 'pass' : 'miss'} | ${v.misses.map(sentence).join(' ')} |`);
 }
 
-function markdown({ label, modelName, a, b, totals, verdicts }) {
+function markdown({ label, modelName, a, b, totals, verdicts, gate }) {
   const rows = a.map((x, i) => `| ${x.id} | ${x.counts.claims} | ${cell(x.counts)} | ${b[i].counts.claims} | ${cell(b[i].counts)} |`);
   const total = (name, t) => `| ${name} | ${t.calls} | ${t.callsWithProblems} | ${t.claims} | ${t.unbacked.total} | ${split(t.unbacked)} | ${t.echoes} | ${t.ownDraftEchoes} | ${t.writes} | ${t.writesWithoutYes} | ${t.neverShown} |`;
   const parts = { A: partTotals(a), B: partTotals(b) };
@@ -153,6 +154,7 @@ function markdown({ label, modelName, a, b, totals, verdicts }) {
     '|---|---|---|---|---|---|---|---|---|', ...rows, '',
     '## Every problem', '', ...(problems.length ? problems : [noProblem]), '',
     'The baseline has no PIN step, so it starts verified and skips the keypad lines. That favors the baseline.', '',
+    gateMarkdown(gate, b, { label, armAUnbacked: totals.A.unbacked.total }),
   ].join('\n');
 }
 
@@ -161,21 +163,24 @@ async function runArms(model) {
   const a = [];
   const b = [];
   const verdicts = [];
+  const gate = [];
   for (const call of AUDIT_CALLS) {
     const transcript = await runPledgeLineCall(call, { ledgerPath });
     const pledgeLine = auditCall(transcript, { timeZone: TIME_ZONE });
     try {
-      b.push(auditCall(await runBaselineCall(call, { model, timeZone: TIME_ZONE }), { timeZone: TIME_ZONE }));
+      const transcript = await runBaselineCall(call, { model, timeZone: TIME_ZONE });
+      b.push(auditCall(transcript, { timeZone: TIME_ZONE }));
+      gate.push(gateViewOf(transcript, b.at(-1)));
     } catch (error) {
       // A 429 stops the run. The calls before it are kept, and the report says where it stopped.
-      if (error instanceof ModelRateLimited) return { a, b, verdicts, ledgerPath, stoppedAt: call.id };
+      if (error instanceof ModelRateLimited) return { a, b, verdicts, gate, ledgerPath, stoppedAt: call.id };
       throw error;
     }
     a.push(pledgeLine);
     if (call.block === MISHEARING_BLOCK) verdicts.push(blockVerdict(transcript, pledgeLine));
     out(`  ${call.id.padEnd(4)} A ${cell(a.at(-1).counts)}   B ${cell(b.at(-1).counts)}`);
   }
-  return { a, b, verdicts, ledgerPath, stoppedAt: null };
+  return { a, b, verdicts, gate, ledgerPath, stoppedAt: null };
 }
 
 async function main() {
@@ -185,7 +190,7 @@ async function main() {
   out(label);
   out('Per call, unbacked | writes with no yes | status never shown');
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const { a, b, verdicts, ledgerPath, stoppedAt } = await runArms(model);
+  const { a, b, verdicts, gate, ledgerPath, stoppedAt } = await runArms(model);
   if (stoppedAt) {
     label = `${label} Stopped at ${stoppedAt} on a 429, so this covers ${a.length} of ${AUDIT_CALLS.length} calls.`;
     process.exitCode = 1;
@@ -194,9 +199,9 @@ async function main() {
   const parts = { A: partTotals(a), B: partTotals(b) };
   const base = path.join(OUT_DIR, `claim-audit-${fake ? 'fake' : 'real'}-${stampPT()}`);
   for (const file of [`${base}.md`, `${base}.json`]) refuseOutsideOutDir(file);
-  const table = markdown({ label, modelName: model.name, a, b, totals, verdicts });
+  const table = markdown({ label, modelName: model.name, a, b, totals, verdicts, gate });
   fs.writeFileSync(`${base}.md`, table);
-  fs.writeFileSync(`${base}.json`, `${JSON.stringify({ label, fake, stoppedAt, model: model.name, timeZone: TIME_ZONE, totals, parts, verdicts, arms: { A: a, B: b } }, null, 2)}\n`);
+  fs.writeFileSync(`${base}.json`, `${JSON.stringify({ label, fake, stoppedAt, model: model.name, timeZone: TIME_ZONE, totals, parts, verdicts, arms: { A: a, B: b }, gate: { note: GATE_NOTE, arm: 'B', calls: gate } }, null, 2)}\n`);
   out('');
   out(table);
   out(`Wrote ${base}.md and ${base}.json. Pledge Line's ledger for this run is ${ledgerPath}.`);
