@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-page="check">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pledge Line, check a receipt</title>
+  <meta name="description" content="Check that a receipt file from the line is untouched and signed by this line.">
+  <meta name="theme-color" content="#ece4dd" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151918" media="(prefers-color-scheme: dark)">
+  <meta name="robots" content="noindex">
+  <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/chrome.css">
+  <link rel="stylesheet" href="/receipt.css">
+  <script src="/receipt-check.js" defer></script>
+</head>
+<body class="rc-page">
+  <a class="skip" href="#main">Skip to the check</a>
+  <header class="rc-top">
+    <a class="logo rc-logo" href="/" aria-label="Pledge Line, the donor line"><span class="logo__a">pledge</span><span class="logo__b">line</span></a>
+    <a class="rc-toplink" href="/">The line</a>
+  </header>
+
+  <main id="main" class="rc-sheet" tabindex="-1">
+    <p class="rc-kicker">Check a receipt</p>
+    <h1 class="rc-title">Is this the receipt the line gave?</h1>
+    <p class="rc-lead">Choose a receipt file from the line, or drop it here. The line checks it against its own key and says whether anyone changed it, and where. It reads the file to check it and keeps nothing.</p>
+
+    <label id="ck-drop" class="ck-drop" for="ck-file">
+      <span class="ck-drop-title">Choose a receipt file</span>
+      <span class="ck-drop-hint">or drop it on this box. It ends in .json.</span>
+      <input id="ck-file" class="ck-file" type="file" accept=".json,application/json">
+    </label>
+
+    <div id="ck-result" class="ck-result" role="status" aria-live="polite"></div>
+
+    <p class="rc-hint">A check here can only say the file matches what this line signed. Staff can also check a file without this server. Save the line's public key from <a href="/receipt-key">/receipt-key</a> as receipt-key.json and run <code>node scripts/check-receipt.js your-file.json --key receipt-key.json</code> from the Pledge Line code.</p>
+  </main>
+</body>
+</html>

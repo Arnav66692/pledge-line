@@ -41,6 +41,8 @@ export const LIMITS = Object.freeze({
   wrongPinsPerHour: 10,
   // Staff view requests from one address in a minute, wrong keys included.
   staffPerMinute: 60,
+  // Receipt requests from one address in a minute, wrong secrets and checks included.
+  receiptsPerMinute: 30,
 });
 // Covered Month's staff rule (PICK.md), the defaults when the env sets none. A charge above the cap, older than the window,
 // or past the yearly count is never offered, and with no sponsor hold the move stays off.
@@ -127,6 +129,21 @@ function parseStaffKey(raw, errors) {
   // The page sends it as a header, and a browser refuses a header with a space or a character outside plain ASCII.
   if (!/^[\x21-\x7e]+$/.test(raw)) errors.push('STAFF_KEY must use plain letters, digits and marks, with no spaces');
   return raw;
+}
+
+/**
+ * Optional. A 32-byte Ed25519 key as 64 hex characters, which signs the donor's receipt file. Unset means the receipt
+ * button, its pages and every receipt route are off, as 404s. The value itself never shows in an error.
+ */
+function parseReceiptKey(raw, errors) {
+  if (raw === null) return null;
+  const key = raw.toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(key)) {
+    errors.push('RECEIPT_SIGNING_KEY must be 64 hex characters, a 32-byte Ed25519 key. SETUP.md shows how to make one');
+    return null;
+  }
+  if (/^(.)\1*$/.test(key)) errors.push('RECEIPT_SIGNING_KEY must be random, not one repeated character');
+  return key;
 }
 
 function parseModes(env, errors) {
@@ -232,6 +249,7 @@ export function loadConfig(env = process.env, { partial = false } = {}) {
     router: parseRouter(env, routerMode, partial, errors),
     pin: parsePin(env, paypalMode, partial, errors),
     staffKey: parseStaffKey(clean(env.STAFF_KEY), errors),
+    receiptSigningKey: parseReceiptKey(clean(env.RECEIPT_SIGNING_KEY), errors),
     demoSubscriptionId: ids.subscriptionId,
     demoPlanId: ids.planId,
     cover: parseCover(env, ids.holdId, errors),

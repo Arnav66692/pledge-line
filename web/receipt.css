@@ -1,0 +1,107 @@
+/* The receipt page and the check page. A plain sheet on the line's own tokens and fonts from chrome.css, with no room
+   behind it, so it reads well on screen and prints clean on white. */
+
+/* No room behind these pages, so the painted still chrome.css shows without WebGL is turned off too. */
+.rc-page, html:not(.has-gl) body.rc-page { background: var(--backdrop); }
+.rc-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  max-width: 58rem; margin: 0 auto; padding: 1.6rem 2rem 1rem;
+}
+.rc-toplink { font-size: 1rem; color: var(--ink); text-underline-offset: 3px; }
+
+.rc-sheet {
+  max-width: 58rem; margin: 0 auto 4rem; padding: 2.6rem 2.8rem 3rem;
+  background: var(--surface); color: var(--ink);
+}
+.rc-sheet:focus { outline: none; }
+.rc-kicker { margin: 0 0 0.6rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+.rc-title { margin: 0 0 1.2rem; font-family: var(--serif); font-weight: 400; font-size: 3.6rem; line-height: 1.02; letter-spacing: -0.02em; }
+.rc-status { margin: 0 0 1.4rem; font-size: 1.15rem; }
+.rc-lead { margin: 0 0 1.6rem; font-size: 1.15rem; max-width: 42rem; }
+.rc-hint { margin: 0.4rem 0 1rem; font-size: 1rem; color: var(--muted); }
+.rc-hint code { font-family: var(--mono); font-size: 0.92em; overflow-wrap: anywhere; }
+@media (min-width: 768px) { .rc-hint code { white-space: nowrap; } }
+.rc-mono { font-family: var(--mono); font-size: 0.92em; overflow-wrap: anywhere; }
+
+.rc-meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1.6rem; margin: 0 0 1rem; padding: 1rem 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--line); }
+.rc-meta dt { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); padding-top: 0.15rem; }
+.rc-meta dd { margin: 0; font-size: 1.05rem; min-width: 0; }
+.rc-practice { margin: 0 0 1.4rem; font-size: 1.02rem; color: var(--muted); }
+
+.rc-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; margin: 0 0 1.6rem; }
+.rc-notes { margin: 0 0 2.2rem; padding: 1.1rem 1.3rem; background: var(--sunk); }
+.rc-notes p { margin: 0 0 0.6rem; font-size: 1.05rem; }
+.rc-notes p:last-child { margin-bottom: 0; }
+.rc-notes strong { font-weight: 600; }
+
+.rc-h2 { margin: 0 0 0.3rem; font-size: 1.6rem; font-weight: 400; letter-spacing: -0.02em; }
+.rc-list { list-style: none; margin: 1.2rem 0 0; padding: 0; border-top: 1px solid var(--ink); }
+.rc-item { padding: 1rem 0 1.1rem; border-bottom: 1px solid var(--line); break-inside: avoid; }
+.rc-item-head { display: flex; gap: 0.8rem; margin: 0 0 0.3rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+.rc-n { min-width: 1.6rem; font-variant-numeric: tabular-nums; }
+.rc-time { text-transform: none; }
+.rc-text { margin: 0 0 0.45rem; font-family: var(--serif); font-size: 1.55rem; line-height: 1.2; letter-spacing: -0.005em; overflow-wrap: anywhere; }
+.rc-backing p { margin: 0.15rem 0 0; font-size: 1rem; line-height: 1.45; overflow-wrap: anywhere; }
+.rc-proof { padding-left: 1.2rem; position: relative; }
+.rc-proof::before {
+  content: ""; position: absolute; left: 0.2rem; top: 0.3rem;
+  width: 0.34rem; height: 0.62rem;
+  border: solid var(--accent); border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.rc-note { color: var(--muted); }
+.rc-flag { color: var(--error); font-weight: 600; }
+.rc-problems { margin: 0.3rem 0 0; padding-left: 1.3rem; color: var(--error); font-size: 1rem; }
+.rc-blocked .rc-text { text-decoration: underline wavy var(--error); text-underline-offset: 4px; }
+.rc-seal { margin: 1.6rem 0 0; font-size: 0.95rem; color: var(--muted); overflow-wrap: anywhere; }
+
+/* ---- The check page ---- */
+.ck-drop {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem;
+  margin: 0 0 1.4rem; padding: 1.6rem 1.6rem;
+  border: 1px solid var(--ink); border-radius: 0;
+  cursor: pointer;
+}
+.ck-drop.is-over { background: var(--accent-soft); }
+.ck-drop:focus-within { outline: 2px solid var(--focus); outline-offset: 3px; }
+.ck-drop-title { font-size: 1.4rem; letter-spacing: -0.01em; }
+.ck-drop-hint { color: var(--muted); font-size: 1rem; }
+.ck-file { margin-top: 0.6rem; font: inherit; font-size: 1rem; max-width: 100%; }
+.ck-result { margin: 0 0 1.6rem; }
+.ck-result:empty { display: none; }
+.ck-verdict { padding: 1.2rem 1.4rem; border-left: 4px solid var(--line); background: var(--sunk); }
+.ck-ok { border-left-color: var(--accent); background: var(--accent-soft); }
+.ck-changed { border-left-color: var(--error); background: var(--error-soft); }
+.ck-title { margin: 0 0 0.5rem; font-family: var(--serif); font-size: 2rem; line-height: 1.1; }
+.ck-line { margin: 0.3rem 0 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.ck-sentences { margin: 1rem 0 0; padding-left: 1.8rem; }
+.ck-sentences li { margin: 0.35rem 0; overflow-wrap: anywhere; }
+.ck-sentences .ck-ok, .ck-sentences .ck-changed { background: none; border: 0; }
+.ck-mark { display: inline-block; min-width: 5.2rem; margin-right: 0.5rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em; }
+.ck-sentences .ck-ok .ck-mark { color: var(--accent); }
+.ck-sentences .ck-changed .ck-mark { color: var(--error); font-weight: 600; }
+.ck-sentences .ck-changed .ck-text { font-weight: 600; }
+
+@media (max-width: 767px) {
+  .rc-top { padding: 1.1rem 16px 0.8rem; }
+  .rc-sheet { margin: 0 0 2rem; padding: 1.6rem 16px 2rem; }
+  .rc-title { font-size: 2.6rem; }
+  .rc-text { font-size: 1.4rem; }
+  .rc-meta { grid-template-columns: 1fr; gap: 0.1rem; }
+  .rc-meta dd { margin-bottom: 0.5rem; }
+  .rc-actions .pill { width: 100%; justify-content: flex-start; }
+  .ck-drop { padding: 1.2rem 1rem; }
+  .ck-title { font-size: 1.7rem; }
+}
+
+@media print {
+  :root { color-scheme: light; --ink: #000; --muted: #444; --line: #bbb; --surface: #fff; --backdrop: #fff; --sunk: #fff; --accent: #000; --error: #000; }
+  html { font-size: 13px; }
+  .rc-page, html:not(.has-gl) body.rc-page { background: #fff; }
+  .rc-toplink, .rc-actions, .skip, .rc-status { display: none; }
+  .rc-top { max-width: none; padding: 0 0 1rem; }
+  .rc-sheet { max-width: none; margin: 0; padding: 0; background: #fff; color: #000; }
+  .rc-notes { padding: 0; border: 0; }
+  .rc-title { font-size: 2.6rem; }
+  .rc-text { font-size: 1.35rem; }
+}
