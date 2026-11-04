@@ -231,6 +231,7 @@ export const help = () => part('I can read you your monthly gift, pause it, rest
 export const repeat = (lastText) => (lastText && lastText.text ? { text: lastText.text, facts: lastText.facts ?? [], claims: lastText.claims ?? [] } : unclear());
 export const goodbye = () => part('Thanks for calling. Goodbye.');
 export const unclear = () => part("Sorry, I didn't catch that. You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift.");
+export const clarifyGift = () => part('Would you like to check your gift or make a new one-time gift?');
 export const notVerified = () => combine(claim('I need your PIN first.', 'not_verified'), 'Please enter it on the keypad.');
 export const noSubscription = () => combine(claim("I couldn't find a monthly gift in PayPal for this line.", 'no_gift'), STAFF_HOURS);
 export const noEmail = () => combine(claim("PayPal has no email on file for this gift, so I can't send an invoice.", 'no_email'), STAFF_HOURS);

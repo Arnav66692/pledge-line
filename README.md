@@ -103,7 +103,7 @@ After the PIN, try "I lost my job, I can't do it this month." In mock mode the f
 
 The call state carries `recovery`, built on the server from the call's ledger events the same way receipts are. When something goes wrong and the line handles it, the page shows a short timeline under "PayPal's record": what the donor wanted, what went wrong, what the line did and what PayPal shows now, each with its time in PT and PayPal's reference when there is one. It covers a timeout or 5xx followed by a fresh read, a refusal, a record someone else changed, a failed PayPal step and an unclear amount. When nothing went wrong, nothing shows.
 
-To see it, stage a fault on the mock. `FAULT_DRILL` is refused unless `PAYPAL_MODE` is mock, it fires once, and each such call is labeled a fault drill on the page. A mock call is labeled too.
+To see it, stage a fault on the mock. `FAULT_DRILL` is refused unless `PAYPAL_MODE` is mock, it fires at most once per call, and each such call is labeled a fault drill on the page. A mock call is labeled too.
 
 ```
 FAULT_DRILL=suspend-timeout npm run dev

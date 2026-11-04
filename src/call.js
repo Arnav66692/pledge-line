@@ -282,7 +282,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const base = { type: 'read', turn: ctx.turn, what, id };
     let res;
     try {
-      res = await paypal[GETTERS[what]](id, extra);
+      res = await paypal[GETTERS[what]](id, what === 'subscription' ? { ...extra, callId: ctx.call.id } : extra);
     } catch (error) {
       log(ctx.call, { ...base, status: null, snapshot: null, debugId: error?.debugId ?? null, ms: 0, error: describeError(error) });
       throw error;
@@ -820,6 +820,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       case 'goodbye':
         await endCall(call, 'goodbye');
         return say.goodbye();
+      case 'unclear': return routed.clarifyGift ? say.clarifyGift() : say.unclear();
       default: return say.unclear();
     }
   }
@@ -941,6 +942,10 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     if (routed.intent === 'other_email') {
       refused(ctx, 'other_email');
       return askAgain(ctx, say.otherEmail());
+    }
+    if (routed.clarifyGift) {
+      await dropPending(ctx);
+      return say.combine(say.setAside(), say.clarifyGift());
     }
     if (routed.intent === 'repeat' || routed.intent === 'unclear') return askAgain(ctx);
     // "Yes, refund me" or "I want my money back" answers the refund offer, not a new charge check, so the line asks

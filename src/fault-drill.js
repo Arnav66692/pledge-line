@@ -1,13 +1,16 @@
-// Faults staged on the mock PayPal, once each, so a person can see how the line recovers and film it. loadConfig
+// Faults staged once per call on the mock PayPal, so a person can see how the line recovers and film it. loadConfig
 // refuses FAULT_DRILL unless PAYPAL_MODE is mock, and call_start logs the drill, so the page labels every such call.
 import { PayPalError } from './paypal.js';
 
-/** A suspend that takes its token, then fails the way the drill says, once. The token is spent as a real try would spend it. */
+/** A suspend that takes its token, then fails the way the drill says, once per call. */
 function failingSuspend(paypal, tokens, fail) {
-  let fired = false;
+  const fired = new Set();
   return async (id, token, ctx) => {
-    if (fired) return paypal.suspendSubscription(id, token, ctx);
-    fired = true;
+    const callId = ctx?.callId;
+    // Outside an identified call, never silently consume another call's staged fault.
+    if (!callId || fired.has(callId)) return paypal.suspendSubscription(id, token, ctx);
+    // Mark before awaiting so concurrent requests from the same call cannot fire twice.
+    fired.add(callId);
     return fail(id, token, ctx);
   };
 }
@@ -34,11 +37,13 @@ const DRILLS = Object.freeze({
   }),
   // Someone else cancels the gift between the line's first read and its next one.
   'gift-changed': (paypal) => {
-    let reads = 0;
+    const reads = new Map();
     return {
-      getSubscription: async (id) => {
-        reads += 1;
-        if (reads === 2) paypal.mockSetSubscriptionStatus(id, 'CANCELLED');
+      getSubscription: async (id, ctx) => {
+        const callId = ctx?.callId;
+        const count = callId ? (reads.get(callId) ?? 0) + 1 : 0;
+        if (callId) reads.set(callId, count);
+        if (count === 2) paypal.mockSetSubscriptionStatus(id, 'CANCELLED');
         return paypal.getSubscription(id);
       },
     };

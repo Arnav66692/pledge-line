@@ -65,6 +65,7 @@ export const TEMPLATE_RENDERS = Object.freeze({
   repeat: () => [say.repeat(null), say.repeat(say.help())],
   goodbye: () => [say.goodbye()],
   unclear: () => [say.unclear()],
+  clarifyGift: () => [say.clarifyGift()],
   notVerified: () => [say.notVerified()],
   noSubscription: () => [say.noSubscription()],
   noEmail: () => [say.noEmail()],
@@ -133,6 +134,7 @@ export const NOT_TEMPLATES = Object.freeze(['combine', 'numberToWords', 'formatM
  * plain courtesy.
  */
 const PLAIN_CLAIM_FREE = [
+  'Would you like to check your gift or make a new one-time gift?',
   'Before you stop it, I can pause it instead.',
   'Cancelling ends it for good, and it cannot be undone.',
   'Do you want me to cancel it?',

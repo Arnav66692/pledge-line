@@ -223,6 +223,13 @@ const CAN_GIVE = /\b(?:can|could|may|would|should)\s+i\s+(?:please\s+|also\s+)?(
 const OPENS_QUESTION = /^(?:(?:so|and|um|uh|well|wait)\s+)*(?:is|isn't|isnt|was|wasn't|wasnt|am|are|aren't|arent|did|didn't|didnt|does|doesn't|doesnt|do|don't|dont|has|hasn't|hasnt|how much|how come|what|what's|whats|when|when's|whens|why|which)\b/;
 const ENDS_ASKING = /(?:\?|\b(?:right|correct|isn't it|is it))\W*$/;
 const WANTS_TO_GIVE = /\b(?:give|donate|one time|onetime|once|one off|extra gift|another gift|invoice)\b/;
+// A past gift and a request to give again can share an utterance. Do not silently choose either interpretation.
+const NEW_GIFT_REQUEST = /\b(?:(?:want|wish|plan) to|would like to|like to|'d like to|going to|(?:can|could|may) i|please|let me)\s+(?:also\s+|now\s+)?(?:give|donate|make\s+(?:(?:a|another|one)\s+)?(?:one\s+time\s+)?(?:gift|donation))\b/;
+
+export function mixedGiftRequest(text) {
+  const t = plainWords(text);
+  return PAST_GIFT.test(t) && NEW_GIFT_REQUEST.test(t);
+}
 
 /**
  * True when the words are about the gift she already has, not a new one, as in "Is my gift still seventy five dollars
@@ -254,6 +261,7 @@ const unclearRoute = (routed, why, extra = {}) => ({ ...routed, intent: 'one_tim
  * words, so a model's slip, or a number it read in passing, never makes a draft. The model's number is never used alone.
  */
 export function settleGiftRoute(routed, text, state = {}) {
+  if (mixedGiftRequest(text)) return { ...routed, intent: 'unclear', amountDollars: NO_CLEAR_AMOUNT, clarifyGift: true };
   const reading = readGift(text, { answersQuestion: asksForAmount(state?.lastSaid) });
   const named = parseAmountDollars(text);
   if (routed.intent === 'gift_status') return reading.marked && aboutExistingGift(text) ? { ...routed, amountUnclear: 'existing_gift', namedDollars: named } : routed;
