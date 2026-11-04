@@ -120,10 +120,11 @@
           <form id="typed-form" class="typed-form">
             <label for="typed-text" class="field-label">What you want to say</label>
             <div class="typed-row">
-              <input id="typed-text" type="text" autocomplete="off" maxlength="500" disabled>
+              <input id="typed-text" type="password" autocomplete="off" maxlength="500" aria-describedby="typed-privacy" disabled>
               <button id="typed-send" class="pill pill--dark" type="submit" disabled>Send</button>
             </div>
           </form>
+          <p id="typed-privacy" class="hint">Your message is hidden while you type. After sending, the line shows it with any PIN masked.</p>
         </details>
 
         <details id="demo" class="fold demo">
