@@ -26,7 +26,7 @@ const ANYTHING_ELSE = 'What else can I help with?';
 // Not "may", which is also a month, so no month name is ever one of the line's own words (check.js holds replies to them).
 const UPDATE_LATER = 'It can take a minute to update.';
 const YES_OR_NO = 'Please say yes or no.';
-const STAFF_CHECK = 'Staff will check on it.';
+const STAFF_CHECK = 'Staff can help during open hours.';
 const STAFF_HOURS = 'Staff can help during open hours.';
 
 const fact = (kind, value, source) => ({ kind, value, source });
@@ -165,13 +165,13 @@ export function giftStatus(sub, plan, { timeZone } = {}) {
 
 // No "on hold" or "back on" here, since the facts check reads those as status claims (I3).
 export const pauseOffer = (sub, plan) => combine(shows(sub, plan),
-  'Before you stop it, I can pause it instead. Nothing more is taken during a pause, and you can restart it any time. Would you like me to pause it?', YES_OR_NO);
+  'Before you stop it, I can pause it instead. Would you like me to pause it?', YES_OR_NO);
 export const cancelConfirm = (sub, plan) => combine(shows(sub, plan),
   'Cancelling ends it for good, and it cannot be undone. Do you want me to cancel it?', YES_OR_NO);
 export const resumeConfirm = (sub, plan) => combine(shows(sub, plan),
-  'Restarting it means your monthly gift is taken again each month. Do you want me to restart it?', YES_OR_NO);
+  'I can ask PayPal to restart your monthly gift. Do you want me to restart it?', YES_OR_NO);
 export const pauseConfirm = (sub, plan) => combine(shows(sub, plan),
-  'Pausing it holds your monthly gift until you restart it. Do you want me to pause it?', YES_OR_NO);
+  'I can ask PayPal to pause your monthly gift. Do you want me to pause it?', YES_OR_NO);
 
 const VERBS = Object.freeze({ suspend: 'pause', activate: 'restart', cancel: 'cancel', send_invoice: 'send' });
 const EXPECTED = Object.freeze({ suspend: 'SUSPENDED', activate: 'ACTIVE', cancel: 'CANCELLED' });
@@ -207,8 +207,7 @@ export function afterWrite(kind, snapshotAfter, plan, { ok = true, unclear = fal
   const now = shows(snapshotAfter, plan, 'PayPal now shows');
   if (!ok) return combine(failedLead(unclear, "PayPal didn't accept that change.", 'write_failed'), now, ANYTHING_ELSE);
   if (!changed) return combine(claim(`I asked PayPal to ${VERBS[kind]} it.`, `wrote_${kind}`), now, claim(UPDATE_LATER, 'wrote'), ANYTHING_ELSE);
-  const tail = kind === 'suspend' ? claim('You can restart it any time.', 'wrote_suspend') : null;
-  return combine(claim('Done.', 'wrote'), now, tail, ANYTHING_ELSE);
+  return combine(claim('Done.', 'wrote'), now, ANYTHING_ELSE);
 }
 
 function afterSend(inv, ok, unclear) {
@@ -233,6 +232,7 @@ export const goodbye = () => part('Thanks for calling. Goodbye.');
 export const unclear = () => part("Sorry, I didn't catch that. You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift.");
 export const notVerified = () => combine(claim('I need your PIN first.', 'not_verified'), 'Please enter it on the keypad.');
 export const noSubscription = () => combine(claim("I couldn't find a monthly gift in PayPal for this line.", 'no_gift'), STAFF_HOURS);
+export const noConfiguredSubscription = () => combine(claim("This demo has no subscription configured to check.", 'no_subscription_config'), 'Please try again later.');
 export const noEmail = () => combine(claim("PayPal has no email on file for this gift, so I can't send an invoice.", 'no_email'), STAFF_HOURS);
 /** "from one dollar to five hundred dollars". check.js accepts the config facts only inside this phrase. */
 export const limitsPhrase = (min, max) => `from ${numberToWords(min)} ${min === 1 ? 'dollar' : 'dollars'} to ${numberToWords(max)} dollars`;
@@ -252,7 +252,7 @@ export const asksForAmount = (text) => typeof text === 'string' && (text.include
 export const nothingPending = () => combine(claim("There's nothing waiting for a yes or no right now.", 'nothing_pending'), 'What would you like to do?');
 export const needYesOrNo = () => claim('I need a clear yes or no before I change anything.', 'unchanged');
 export const callEnded = () => combine(claim('This call has ended.', 'call_ended'), 'Please start a new call if you need anything else.');
-export const staffCallback = () => claim("OK, I've noted that you'd like a call. Staff will call you back during open hours.", 'callback_noted');
+export const staffCallback = () => claim("OK, I've noted that you'd like a call.", 'callback_noted');
 export const paypalProblem = () => combine(claim("Sorry, I couldn't get a clear answer from PayPal just now, so I didn't change anything.", 'paypal_unclear'),
   'Please try again in a minute.');
 export const tooLong = () => part('Sorry, that was a lot at once. Please say it in a shorter way.');
@@ -305,7 +305,6 @@ export const noCharge = () => combine(claim('PayPal shows no recent charge for y
 export const chargeUnread = () => combine(claim("PayPal didn't return a charge I can read clearly, so I won't guess.", 'charge_unread'), STAFF_HOURS);
 export const noRefundRequest = () => combine(claim("OK, I won't ask staff for a refund.", 'no_refund_request'), ANYTHING_ELSE);
 
-const FOLLOW_UP = 'Staff will follow up during open hours.';
 
 /**
  * After the yes. same is true when PayPal's fresh read after the request still has the charge the request names, so
@@ -317,12 +316,12 @@ export function afterRefundRequest(charge, { ok = true, same = false, timeZone }
   const date = same ? derived('charge.date', charge, 'date', timeZone) : null;
   const status = same ? derived('charge.status', charge, 'status') : null;
   if (!money || !date || !status) {
-    return combine('OK.', claim("I've asked staff to look at a refund for the charge I read you.", 'wrote_refund_request'), claim(FOLLOW_UP, 'wrote_refund_request'), ANYTHING_ELSE);
+    return combine('OK.', claim("I've asked staff to look at a refund for the charge I read you.", 'wrote_refund_request'), ANYTHING_ELSE);
   }
   return combine('OK.',
     part(`I've asked staff to look at a refund of ${money.value} for the charge on ${date.value}.`, [money, date], ['wrote_refund_request', 'refund_matches_read']),
     part(`PayPal now shows that charge as ${status.value}.`, [status], ['refund_matches_read']),
-    claim(FOLLOW_UP, 'wrote_refund_request'), ANYTHING_ELSE);
+    ANYTHING_ELSE);
 }
 
 // ---- Covered Month (PICK.md) ----
@@ -358,7 +357,7 @@ const COVER_TURNED_DOWN = Object.freeze({
   too_old: ["That charge is too old for the hardship fund, so I can't give it back here.", 'cover_too_old'],
   too_big: ["That charge is more than the hardship fund can cover, so I can't give it back here.", 'cover_too_big'],
   used: ["A charge on this gift was already given back in the last year, so the hardship fund can't cover another.", 'cover_used'],
-  prior: ["Staff are already looking at this charge, so I won't move any money.", 'cover_prior'],
+  prior: ["There is an earlier request for this charge, so I won't move any money.", 'cover_prior'],
   no_hold: ["The sponsor's hardship fund isn't open in PayPal right now, so I can't cover this month.", 'cover_no_hold'],
 });
 const coverTail = () => combine(STAFF_HOURS, COVER_PAUSE, ANYTHING_ELSE);
@@ -371,6 +370,7 @@ export const coverChanged = () => combine(claim("Something changed since I read 
 export const coverCaptureFailed = () => combine(claim("PayPal didn't accept the sponsor's payment, so I didn't give the month back and no money moved.", 'cover_capture_failed'), STAFF_HOURS, ANYTHING_ELSE);
 export const coverCaptureUnclear = () => combine(claim("PayPal didn't answer clearly about the sponsor's payment, so I didn't give the month back.", 'cover_capture_unclear'), STAFF_CHECK, ANYTHING_ELSE);
 export const coverRefundUnclear = () => combine(claim("PayPal didn't answer clearly about the refund, so I can't say it went through.", 'cover_refund_unclear'), STAFF_CHECK, ANYTHING_ELSE);
+export const coverRefundNeedsCheck = () => combine(claim("I couldn't confirm the charge's status, so I didn't return the sponsor's payment.", 'cover_verify_unknown'), STAFF_HOURS, ANYTHING_ELSE);
 
 /** The refund was refused after the sponsor paid. The sponsor's payment goes back, and the line says what PayPal shows for it. */
 export function coverUnwound({ ok, capture, giftCharge } = {}) {

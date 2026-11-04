@@ -319,7 +319,14 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     let snapshot = null;
     for (let i = 0; i < RE_READ_TRIES; i += 1) {
       if (i > 0) await sleep(RE_READ_GAP_MS);
-      snapshot = await timed(ctx, read);
+      try {
+        snapshot = await timed(ctx, read);
+      } catch (error) {
+        // Only retry reads, and only transient PayPal failures. A timed-out write is never replayed here.
+        const retryable = error instanceof PayPalError && (error.status === 0 || error.status === 429 || error.status >= 500);
+        if (!retryable || i === RE_READ_TRIES - 1) throw error;
+        continue;
+      }
       if (isDone(snapshot)) break;
     }
     return snapshot;
@@ -364,18 +371,33 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     call.ended = true;
     call.endedAt = now().getTime();
     gate.withdraw(call, call.turn);
-    if (call.openDraftId) {
+    if (call.openDraftId && call.openDraftId !== call.uncertainDraftId) {
       await deleteDraft(ctx, call.openDraftId);
       call.openDraftId = null;
+    }
+    // A timed-out send may still finish later. Never delete an invoice while its send outcome is unknown.
+    if (call.openDraftId && call.openDraftId === call.uncertainDraftId) {
+      log(call, { type: 'draft_cleanup_deferred', turn: call.turn, id: call.openDraftId });
     }
     log(call, { type: 'call_end', reason });
   }
 
   // ---- Proposals ----
 
+  function rememberProposal(call) {
+    // Keep the full values, not just the masked email or last four digits spoken to the caller.
+    // The copy belongs to this proposal and is never sent to the browser.
+    call.proposalBaseline = { pendingId: call.pending.id,
+      subscription: structuredClone(call.record.subscription?.snapshot ?? null),
+      plan: structuredClone(call.plan ?? null),
+      invoice: structuredClone(call.record.invoice?.snapshot ?? null),
+      charge: structuredClone(call.record.charge?.snapshot ?? null) };
+  }
+
   function propose(ctx, kind, targetId, readBack, origin) {
     if (kind === 'suspend') ctx.call.pauseOffered = true;
     gate.propose(ctx.call, { kind, targetId, readBack, origin, turn: ctx.turn });
+    rememberProposal(ctx.call);
     return readBack;
   }
 
@@ -388,7 +410,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const { sub, plan } = await readGift(ctx);
     if (!sub) {
       refused(ctx, 'no_subscription');
-      return say.noSubscription();
+      return config.demoSubscriptionId ? say.noSubscription() : say.noConfiguredSubscription();
     }
     return fn(sub, plan);
   }
@@ -418,12 +440,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   async function createGiftDraft(ctx, amount) {
     // I2: at most one open draft, so a draft PayPal would not delete blocks a new one. endCall tries it again.
+    if (ctx.call.uncertainDraftId) return say.combine('Please try again later.');
     if (ctx.call.openDraftId && !(await deleteDraft(ctx, ctx.call.openDraftId))) return say.paypalProblem();
     const subId = config.demoSubscriptionId;
     const sub = subId ? await timed(ctx, () => readSnapshot(ctx, 'subscription', subId)) : null;
     if (!sub) {
       refused(ctx, 'no_subscription');
-      return say.noSubscription();
+      return subId ? say.noSubscription() : say.noConfiguredSubscription();
     }
     // I5: the recipient is always the email on file from this fresh GET.
     if (!sub.subscriber_email) return say.noEmail();
@@ -470,7 +493,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const subId = config.demoSubscriptionId;
     if (!subId) {
       refused(ctx, 'no_subscription');
-      return say.noSubscription();
+      return say.noConfiguredSubscription();
     }
     const charge = await readCharges(ctx, subId);
     if (charge && charge.count === 0) return say.noCharge();
@@ -537,7 +560,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const subId = config.demoSubscriptionId;
     if (!subId) {
       refused(ctx, 'no_subscription');
-      return say.noSubscription();
+      return say.noConfiguredSubscription();
     }
     if (!ctx.empathy) ctx.empathy = say.hardshipSorry();
     const { holdId } = config.cover;
@@ -559,6 +582,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     if (!holdCovers(hold, { amountValue: charge.amount_value, currency: charge.amount_currency, nowMs: now().getTime() })) return say.coverTurnedDown('no_hold');
     const readBack = say.coverOffer(charge, sub, config.orgName, { timeZone: config.timeZone });
     gate.propose(ctx.call, { kind: COVER_MONTH, targetId: subId, readBack, origin: 'hardship', turn: ctx.turn, legs: coverLegs(charge, holdId) });
+    rememberProposal(ctx.call);
     // The money moves for the charge this proposal read aloud, never a later one.
     ctx.call.coverAsked = { pendingId: ctx.call.pending.id, charge };
     return readBack;
@@ -578,7 +602,10 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
   function checkedMove(res, amountValue) {
     const otherAmount = res?.amountValue !== null && res?.amountValue !== undefined && !sameMoney(res.amountValue, amountValue);
     if (!MOVED_STATUSES.includes(res?.status) || !res?.id || otherAmount) {
-      throw new PayPalError({ status: 422, name: 'NOT_MOVED', message: 'PayPal did not move the exact amount', debugId: res?.debugId ?? null });
+      // A successful HTTP response with unusable details cannot prove that no money moved.
+      const error = new PayPalError({ status: 0, name: 'MOVE_UNCONFIRMED', message: 'PayPal did not confirm the exact move', debugId: res?.debugId ?? null });
+      error.resultId = res?.id ?? null;
+      throw error;
     }
     return res;
   }
@@ -593,11 +620,17 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
    * for this charge's request id, as after a refund that was refused and sent back, and then no new money came in.
    */
   function captureWriter(ctx, amounts, transactionId) {
-    const take = legWriter(ctx, 'captureSponsorHold', amounts, { requestId: requestIds.capture(transactionId) });
     return async (id, token) => {
-      const res = await take(id, token);
-      const now = await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'capture', res.id)));
-      if (now && !MOVED_STATUSES.includes(now.status)) throw new PayPalError({ status: 422, name: 'NOT_MOVED', message: 'PayPal shows that capture no longer holds the money', debugId: res.debugId });
+      const res = await paypal.captureSponsorHold(id, token, { callId: ctx.call.id, ...amounts,
+        note: `Hardship cover for a monthly gift to ${config.orgName}`, requestId: requestIds.capture(transactionId) });
+      const fresh = res?.id ? await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'capture', res.id))) : null;
+      // A response of PENDING or a successful HTTP status alone does not prove the sponsor funded the refund.
+      if (!fresh || fresh.id !== res?.id || fresh.status !== 'COMPLETED' ||
+          !sameMoney(fresh.amount_value, amounts.amountValue) || fresh.amount_currency !== amounts.currency) {
+        const error = new PayPalError({ status: 0, name: 'CAPTURE_UNCONFIRMED', message: 'Sponsor capture is not confirmed', debugId: res?.debugId ?? null });
+        error.captureId = res?.id ?? null;
+        throw error;
+      }
       return res;
     };
   }
@@ -619,10 +652,16 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const { charge } = asked;
     const amounts = { amountValue: charge.amount_value, currency: charge.amount_currency, nowMs: now().getTime() };
     const fresh = await readCharges(ctx, ctx.call.pending.targetId);
+    const { sub, plan } = await readGift(ctx, { fresh: true });
+    const baseline = ctx.call.proposalBaseline;
     const direct = await timed(ctx, () => readSnapshot(ctx, 'gift_charge', charge.transaction_id));
     const hold = await timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId));
     const same = fresh?.transaction_id === charge.transaction_id && sameMoney(fresh.amount_value, charge.amount_value) && coverBlock(fresh, coverContext()) === null;
-    return same && direct?.status === 'COMPLETED' && sameMoney(direct.amount_value, charge.amount_value) && holdCovers(hold, amounts) && !ledgerBlock(ctx.call.pending.targetId, charge.transaction_id);
+    return same && baseline?.pendingId === ctx.call.pending.id &&
+      sameFields(baseline.subscription, sub, ['id', 'status', 'plan_id']) &&
+      stillAsRead(ctx.call.pending, { subscription: sub, plan, charge: fresh }) &&
+      direct?.id === charge.transaction_id && direct.status === 'COMPLETED' && direct.amount_currency === charge.amount_currency &&
+      sameMoney(direct.amount_value, charge.amount_value) && holdCovers(hold, amounts) && !ledgerBlock(ctx.call.pending.targetId, charge.transaction_id);
   }
 
   /** The sponsor's money goes back when the donor's refund was refused, so the sponsor never pays for a month that wasn't given back. */
@@ -631,16 +670,24 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     // PayPal can refuse a refund that already went through, as when an earlier try's answer was lost. Then the sponsor's
     // money must stay, or the charity ends a whole gift short, so staff get it.
     const giftCharge = await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'gift_charge', charge.transaction_id)));
-    if (isRefundedStatus(giftCharge?.status)) {
+    const sameCharge = giftCharge?.id === charge.transaction_id && giftCharge.amount_currency === charge.amount_currency &&
+      sameMoney(giftCharge.amount_value, charge.amount_value);
+    if (sameCharge && isRefundedStatus(giftCharge?.status)) {
       await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)));
       closeCover(ctx, approval, charge, { outcome: 'open', captureId, refundStatus: giftCharge.status });
       return say.coverRefundUnclear();
+    }
+    // An absent, stale, or otherwise unconfirmed charge is not evidence that the refund did not happen.
+    // Keep the sponsor capture open until a fresh read establishes COMPLETED, so money is not removed twice.
+    if (!sameCharge || giftCharge.status !== 'COMPLETED') {
+      closeCover(ctx, approval, charge, { outcome: 'open', captureId, refundStatus: giftCharge?.status ?? null });
+      return say.coverRefundNeedsCheck();
     }
     const unwound = await timed(ctx, () => gate.executeLeg(ctx.call, approval, LEG_UNWIND,
       legWriter(ctx, 'unwindSponsorCapture', amounts, { captureId, requestId: requestIds.unwind(captureId) }), ctx.turn, { captureId }));
     const capture = await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'capture', captureId)));
     await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)));
-    closeCover(ctx, approval, charge, { outcome: unwound.ok ? 'unwound' : 'open', captureId, captureStatus: capture?.status ?? null });
+    closeCover(ctx, approval, charge, { outcome: unwound.ok && capture?.status === 'REFUNDED' ? 'unwound' : 'open', captureId, captureStatus: capture?.status ?? null });
     return say.coverUnwound({ ok: unwound.ok, capture, giftCharge });
   }
 
@@ -654,7 +701,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     if (!captured.ok) {
       await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)));
       const lost = unanswered(captured);
-      closeCover(ctx, approval, charge, { outcome: lost ? 'open' : 'no_money_moved' });
+      closeCover(ctx, approval, charge, { outcome: lost ? 'open' : 'no_money_moved', captureId: captured.error?.captureId ?? null });
       return lost ? say.coverCaptureUnclear() : say.coverCaptureFailed();
     }
     const captureId = captured.result.id;
@@ -663,15 +710,18 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     if (!refunded.ok && !lost) return unwindCover(ctx, approval, charge, amounts, captured);
     // A refund PayPal answered, or one whose answer was lost, is read back the same way, and only a read can say it went through (I8).
     const giftCharge = await readOrNull(() => rereadUntil(ctx, () => readSnapshot(ctx, 'gift_charge', transactionId), (s) => isRefundedStatus(s?.status)));
-    const shown = isRefundedStatus(giftCharge?.status);
+    const shown = giftCharge?.id === transactionId && giftCharge.amount_currency === amounts.currency &&
+      sameMoney(giftCharge.amount_value, amounts.amountValue) && giftCharge.status === 'REFUNDED';
     const capture = await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'capture', captureId)));
     await readOrNull(() => timed(ctx, () => readSnapshot(ctx, 'hold', config.cover.holdId)));
     await readOrNull(() => readCharges(ctx, approval.pending.targetId));
     const { sub } = await readOrNull(() => readGift(ctx, { fresh: true })) ?? {};
-    closeCover(ctx, approval, charge, { outcome: refunded.ok || shown ? 'covered' : 'open', captureId, refundId: refunded.result?.id ?? null,
+    closeCover(ctx, approval, charge, { outcome: shown ? 'covered' : 'open', captureId, refundId: refunded.result?.id ?? refunded.error?.resultId ?? null,
       refundStatus: giftCharge?.status ?? null, captureStatus: capture?.status ?? null, chargeFee: giftCharge?.fee_value ?? null, captureFee: capture?.fee_value ?? null });
     if (lost && !shown) return say.coverRefundUnclear();
-    return say.afterCover({ giftCharge, capture, sub, orgName: config.orgName, unclear: lost, timeZone: config.timeZone });
+    // Never speak facts from an unrelated or mismatched capture as this donor's refund.
+    const shownCharge = shown ? giftCharge : null;
+    return say.afterCover({ giftCharge: shownCharge, capture, sub, orgName: config.orgName, unclear: lost, timeZone: config.timeZone });
   }
 
   /** The one yes. No leg runs until PayPal's fresh reads still match what the line read aloud. */
@@ -750,7 +800,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const lead = dropped ? say.setAside() : null;
     if (!sub) {
       refused(ctx, 'no_subscription');
-      return say.combine(lead, say.noSubscription());
+      return say.combine(lead, config.demoSubscriptionId ? say.noSubscription() : say.noConfiguredSubscription());
     }
     // A draft just deleted with the proposal it belonged to is not read aloud as if it were still there.
     if (dropped?.kind === 'send_invoice' || inv === undefined) return say.combine(lead, say.recheck(sub, plan));
@@ -842,26 +892,74 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return say.pinLocked();
   }
 
+  // Compare entire relevant values, not just the portion read aloud (a masked email or last four digits).
+  const sameFields = (a, b, fields) => Boolean(a && b) && fields.every((field) => a[field] === b[field]);
+
+  /** A yes applies only to the exact PayPal state read to the caller at proposal time. */
+  async function revalidateProposal(ctx, pending) {
+    const baseline = ctx.call.proposalBaseline;
+    if (!baseline || baseline.pendingId !== pending.id || (pending.targetId !== config.demoSubscriptionId && pending.kind !== 'send_invoice')) return false;
+    if (pending.kind === 'refund_request') {
+      const charge = await readCharges(ctx, pending.targetId);
+      return sameFields(baseline.charge, charge, ['transaction_id', 'status', 'amount_value', 'amount_currency', 'time']) &&
+        stillAsRead(pending, { charge });
+    }
+    const { sub, plan } = await readGift(ctx, { fresh: true });
+    if (!sameFields(baseline.subscription, sub, ['id', 'status', 'plan_id'])) return false;
+    if (pending.readBack.facts.some((fact) => fact.source === 'plan.price') &&
+        !sameFields(baseline.plan, plan, ['id', 'price_value', 'price_currency'])) return false;
+    if (pending.kind === 'send_invoice') {
+      const inv = await timed(ctx, () => readSnapshot(ctx, 'invoice', pending.targetId));
+      return sameFields(baseline.subscription, sub, ['subscriber_email']) &&
+        sameFields(baseline.invoice, inv, ['id', 'status', 'number', 'amount_value', 'amount_currency', 'recipient_email']) &&
+        inv.status === 'DRAFT' && inv.id === pending.targetId && inv.recipient_email === sub.subscriber_email &&
+        stillAsRead(pending, { subscription: sub, plan, invoice: inv });
+    }
+    return ['suspend', 'activate', 'cancel'].includes(pending.kind) && stillAsRead(pending, { subscription: sub, plan });
+  }
+
   async function yesTurn(ctx, text) {
     const { call } = ctx;
+    const pending = call.pending;
+    // Covered Month already revalidates every money leg under its per-charge lock.
+    if (pending.kind === COVER_MONTH) {
+      const approval = gate.approve(call, text, ctx.turn, ctx.answering, ctx.arrival);
+      if (!approval) return call.pending ? askAgain(ctx) : say.nothingPending();
+      return coverYesTurn(ctx, approval);
+    }
+    let unchanged = false;
+    try {
+      unchanged = await revalidateProposal(ctx, pending);
+    } catch (error) {
+      if (!(error instanceof PayPalError)) throw error;
+    }
+    if (!unchanged) {
+      // Do not delete an invoice whose current status could not be established or changed externally.
+      // It may already have been sent, or someone may be updating it.
+      gate.withdraw(call, ctx.turn);
+      if (pending.kind === 'send_invoice') call.uncertainDraftId = pending.targetId;
+      call.proposalBaseline = null;
+      call.chargeAsked = null;
+      call.coverAsked = null;
+      return say.combine(say.setAside(), 'What would you like to do?');
+    }
     const approval = gate.approve(call, text, ctx.turn, ctx.answering, ctx.arrival);
     if (!approval) return call.pending ? askAgain(ctx) : say.nothingPending();
-    const { pending } = approval;
     if (pending.kind === 'refund_request') return refundYesTurn(ctx, approval);
-    if (pending.kind === COVER_MONTH) return coverYesTurn(ctx, approval);
     const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
     const result = await timed(ctx, () => gate.execute(call, approval, writer, ctx.turn));
     // A 4xx is PayPal saying no. A timeout or a 5xx leaves it open, since PayPal may have made the change and lost its
     // answer, so the line reads PayPal again as for an ok write and says what it shows (L2).
     const unclear = unanswered(result);
+    if (pending.kind === 'send_invoice' && unclear) call.uncertainDraftId = pending.targetId;
     const settled = (changed) => (s) => (!result.ok && !unclear) || changed(s);
     const outcome = { ok: result.ok, unclear };
     try {
       if (pending.kind === 'send_invoice') {
-        if (result.ok) call.openDraftId = null;
+        if (result.ok) { call.openDraftId = null; call.uncertainDraftId = null; }
         const inv = await rereadUntil(ctx, () => readSnapshot(ctx, 'invoice', pending.targetId), settled((s) => s !== null && s.status !== 'DRAFT'));
         // A send PayPal made though its answer was lost is no longer a draft, so the end of the call must not delete it.
-        if (inv && inv.status !== 'DRAFT') call.openDraftId = null;
+        if (inv && inv.status !== 'DRAFT') { call.openDraftId = null; call.uncertainDraftId = null; }
         return say.afterWrite('send_invoice', inv, null, outcome);
       }
       const expected = EXPECTED_STATUS[pending.kind];
@@ -1020,7 +1118,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const call = {
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
       id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
-      pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
+      pinTries: 0, turn: 0, pending: null, proposalBaseline: null, pauseOffered: false, openDraftId: null, uncertainDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
       noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null, charge: null, cover: null }, queue: Promise.resolve(), chargeAsked: null, coverAsked: null,
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
       lastFinishedTurn: 0, lastFinishedAt: performance.now(), gapTurns: new Set(),

@@ -337,14 +337,14 @@ test('a capture with a lost answer runs no refund, never says it moved, and stay
   const { stack, callId } = await offered();
   stack.paypal.captureSponsorHold = async () => { throw lost(); };
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.equal(reply, "PayPal didn't answer clearly about the sponsor's payment, so I didn't give the month back. Staff will check on it. What else can I help with?");
+  assert.equal(reply, "PayPal didn't answer clearly about the sponsor's payment, so I didn't give the month back. Staff can help during open hours. What else can I help with?");
   assert.equal(donorRefunded(stack), 0);
   assert.equal(eventsOf(stack, callId, 'cover_month')[0].outcome, 'open');
   clean(stack, callId);
   // The same charge is staff's now, so a later call moves nothing.
   const later = await verifiedCall(stack);
   const again = await say(stack, later, ASK);
-  assert.match(again.reply, /Staff are already looking at this charge/);
+  assert.match(again.reply, /There is an earlier request for this charge/);
   assert.deepEqual(eventsOf(stack, later, 'proposed'), []);
   clean(stack, later);
 });
@@ -380,7 +380,7 @@ test('a refund PayPal refuses that a read shows went through keeps the sponsor\'
   const realRefund = stack.paypal.refundCharge;
   stack.paypal.refundCharge = async (...args) => { await realRefund(...args); throw refusal('CAPTURE_FULLY_REFUNDED'); };
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.equal(reply, "PayPal didn't answer clearly about the refund, so I can't say it went through. Staff will check on it. What else can I help with?");
+  assert.equal(reply, "PayPal didn't answer clearly about the refund, so I can't say it went through. Staff can help during open hours. What else can I help with?");
   assert.deepEqual(legs(stack, callId), [['cover_capture', true], ['cover_refund', false]], 'no return of the sponsor\'s payment');
   assert.equal(stack.paypal.mockMoney().captures[0].status, 'COMPLETED');
   assert.equal(eventsOf(stack, callId, 'cover_month')[0].outcome, 'open');
@@ -392,7 +392,7 @@ test('a refund refused and a return that fails too says so, and leaves it with s
   stack.paypal.refundCharge = async () => { throw refusal('REFUND_FAILED_INSUFFICIENT_FUNDS'); };
   stack.paypal.unwindSponsorCapture = async () => { throw refusal('UNPROCESSABLE_ENTITY'); };
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.equal(reply, "PayPal didn't accept the refund, and I couldn't return the sponsor's payment. Staff will check on it. What else can I help with?");
+  assert.equal(reply, "PayPal didn't accept the refund, and I couldn't return the sponsor's payment. Staff can help during open hours. What else can I help with?");
   assert.equal(eventsOf(stack, callId, 'cover_month')[0].outcome, 'open');
   clean(stack, callId);
 });
@@ -409,7 +409,7 @@ test('a refund with a lost answer is read back: went through says what PayPal sh
   const notShown = await offered();
   notShown.stack.paypal.refundCharge = async () => { throw lost(); };
   const no = await say(notShown.stack, notShown.callId, 'Yes.');
-  assert.equal(no.reply, "PayPal didn't answer clearly about the refund, so I can't say it went through. Staff will check on it. What else can I help with?");
+  assert.equal(no.reply, "PayPal didn't answer clearly about the refund, so I can't say it went through. Staff can help during open hours. What else can I help with?");
   assert.deepEqual(legs(notShown.stack, notShown.callId), [['cover_capture', true], ['cover_refund', false]], 'no return, since the refund may have gone through');
   assert.equal(eventsOf(notShown.stack, notShown.callId, 'cover_month')[0].outcome, 'open');
   clean(notShown.stack, notShown.callId);
