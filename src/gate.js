@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { WriteNotAuthorized } from './paypal.js';
+import { PayPalError, WriteNotAuthorized } from './paypal.js';
 import { LIMITS } from './config.js';
 
 const MAX_YES_WORDS = 8;
@@ -197,7 +197,8 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
     }
     const ms = Math.round(performance.now() - started);
     // PayPal's own answer code, 0 for a timeout or a lost connection, so check.js tells a refusal from a lost answer (L2).
-    const status = outcome.error?.status;
+    // Only a PayPal response can prove refusal. Local errors carry no reliable HTTP status.
+    const status = outcome.error instanceof PayPalError && Number.isInteger(outcome.error.status) ? outcome.error.status : 0;
     const errorText = outcome.ok ? {} : { error: describeError(outcome.error), ...(Number.isInteger(status) ? { httpStatus: status } : {}) };
     const resultId = outcome.result?.id ? { resultId: outcome.result.id } : {};
     ledger.append({ type: 'write', callId: call.id, turn, kind, targetId, tokenId: token, ok: outcome.ok, debugId: outcome.debugId, ms, ...fields, ...resultId, ...errorText });

@@ -51,6 +51,8 @@ for (const [key, lead, claim, httpStatus, name] of [['refused', REFUSED, 'write_
     assert.equal(proposed.targetId, drill.writeId);
     const [write] = list.filter((e) => e.type === 'write');
     assert.deepEqual([write.kind, write.targetId, write.ok, write.httpStatus, write.error], ['suspend', drill.writeId, false, httpStatus, `${name} ${httpStatus}`]);
+    assert.ok(list.some((e) => e.type === 'read' && e.what === 'subscription' && e.id === MOCK_SUBSCRIPTION_ID && e.turn === write.turn && e.seq < write.seq),
+      'the consent is revalidated against the real gift immediately before the staged write');
     assert.match(write.debugId, /^mock-/);
     // No claim of a change: the existing refusal sentence, then the fresh read of the real gift, still active.
     assert.equal(yes.reply, `${lead} ${STILL_ACTIVE} What else can I help with?`);

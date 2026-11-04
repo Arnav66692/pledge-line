@@ -121,7 +121,7 @@ test('a refund request needs a clear yes in its own turn, logs one request for t
   const before = (await stack.paypal.getSubscription(SUB)).data.status;
   const { reply, state } = await say(stack, callId, 'Yes, ask staff.');
   assert.equal(reply, "OK. I've asked staff to look at a refund of $25.00 for the charge on November 1. PayPal now shows that charge as completed. "
-    + 'Staff will follow up during open hours. What else can I help with?');
+    + 'What else can I help with?');
   const requests = eventsOf(stack, callId, 'refund_request');
   assert.deepEqual(requests.map((e) => [e.subscriptionId, e.transactionId, e.amountValue, e.amountCurrency]), [[SUB, MOCK_TRANSACTION_ID, '25.00', 'USD']]);
   const [write] = eventsOf(stack, callId, 'write');
@@ -223,7 +223,7 @@ test('the yes reads PayPal again, and a newer charge there means the line names 
   const { stack, callId } = await askedCall();
   stack.paypal.mockSetCharges(SUB, [mockCharge({ time: '2026-11-01T10:00:00.000Z' }), mockCharge({ id: 'NEWTX0000000099ZZ', value: '40.00', time: '2026-11-03T17:00:00.000Z' })]);
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.equal(reply, "OK. I've asked staff to look at a refund for the charge I read you. Staff will follow up during open hours. What else can I help with?");
+  assert.equal(reply, "OK. I've asked staff to look at a refund for the charge I read you. What else can I help with?");
   const reads = eventsOf(stack, callId, 'read');
   const write = eventsOf(stack, callId, 'write')[0];
   assert.ok(reads.some((e) => e.what === 'charge' && e.turn === write.turn && e.seq > write.seq), 'a fresh charge read after the request');
@@ -258,7 +258,7 @@ test('a PayPal error on the read after the yes still keeps the request and names
   const { stack, callId } = await askedCall();
   stack.paypal.getSubscriptionCharges = async () => { throw new PayPalError({ status: 0, name: 'TIMEOUT', message: 'PayPal did not answer in time' }); };
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.equal(reply, "OK. I've asked staff to look at a refund for the charge I read you. Staff will follow up during open hours. What else can I help with?");
+  assert.equal(reply, "OK. I've asked staff to look at a refund for the charge I read you. What else can I help with?");
   assert.equal(eventsOf(stack, callId, 'refund_request').length, 1);
   assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
 });
@@ -345,7 +345,7 @@ test('receipts prove each charge sentence from the charge read', async () => {
   const latest = sentences.find((s) => s.text.startsWith('PayPal shows the latest charge'));
   assert.equal(latest.verdict, 'proven');
   assert.deepEqual([...new Set(latest.facts.map((f) => f.proof.what))], ['charge']);
-  for (const text of ["I've asked staff to look at a refund of $25.00 for the charge on November 1.", 'PayPal now shows that charge as completed.', 'Staff will follow up during open hours.']) {
+  for (const text of ["I've asked staff to look at a refund of $25.00 for the charge on November 1.", 'PayPal now shows that charge as completed.']) {
     const sentence = sentences.find((s) => s.text === text);
     assert.equal(sentence?.verdict, 'proven', text);
     assert.ok(sentence.claims.every((c) => c.proven && c.meaning), text);

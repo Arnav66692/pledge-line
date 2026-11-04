@@ -304,14 +304,26 @@ const turnRead = (scope, what, id, after = null) => scope.turn.filter((e) => e.t
 /** The refund leg, and a read after it of the donor's charge that shows it refunded. */
 function refundShown(scope) {
   const refund = legIn(scope, LEG_REFUND);
-  return Boolean(refund) && isRefundedStatus(turnRead(scope, 'gift_charge', refund.targetId, refund)?.snapshot?.status);
+  const snapshot = refund && turnRead(scope, 'gift_charge', refund.targetId, refund)?.snapshot;
+  return Boolean(snapshot) && snapshot.id === refund.targetId && snapshot.status === 'REFUNDED' &&
+    snapshot.amount_currency === refund.currency && sameMoney(snapshot.amount_value, refund.amountValue);
+}
+
+/** A refused refund can coexist with a partial earlier refund; that is still unsafe to unwind. */
+function refundAnyShown(scope) {
+  const refund = legIn(scope, LEG_REFUND);
+  const snapshot = refund && turnRead(scope, 'gift_charge', refund.targetId, refund)?.snapshot;
+  return Boolean(snapshot) && snapshot.id === refund.targetId && isRefundedStatus(snapshot.status) &&
+    snapshot.amount_currency === refund.currency && sameMoney(snapshot.amount_value, refund.amountValue);
 }
 
 /** The capture leg went through, and a read after it of that capture shows the same amount. */
 function captureShown(scope) {
   const capture = legIn(scope, LEG_CAPTURE);
   if (!capture?.ok || !capture.resultId) return false;
-  return sameMoney(turnRead(scope, 'capture', capture.resultId, capture)?.snapshot?.amount_value, capture.amountValue);
+  const snapshot = turnRead(scope, 'capture', capture.resultId, capture)?.snapshot;
+  return Boolean(snapshot) && snapshot.id === capture.resultId && snapshot.status === 'COMPLETED' &&
+    snapshot.amount_currency === capture.currency && sameMoney(snapshot.amount_value, capture.amountValue);
 }
 
 const startOf = (scope) => scope.before.find((e) => e.type === 'call_start') ?? {};
@@ -362,6 +374,7 @@ const CLAIMS = Object.freeze({
     (s) => { const d = deletedDraft(s); return Boolean(d?.read?.notFound) && !s.before.some((e) => e.type === 'write' && e.ok && e.kind === 'send_invoice' && e.targetId === d.del.id); }],
   draft_kept: ["a delete of this call's own draft in that turn, and a read after it that still finds the draft", (s) => Boolean(deletedDraft(s)?.read?.snapshot)],
   no_gift: ["a read of the call's own subscription in that turn that found nothing", (s) => giftInTurn(s) && !s.gift.snapshot],
+  no_subscription_config: ["no subscription configured when the call started", (s) => !startOf(s).subscriptionId],
   no_email: ["a read of the call's own subscription in that turn with no email on file", (s) => giftInTurn(s) && Boolean(s.gift.snapshot) && !s.gift.snapshot.subscriber_email],
   paypal_unclear: ['a PayPal step in that turn that failed, found nothing, or made a draft it deleted, and no ok write', (s) => unclearStep(s) && !okWrite(s)],
   unchanged: ['no ok write in that turn', (s) => !okWrite(s)],
@@ -408,7 +421,13 @@ const CLAIMS = Object.freeze({
     (s) => { const unwind = legIn(s, LEG_UNWIND); return Boolean(unwind?.ok) && isRefundedStatus(turnRead(s, 'capture', unwind.captureId, unwind)?.snapshot?.status); }],
   cover_unwind_failed: ["a refund of the charge refused in that turn, and a return of the sponsor's capture that failed after it", (s) => legRefused(legIn(s, LEG_REFUND)) && Boolean(legIn(s, LEG_UNWIND)) && !legIn(s, LEG_UNWIND).ok],
   cover_refund_unclear: ['a refund of the charge PayPal gave no clear answer to in that turn and no read after it that shows it went through, or one PayPal refused that a read shows went through',
-    (s) => (legUnclear(legIn(s, LEG_REFUND)) && !refundShown(s)) || (legRefused(legIn(s, LEG_REFUND)) && refundShown(s))],
+    (s) => (legUnclear(legIn(s, LEG_REFUND)) && !refundShown(s)) || (legRefused(legIn(s, LEG_REFUND)) && refundAnyShown(s))],
+  cover_verify_unknown: ['a refused refund with no confirmed completed charge after it and no return of the sponsor capture',
+    (s) => { const refund = legIn(s, LEG_REFUND); const read = refund && turnRead(s, 'gift_charge', refund.targetId, refund);
+      const snapshot = read?.snapshot;
+      const confirmed = snapshot?.id === refund?.targetId && snapshot.status === 'COMPLETED' &&
+        snapshot.amount_currency === refund.currency && sameMoney(snapshot.amount_value, refund.amountValue);
+      return legRefused(refund) && Boolean(legIn(s, LEG_CAPTURE)?.ok) && !legIn(s, LEG_UNWIND) && !confirmed; }],
   cover_charge_unchanged: ['a refund of the charge refused in that turn, and a read of that charge after it that shows it still completed',
     (s) => { const refund = legIn(s, LEG_REFUND); return legRefused(refund) && turnRead(s, 'gift_charge', refund.targetId, refund)?.snapshot?.status === 'COMPLETED'; }],
 });

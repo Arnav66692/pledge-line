@@ -97,6 +97,7 @@ After the PIN, try "I lost my job, I can't do it this month." In mock mode the f
 - The staff rule is `COVER_MAX_DOLLARS`, `COVER_WINDOW_DAYS` and `COVER_PER_YEAR`, with defaults of $50, 30 days and once a year. `COVER_PER_YEAR=0` turns it off.
 - In the sandbox, the sponsor consents once in the browser. `npm run seed:hold` makes the order and prints the link, then `npm run seed:hold -- --authorize` saves the hold. With no hold, the line says the fund isn't open and moves nothing. A hold lasts 29 days, so seed it within 3 days of filming.
 - The page and the staff view both show the fee a refund leaves behind. PayPal keeps its fee on the refunded gift and takes one on the sponsor's payment, so the nonprofit ends one fee short of a gift that stood.
+- If local recording fails after a money move may have started, the line blocks another Covered Month attempt for that charge until the process restarts. The free Render filesystem is ephemeral, so that in-memory safeguard and the local ledger do not provide durable cross-restart reconciliation. Reconcile PayPal's records before any retry after a restart.
 - `PICK.md` says why, `FEATURES.md` has the details and `SPEC.md` the contract.
 
 ## When something goes wrong in a call
