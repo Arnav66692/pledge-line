@@ -196,6 +196,7 @@ The pass bar and how each test is graded live in `PILOT.md`. The bar was set bef
 - A PIN said by voice that starts with an "oh", as in "Oh, 2468", reads as a wrong PIN, since oh can mean zero. The scripts use the keypad, so type the PIN there.
 - Some PayPal sandbox details are unconfirmed, such as whether a sent invoice reads SENT or UNPAID. The code accepts both. See `.pilot/facts-paypal.md`.
 - Render's free service sleeps after 15 minutes, and waking wipes its event list. PayPal retries webhooks for 3 days, and `npm run pilot:check -- --render URL --resend` wakes the service, asks PayPal to send the paid event again, then checks Render's list for up to about two minutes.
+- Webhook delivery is acknowledged only after signature verification and a synced local ledger write. The free Render service has an ephemeral filesystem, so an instance replacement or deploy can still erase that record and its deduplication history. Persistent storage is needed before relying on the ledger across instances.
 - On Render, ten wrong PINs in an hour from one address stop PIN entry from that address for the rest of the hour, across all its calls. The line keys this, and its other limits, on the last address in `X-Forwarded-For`, which a caller can't set.
 
 ## License
