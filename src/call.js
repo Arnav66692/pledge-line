@@ -1,4 +1,4 @@
-import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
+import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import * as say from './say.js';
 import { readGift as readGiftAmount, settleGiftRoute } from './router.js';
 import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
@@ -359,6 +359,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
   }
 
   async function deleteDraft(ctx, id) {
+    // A send may have succeeded even if the write result could not be recorded. No cleanup path may delete it.
+    if (ctx.call.uncertainDraftId === id) return false;
     const started = performance.now();
     const base = { type: 'staging_write', turn: ctx.turn, kind: 'delete_draft', id };
     try {
@@ -979,11 +981,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     if (!approval) return call.pending ? askAgain(ctx) : say.nothingPending();
     if (pending.kind === 'refund_request') return refundYesTurn(ctx, approval);
     const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
+    // Set this before the remote send. A later exception while recording the result must not trigger draft deletion.
+    if (pending.kind === 'send_invoice') call.uncertainDraftId = pending.targetId;
     const result = await timed(ctx, () => gate.execute(call, approval, writer, ctx.turn));
     // A 4xx is PayPal saying no. A timeout or a 5xx leaves it open, since PayPal may have made the change and lost its
     // answer, so the line reads PayPal again as for an ok write and says what it shows (L2).
     const unclear = unanswered(result);
-    if (pending.kind === 'send_invoice' && unclear) call.uncertainDraftId = pending.targetId;
+    if (pending.kind === 'send_invoice' && !result.ok && !unclear) call.uncertainDraftId = null;
     const settled = (changed) => (s) => (!result.ok && !unclear) || changed(s);
     const outcome = { ok: result.ok, unclear };
     try {
@@ -1160,9 +1164,12 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     // A drill is chosen only by name and never with a script, so no graded script can reach it (A12).
     const chosen = drillFor(drill, { script: script === null || script === undefined || script === '' ? null : script, paypalMode: config.paypal.mode, now: now() });
     const signals = normalizeClient(client);
+    // This bearer secret is independent of both the call ID and shareable receipt secret. It exists only in memory.
+    const sessionSecret = randomBytes(32).toString('hex');
+    const sessionHash = createHash('sha256').update(sessionSecret).digest();
     const call = {
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
-      id: randomUUID(), script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
+      id: randomUUID(), sessionHash, script: normalizeScript(script), browser: detectBrowser(userAgent, signals), clientKey, verified: false, locked: false,
       pinTries: 0, turn: 0, pending: null, proposalBaseline: null, pauseOffered: false, openDraftId: null, uncertainDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
       noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null, charge: null, cover: null, write: null }, queue: Promise.resolve(), chargeAsked: null, coverAsked: null, drill: chosen,
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
@@ -1184,7 +1191,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const reply = say.greeting(config.orgName);
     log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, claims: reply.claims, ms: 0 });
     call.lastSaid = reply;
-    return { callId: call.id, reply: reply.text, turn: 0, state: stateFor(call) };
+    return { callId: call.id, sessionSecret, reply: reply.text, turn: 0, state: stateFor(call) };
   }
 
   async function expirePending(call) {
@@ -1212,6 +1219,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   return {
     start,
+    // Hash even a missing/invalid credential before comparing fixed-length buffers. Unknown calls use a dummy hash.
+    authenticate: (callId, given) => {
+      const actual = typeof given === 'string' ? given : '';
+      const hash = createHash('sha256').update(actual).digest();
+      const expected = calls.get(callId)?.sessionHash ?? Buffer.alloc(32);
+      return actual.length > 0 && timingSafeEqual(hash, expected);
+    },
     /**
      * The arrival facts are taken before the turn waits in the queue, so they say which replies existed when it
      * arrived (I1). receivedAt is when the HTTP server got the request. Tests and the dry run send none.

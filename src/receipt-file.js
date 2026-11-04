@@ -41,7 +41,7 @@ function sentenceOf(receipt, sentence) {
  * The receipt body for one call, from its ledger events, oldest first, or why there is none. The call must have
  * ended, so the receipt covers the whole call.
  */
-export function receiptBody(events, config) {
+export function receiptBody(events, config, signer) {
   const list = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
   const start = list.find((e) => e.type === 'call_start');
   if (!start) return { error: 'not_found' };
@@ -50,7 +50,7 @@ export function receiptBody(events, config) {
   const receipts = buildReceipts(list, receiptOptions(config));
   const mode = start.mode ?? {};
   const call = {
-    id: start.callId,
+    id: signer.receiptIdFor(start.callId),
     org: config.orgName,
     script: Number.isInteger(start.script) ? start.script : null,
     startedAt: start.ts,
@@ -67,6 +67,6 @@ export function receiptBody(events, config) {
 
 /** The signed file text for one call, or the reason there is none. */
 export function receiptFile(events, config, signer) {
-  const { body, error } = receiptBody(events, config);
+  const { body, error } = receiptBody(events, config, signer);
   return error ? { error } : { text: sealReceipt(body, signer) };
 }

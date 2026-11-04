@@ -130,7 +130,7 @@ Set `RECEIPT_SIGNING_KEY` to 64 hex characters (`SETUP.md` shows how) and, when 
 node scripts/check-receipt.js receipt.json --key receipt-key.json
 ```
 
-Only the page that started a call gets that call's receipt secret. The file holds no PIN, no full email, no token ids and no user agent. Render's free disk is wiped on restart, so the downloaded file is the copy that lasts. With the key unset, the button and every receipt page are off, as 404s. `FEATURES.md` has the file's format.
+Only the page that started a call gets that call's receipt secret. Call APIs also require a separate random session secret kept in the starting page's memory, regardless of whether receipts are enabled. A receipt link or file does not grant access to the call transcript or controls. The file uses a stable, pseudonymous receipt identifier instead of the call's live API ID, and holds no PIN, full email, token ids or user agent. A recipient can still read all of the receipt's contents, so share it only with people you trust. Render's free disk is wiped on restart, so the downloaded file is the copy that lasts. With the key unset, the button and every receipt page are off, as 404s. `FEATURES.md` has the file's format.
 
 ## The pilot
 

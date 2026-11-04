@@ -360,6 +360,8 @@ Added Nov 3, logged in `EVAL.md`'s change log before any code. `gateViewOf(trans
 
 ### pilot-scripts.js
 
+The call API requires the independent `x-call-secret` issued at call creation for every call read, turn, end and timing request. The starting page keeps the 256-bit bearer secret in memory; the server retains only its hash and compares hashes in constant time. Reloading the donor page loses that secret and requires a new call. Receipt access uses a different secret, and signed receipt files contain a stable pseudonymous receipt identifier rather than the live call API ID. A shared receipt link does not authorize call access.
+
 Export the 10 scripts exactly as listed in `PILOT.md` (number, title, the lines Arnav says, and `expect: {writes, staging, refusals, proposals, finalStatus, unchanged, invoiceFinal, noReads, readsAloud}`).
 
 ### server.js

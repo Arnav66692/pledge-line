@@ -77,6 +77,28 @@ test('an uncertain invoice send is never repeated or deleted while the outcome c
   assert.equal(eventsOf(stack, callId, 'draft_cleanup_deferred').length, 1);
 });
 
+test('a ledger failure after a successful invoice send defers every cleanup path', async () => {
+  const stack = buildStack();
+  const callId = await verifiedCall(stack);
+  await say(stack, callId, 'Give fifty dollars once.');
+  const append = stack.ledger.append;
+  let fail = true;
+  stack.ledger.append = (event) => {
+    if (fail && event.type === 'write' && event.kind === 'send_invoice') {
+      fail = false;
+      throw new Error('injected invoice ledger failure');
+    }
+    return append(event);
+  };
+  const remove = stack.paypal.deleteDraftInvoice;
+  let deletes = 0;
+  stack.paypal.deleteDraftInvoice = async (...args) => { deletes += 1; return remove(...args); };
+  await assert.rejects(() => say(stack, callId, 'Yes.'), /injected invoice ledger failure/);
+  await say(stack, callId, 'Goodbye.');
+  assert.equal(deletes, 0);
+  assert.equal(eventsOf(stack, callId, 'draft_cleanup_deferred').length, 1);
+});
+
 test('a temporary readback error is retried without repeating the financial write', async () => {
   const stack = buildStack();
   const callId = await verifiedCall(stack);

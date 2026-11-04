@@ -114,13 +114,14 @@
   // lastTurn is the turn of the last reply this page received. Each turn says it answers that reply, so a yes only counts for a proposal the caller heard.
   // giftStatus is the status the gift card last showed in this call, so a change's read-back can be marked when it lands.
   // receiptSecret is the call's own key to its receipt, given only to this page when the call started. It stays in memory.
-  const state = { callId: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], drills: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false, receiptSecret: null };
+  const state = { callId: null, sessionSecret: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], drills: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false, receiptSecret: null };
 
   // Engine signals a user-agent override, such as Chrome's device toolbar, does not change. The line checks them against the agent.
   const engineSignals = () => ({ vendor: String(navigator.vendor || ''), chrome: typeof window.chrome !== 'undefined', uaData: 'userAgentData' in navigator });
 
   async function api(path, body) {
-    const init = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+    const init = body === undefined ? { headers: {} } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+    if (state.callId && path.startsWith(`/api/calls/${state.callId}`) && state.sessionSecret) init.headers['x-call-secret'] = state.sessionSecret;
     const res = await fetch(path, init);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'The line didn\'t answer. Please try again.');
@@ -646,6 +647,7 @@
       const script = picked && !drill ? Number(picked) : null;
       const data = await api('/api/calls', { script, ...(drill ? { drill } : {}), userAgent: navigator.userAgent, client: engineSignals() });
       state.callId = data.callId;
+      state.sessionSecret = data.sessionSecret;
       state.receiptSecret = typeof data.receiptSecret === 'string' ? data.receiptSecret : null;
       state.lastTurn = data.turn;
       state.pin = '';
@@ -849,7 +851,10 @@
       sendTurn(text, 'typed', startedAt);
     });
     window.addEventListener('pagehide', () => {
-      if (state.callId && !state.ended) navigator.sendBeacon(`/api/calls/${state.callId}/end`, new Blob(['{}'], { type: 'application/json' }));
+      if (state.callId && state.sessionSecret && !state.ended) {
+        fetch(`/api/calls/${state.callId}/end`, { method: 'POST', keepalive: true,
+          headers: { 'Content-Type': 'application/json', 'x-call-secret': state.sessionSecret }, body: '{}' }).catch(() => {});
+      }
     });
   }
 
