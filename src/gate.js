@@ -143,7 +143,9 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
    * arrival holds the server's own facts, which a client can't forge. arrivedAfter is the last reply the line had
    * finished when the yes arrived, so a yes sent before the asking reply existed never counts. afterReplyMs, which
    * only the HTTP server knows, is how long after that reply the yes reached it, so a yes no person could have
-   * answered that fast never counts either. call.js always passes arrivedAfter.
+   * answered that fast never counts either. spokenFloorMs, which only the phone line sends, is the least time the asking
+   * reply takes to say aloud, so a yes that reached the line before those words could have ended never counts. call.js
+   * always passes arrivedAfter.
    */
   function approve(call, text, turn, answering, arrival = {}) {
     const pending = call.pending;
@@ -152,7 +154,7 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
     if (turn !== pending.askedTurn + 1) return null;
     if (answering !== undefined && answering !== pending.askedTurn) return null;
     if (arrival.arrivedAfter !== undefined && arrival.arrivedAfter !== pending.askedTurn) return null;
-    if (Number.isFinite(arrival.afterReplyMs) && !(arrival.afterReplyMs >= minAnswerMs)) return null;
+    if (Number.isFinite(arrival.afterReplyMs) && !(arrival.afterReplyMs >= Math.max(minAnswerMs, arrival.spokenFloorMs ?? 0))) return null;
     if (now().getTime() >= pending.expiresAt) return null;
     if (!isClearYes(text, pending.kind)) return null;
     if (pending.legs) return approveLegs(call, pending, text, turn);

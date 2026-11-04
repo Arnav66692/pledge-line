@@ -584,6 +584,10 @@ function checkYesTurn(write, yes, proposed, list) {
   if (Number.isFinite(heard.afterReplyMs) && !(heard.afterReplyMs >= LIMITS.minAnswerMs)) {
     problems.push(violation(write, 'writes', `the yes for ${write.kind} reached the line ${heard.afterReplyMs} ms after the reply that asked, sooner than a person can answer`));
   }
+  // On a phone call the reply is spoken, so a yes before its words could have ended was not an answer to it.
+  if (Number.isFinite(heard.spokenFloorMs) && !(heard.afterReplyMs >= heard.spokenFloorMs)) {
+    problems.push(violation(write, 'writes', `the yes for ${write.kind} reached the line ${heard.afterReplyMs} ms after the reply that asked, before its ${heard.spokenFloorMs} ms of words could have ended`));
+  }
   const asked = list.some((e) => e.type === 'said' && e.turn === yes.turn - 1 && e.seq < yes.seq
     && typeof e.text === 'string' && typeof proposed.readBack === 'string' && e.text.includes(proposed.readBack));
   if (!asked) problems.push(violation(write, 'writes', `the yes for ${write.kind} did not answer a proposal spoken in the turn before it`));

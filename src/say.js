@@ -147,6 +147,9 @@ function invoicePhrase(inv) {
 }
 
 export const greeting = (orgName) => part(`Thanks for calling the ${orgName} donor line. This is a PayPal sandbox demo, so no real money moves. To keep your gift safe, please enter your PIN on the keypad, or say its digits.`);
+// A phone caller can't see a page, so the first sentence says a person isn't on the line.
+export const phoneGreeting = (orgName) => combine(part('This is an automated line, not a person.'), greeting(orgName));
+export const notCaught = () => part("Sorry, I didn't catch that.");
 export const askPin = () => part('Please enter your PIN on the keypad, or say its digits.');
 export const pinOk = () => combine(claim('Thanks, you are verified.', 'pin_ok'),
   'I can read you your monthly gift, pause it, restart it, cancel it, or set up a one-time gift. What would you like to do?');

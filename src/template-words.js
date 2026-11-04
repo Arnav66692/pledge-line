@@ -3,24 +3,25 @@
 export const TEMPLATE_WORDS = Object.freeze([
   'a', 'about', 'accept', 'activity', 'address', 'afford', 'again', 'already', 'also', 'amount', 'an', 'and',
   'another', 'answer', 'any', 'anything', 'approval', 'are', 'as', 'aside', 'ask', 'asked', 'asks', 'at',
-  'back', 'be', 'been', 'before', 'but', 'call', 'calling', 'can', "can't", 'cancel', 'cancelling', 'cannot',
-  'catch', 'change', 'changed', 'charge', 'check', 'checked', 'clear', 'clearly', 'comes', 'confirm',
-  "couldn't", 'cover', 'delete', 'deleted', 'demo', "didn't", 'digits', 'do', 'does', "don't", 'done',
-  'donor', 'during', 'each', 'earlier', 'else', 'email', 'ended', 'ends', 'enter', 'file', 'find', 'first',
-  'follow', 'for', 'from', 'fund', 'get', 'gift', 'give', 'given', 'go', 'good', 'goodbye', 'guess', 'hard',
-  'hardship', 'has', 'have', 'hear', 'help', 'here', 'hold', 'holds', 'hours', 'how', 'i', "i'm", "i've",
-  'if', 'in', 'instead', 'invoice', 'is', "isn't", 'it', 'its', 'just', 'keep', 'keypad', 'last', 'later',
-  'latest', 'like', 'limit', 'line', 'link', 'locked', 'longer', 'look', 'looking', 'lot', 'many', 'match',
-  'me', 'means', 'minute', 'money', 'month', 'monthly', 'more', 'move', 'moved', 'moves', 'much', 'need',
-  'never', 'new', 'next', 'no', 'not', 'noted', 'nothing', 'now', 'number', 'of', 'ok', 'old', 'on', 'once',
-  'only', 'open', 'or', 'out', 'pass', 'pause', 'pausing', 'pay', 'payment', 'paypal', "paypal's", 'pin',
-  'pins', 'please', 'reached', 'read', 'real', 'recent', 'recognize', 'record', 'refund', 'request',
-  'restart', 'restarting', 'return', 'right', 'safe', 'safety', 'same', 'sandbox', 'say', 'see', 'send',
-  'set', 'shorter', 'should', 'shows', 'since', 'so', 'something', 'sorry', 'sponsor', "sponsor's", 'staff',
-  'start', 'status', 'stays', 'still', 'stop', 'take', 'taken', 'tell', 'than', 'thank', 'thanks', 'that',
-  'the', 'there', "there's", 'this', 'through', 'time', 'timed', 'times', 'to', 'too', 'transaction', 'try',
-  'understand', 'undone', 'until', 'up', 'update', 'use', 'verified', 'waiting', 'want', 'was', 'way', 'went',
-  'what', 'will', 'with', "won't", 'would', 'wrong', 'year', 'yes', 'you', "you'd", 'your',
+  'automated', 'back', 'be', 'been', 'before', 'but', 'call', 'calling', 'can', "can't", 'cancel',
+  'cancelling', 'cannot', 'catch', 'change', 'changed', 'charge', 'check', 'checked', 'clear', 'clearly',
+  'comes', 'confirm', "couldn't", 'cover', 'delete', 'deleted', 'demo', "didn't", 'digits', 'do', 'does',
+  "don't", 'done', 'donor', 'during', 'each', 'earlier', 'else', 'email', 'ended', 'ends', 'enter', 'file',
+  'find', 'first', 'follow', 'for', 'from', 'fund', 'get', 'gift', 'give', 'given', 'go', 'good', 'goodbye',
+  'guess', 'hard', 'hardship', 'has', 'have', 'hear', 'help', 'here', 'hold', 'holds', 'hours', 'how', 'i',
+  "i'm", "i've", 'if', 'in', 'instead', 'invoice', 'is', "isn't", 'it', 'its', 'just', 'keep', 'keypad',
+  'last', 'later', 'latest', 'like', 'limit', 'line', 'link', 'locked', 'longer', 'look', 'looking', 'lot',
+  'many', 'match', 'me', 'means', 'minute', 'money', 'month', 'monthly', 'more', 'move', 'moved', 'moves',
+  'much', 'need', 'never', 'new', 'next', 'no', 'not', 'noted', 'nothing', 'now', 'number', 'of', 'ok', 'old',
+  'on', 'once', 'only', 'open', 'or', 'out', 'pass', 'pause', 'pausing', 'pay', 'payment', 'paypal',
+  "paypal's", 'person', 'pin', 'pins', 'please', 'reached', 'read', 'real', 'recent', 'recognize', 'record',
+  'refund', 'request', 'restart', 'restarting', 'return', 'right', 'safe', 'safety', 'same', 'sandbox', 'say',
+  'see', 'send', 'set', 'shorter', 'should', 'shows', 'since', 'so', 'something', 'sorry', 'sponsor',
+  "sponsor's", 'staff', 'start', 'status', 'stays', 'still', 'stop', 'take', 'taken', 'tell', 'than', 'thank',
+  'thanks', 'that', 'the', 'there', "there's", 'this', 'through', 'time', 'timed', 'times', 'to', 'too',
+  'transaction', 'try', 'understand', 'undone', 'until', 'up', 'update', 'use', 'verified', 'waiting', 'want',
+  'was', 'way', 'went', 'what', 'will', 'with', "won't", 'would', 'wrong', 'year', 'yes', 'you', "you'd",
+  'your',
 ]);
 
 // Each sentence the templates speak, with the org name and each fact as a slot named for its source.
@@ -171,6 +172,7 @@ export const TEMPLATE_SENTENCES = Object.freeze([
   'This call has reached its limit.',
   'This does not change your monthly gift.',
   'This is a PayPal sandbox demo, so no real money moves.',
+  'This is an automated line, not a person.',
   'To keep your gift safe, please enter your PIN on the keypad, or say its digits.',
   'What else can I help with?',
   'What would you like to do?',
@@ -271,4 +273,4 @@ export const TEMPLATE_CLAIMS = Object.freeze({
 });
 
 // The hash call_start logs, so pilot-check holds each call to the list it was spoken with (R4-2).
-export const TEMPLATE_HASH = '9baf860638c0';
+export const TEMPLATE_HASH = '44a77916c1c3';

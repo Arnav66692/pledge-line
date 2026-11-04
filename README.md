@@ -8,6 +8,8 @@ A donor who sees a PayPal charge she doesn't recognize can ask the line about it
 
 A donor who can't afford this month can say so. The line reads her last charge, checks the staff rule, and offers to give the month back with a sponsor's hardship fund paying the same amount to the nonprofit. On her yes it captures that amount from the sponsor's PayPal hold, refunds her charge, and reads both back from PayPal. This is the one place the line moves money, and it is sandbox money.
 
+A donor can also call a real phone number, once the steps in `TWILIO-SETUP.md` are done. The call runs through the same call service, gate and grader as the browser, and every line it speaks is the same template text. Its first sentence says it is an automated line.
+
 This is a pilot for the PayPal AI Hackathon. It runs against the PayPal sandbox only, so no real money moves.
 
 ## What is live and what is simulated
@@ -17,6 +19,7 @@ Live in the pilot, once the keys are in `.env`.
 - PayPal sandbox REST calls for subscriptions, a subscription's transaction list, invoices, webhook checks, and Covered Month's capture, refund and reads. The code refuses any other PayPal address.
 - An AI router reads what the caller means. For the pilot it's Google's Gemini on the free tier, or Claude Haiku 5.5 with `ROUTER_MODE=haiku`. It never decides a yes or a no, and it never touches PayPal. Below, Haiku means whichever router model is set.
 - Speech in and out uses the browser's own speech tools. Chrome and Safari can listen. Firefox uses the typed box.
+- The phone line is off unless `PHONE_ENABLED` and `TWILIO_AUTH_TOKEN` are set. Until then every `/phone` route is a 404. It has been run only against a fake Twilio, never a live call.
 
 Simulated in mock mode.
 
@@ -45,6 +48,14 @@ npm run pilot:dry -- --mock
 ```
 
 The tests and the mock dry run need no network and no keys.
+
+## Try the phone line in mock mode
+
+```
+npm run phone:fake
+```
+
+This plays Script 2 over signed webhooks from `scripts/fake-twilio.js`, against the fake PayPal and the offline rules, and prints both sides. It needs no account and no network.
 
 ## The claim audit
 
@@ -102,6 +113,10 @@ After the PIN, try "I lost my job, I can't do it this month." In mock mode the f
 - The call state the line returns after every turn carries `receipts`, each sentence the line said with its verdict, proven, plain or blocked, the PayPal read behind each fact, and the claims it carries. They are built from the same ledger events and the same checks `npm run pilot:check` grades with. The page shows them under "What the line said", each proven sentence with a chip naming the PayPal read behind it and its time in PT.
 - A donor who asks "How do you know?", "Are you sure?", "Says who?" or "Prove it." after the PIN hears the line read PayPal again. It says "I just checked PayPal's record again." and reads the gift's amount and status, and the call's draft when there is one, from those fresh reads. A change waiting for a yes stays open only while PayPal still shows what the line read back.
 - `FEATURES.md` has the details.
+
+## The phone line
+
+Added Nov 3 on the `feat/phone-line` branch, to merge only after the pilot is graded. A judge's biggest complaint was that "line" meant a web page. `src/phone.js` turns Twilio's webhooks into turns in `src/call.js`, so nothing new decides anything. `FEATURES.md` has the rules, and `TWILIO-SETUP.md` has the prices, the steps and what can break a live call.
 
 ## The morning after
 
@@ -173,6 +188,7 @@ The pass bar and how each test is graded live in `PILOT.md`. The bar was set bef
 - In rules mode, used only in mock runs and tests, a bare number counts as an amount only right after give or donate, or as the answer to the line's own amount question. Haiku reads the amount in the pilot, unless the caller's words correct it or name two different numbers, and the line reads PayPal's draft back before any send.
 - A PIN said by voice that starts with an "oh", as in "Oh, 2468", reads as a wrong PIN, since oh can mean zero. The scripts use the keypad, so type the PIN there.
 - Some PayPal sandbox details are unconfirmed, such as whether a sent invoice reads SENT or UNPAID. The code accepts both. See `.pilot/facts-paypal.md`.
+- The phone line has never been on a live call. A trial number can't take a judge's call, so it needs an upgraded Twilio account, and Render's free plan sleeping fails the first call after a quiet spell. Every caller shares one test gift and one PIN. `TWILIO-SETUP.md` says what each costs to fix.
 - Render's free service sleeps after 15 minutes, and waking wipes its event list. PayPal retries webhooks for 3 days, and `npm run pilot:check -- --render URL --resend` wakes the service, asks PayPal to send the paid event again, then checks Render's list for up to about two minutes.
 - On Render, ten wrong PINs in an hour from one address stop PIN entry from that address for the rest of the hour, across all its calls. The line keys this, and its other limits, on the last address in `X-Forwarded-For`, which a caller can't set.
 

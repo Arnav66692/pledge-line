@@ -80,6 +80,32 @@ Sponsor first, since a refund can fail for want of funds and the capture is what
 - **The fee.** It is not hidden. The "Covered month" card and the staff view say the nonprofit ends one fee short of a gift that stood, with PayPal's own number for the sponsor's payment. The brief's figures are $0.99 at the charity rate, and the mock's fee is $1.21.
 - **The sponsor's id.** The donor's browser never gets the hold id. Staff see it.
 
+## The phone line
+
+Added Tue Nov 3 on the `feat/phone-line` branch, from `feat/money-move`, to merge only after the pilot is graded. A donor calls a real number and does the same things as in the browser, through the same call service, gate and grader. `TWILIO-SETUP.md` has the prices, the steps for Arnav and what can break a live call. It has only ever been run against a fake Twilio.
+
+Each phone call is one call in `src/call.js`, logged with `channel: 'phone'`, `script: null` and Twilio's CallSid, so pilot-check never picks one to grade and its writes and safety sweeps still cover it. `src/phone.js` writes no words. Every `<Say>` holds the text the call service returned.
+
+- **On or off.** `PHONE_ENABLED` and `TWILIO_AUTH_TOKEN` must both be set. Otherwise `/phone`, `/phone/voice`, `/phone/turn` and `/phone/status` are 404s.
+- **The signature.** Every webhook, the status callback too, needs a good `X-Twilio-Signature`, or it is a 403 before any field is used. The check is HMAC-SHA1 in Node crypto over the URL and the sorted form fields, and a test holds it to Twilio's own worked example. The URL comes from `PUBLIC_BASE_URL` plus the raw path and query, since behind Render's proxy the request can't say what Twilio signed.
+- **The first sentence.** "This is an automated line, not a person." It is on the reviewed claim-free list in `src/vocabulary.js`, and `npm run vocabulary` added a list and kept every older one. The browser's greeting is unchanged.
+- **The PIN.** By keypad, or by spoken digits, through the same `pinTurn`, which masks both. A `Digits` value is a keypad turn and a `SpeechResult` is a voice turn.
+- **A yes on the phone.** The gate is the same, and these map it to a spoken reply.
+  - While a proposal waits, its `<Say>` comes before an empty `<Gather>`, not inside one. So the line isn't listening until the read-back has ended, and a yes said over it is never heard. Every other reply sits inside the `<Gather>`, so a caller can key the PIN over the greeting or cut off a reply that changes nothing. Twilio's page documents that a key press stops the speech, and doesn't confirm it for speech. Either way a yes can't reach a proposal that way.
+  - The action URL names the turn that reply was, and Twilio signs it. It is the `answering` of I6, so a client can't change it.
+  - `arrivedAfter` still holds, so a yes that arrives before the asking reply finished never counts.
+  - The phone also sends `spokenFloorMs`, 150 ms per word of the reply, and a yes must arrive at least that long after the reply finished. It's a second check in case the first ever fails, kept low so it can't refuse a real answer. `check.js` fails a write whose yes came sooner.
+  - A proposal's `speechTimeout` is 2 seconds, never `auto`, which stops at the first pause. So "yes... wait, no" reaches the gate whole, and it isn't a yes. Other replies use `auto`, and a PIN gets 3 seconds between digits.
+  - A key press is never a yes, as in the browser, since `isClearYes` refuses the masked digits.
+  - The line sends no speech `hints`, and a transcript with a confidence under 0.5 counts as not caught. A missing or zero score isn't judged, since Twilio says the score isn't always sent. The 0.5 is a guess.
+- **Retries.** Each turn runs once for a CallSid and turn number, however many copies Twilio posts or however they overlap, and each copy gets the same TwiML. One write, one PIN try.
+- **A slow turn.** Twilio gives a webhook 15 seconds. A turn still running at 11 seconds answers with a two second `<Pause>` and a `<Redirect>` back for the same turn, in silence, until the reply is ready.
+- **No input.** `calls.turn` takes `silent: true`. The turn is logged, it goes to neither the gate nor the router, and the line says what it said before, the waiting proposal again if it hasn't expired, so the yes after it still answers it. Before the PIN it asks for the PIN. Three in a row say goodbye and end the call, with reason `no_input`.
+- **Hang-ups.** The status callback ends the call with reason `hangup`, once, which deletes an open draft and sets aside a proposal. A webhook posted with the call over never becomes a turn. A late one gets "This call has ended.".
+- **A restart.** Calls live in memory, so a webhook for a CallSid the line doesn't know starts a new call at the greeting, and whatever it carried is dropped.
+- **The caller's number.** It never reaches the ledger or the logs. The PIN guard and the hourly limits count a keyed hash of it, in memory only. Twenty new calls an hour from one number and 60 in all, past which the call gets a `<Reject>`, unanswered.
+- **The fake.** `scripts/fake-twilio.js` posts signed webhooks the way Twilio does, signs against the public URL while posting to localhost as Render's proxy would, and plays each reply's words on a test clock. `npm run phone:fake` plays Script 2. `test/phone.test.js` has 35 tests, and one runs all 10 pilot scripts by phone and typed, and checks the same routes, writes and replies, with each script passing its checks.
+
 ## Unseen look
 
 Added Nov 2 on the `feat/unseen-look` branch. The donor page and the staff view now follow unseen.co's design language. Only the look changed. `app.js`, `staff.js`, every element id, the server routes and the policy are the same, so the pilot grades the same page.

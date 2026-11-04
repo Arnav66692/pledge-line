@@ -5,6 +5,7 @@ import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
 import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } from './gate.js';
 import { toSnapshot, PayPalError } from './paypal.js';
 import { liveTemplates } from './vocabulary.js';
+import { LIMITS } from './config.js';
 import { buildReceipts, receiptOptions } from './receipt.js';
 import { createRefundDesk } from './refund-desk.js';
 import { COVER_LEGS, COVER_MONTH, LEG_CAPTURE, LEG_REFUND, LEG_UNWIND, MOVED_STATUSES, YEAR_MS, coverBlock, holdCovers, isRefundedStatus, moneyBinding, requestIds, sameMoney, toCents } from './cover.js';
@@ -226,7 +227,10 @@ function projectEvent(event) {
   return rest;
 }
 
-export function createCallService({ config, ledger, paypal, router, gate, now = () => new Date(), sleep = defaultSleep, pinGuard = null, desk = null }) {
+/** The least time a reply takes to say aloud, for a yes on the phone (I1). Set low, so it never turns down a real answer. */
+const spokenFloor = (text) => String(text ?? '').split(/\s+/).filter(Boolean).length * LIMITS.spokenFloorMsPerWord;
+
+export function createCallService({ config, ledger, paypal, router, gate, now = () => new Date(), sleep = defaultSleep, pinGuard = null, desk = null, monotonic = () => performance.now() }) {
   const calls = new Map();
   // With no desk, a refund request has no token store, so its write fails and the line says so. buildDeps always passes one.
   const refundDesk = desk ?? createRefundDesk({ ledger, tokens: null });
@@ -951,6 +955,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       call.noticeExpired = false;
     }
     if (expired?.kind === 'send_invoice') await deleteDraft(ctx, expired.targetId);
+    // Nothing was said, so nothing goes to the gate or the router. A waiting proposal is spoken again and its yes answers that.
+    if (ctx.silent) return call.pending ? askAgain(ctx, say.notCaught()) : say.unclear();
     if (call.pending) return pendingTurn(ctx, text);
     return freeTurn(ctx, text);
   }
@@ -967,6 +973,16 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       return say.turnLimit();
     }
     try {
+      if (ctx.silent) {
+        call.silences += 1;
+        if (call.silences >= limits.phoneSilencesMax) {
+          await endCall(call, 'no_input');
+          return say.goodbye();
+        }
+        if (!call.verified) return say.notVerified();
+      } else {
+        call.silences = 0;
+      }
       return call.verified ? await verifiedTurn(ctx, text) : await pinTurn(ctx, text);
     } catch (error) {
       if (error instanceof PayPalError) return say.paypalProblem();
@@ -974,14 +990,14 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     }
   }
 
-  async function runTurn(call, { text, source, answering }, arrival) {
+  async function runTurn(call, { text, source, answering, silent = false }, arrival) {
     const started = performance.now();
     const clean = typeof text === 'string' ? text.trim() : '';
     call.turn += 1;
     // answering is the turn of the last reply the caller's client received. A yes must answer the reply that asked (I6).
     // arrival holds the server's own facts about when the turn arrived, which the client can't forge (I1).
     const ctx = { call, turn: call.turn, source: normalizeSource(source), answering: Number.isInteger(answering) ? answering : null,
-      arrival, routerMs: 0, paypalMs: 0, empathy: null, notice: null, pinShown: false, repeats: null };
+      arrival, routerMs: 0, paypalMs: 0, empathy: null, notice: null, pinShown: false, repeats: null, silent };
     call.lastActiveAt = now().getTime();
     let reply;
     if (clean.length > limits.maxTextChars) {
@@ -991,7 +1007,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // I4: mask while waiting for the PIN, on keypad turns, and whenever the PIN shows up later.
       const hidePin = !call.verified || ctx.source === 'keypad' || textHasPin(clean, config.pin);
       const heardText = hidePin ? maskPinText(clean) : clean;
-      log(call, { type: 'heard', turn: ctx.turn, text: heardText, source: ctx.source, answering: ctx.answering, ...arrival });
+      log(call, { type: 'heard', turn: ctx.turn, text: heardText, source: ctx.source, answering: ctx.answering, ...arrival, ...(silent ? { silent: true } : {}) });
       ctx.pinShown = call.verified && hidePin;
       reply = await dispatch(ctx, call.verified ? heardText : clean);
     }
@@ -1003,7 +1019,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     call.lastSaidTurn = Number.isInteger(ctx.repeats) ? ctx.repeats : ctx.turn;
     call.lastSaidPending = call.pending?.id ?? null;
     call.lastFinishedTurn = ctx.turn;
-    call.lastFinishedAt = performance.now();
+    call.lastFinishedAt = monotonic();
     return { reply: full.text, turn: ctx.turn, state: stateFor(call), timings: { serverMs, routerMs: ctx.routerMs, paypalMs: ctx.paypalMs } };
   }
 
@@ -1015,7 +1031,9 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return call;
   }
 
-  function start({ script = null, userAgent = '', dryRun = false, clientKey = null, client = null } = {}) {
+  // channel is 'phone' for a call through src/phone.js, and absent for the browser. phoneSid is Twilio's id for the call,
+  // so a call in the ledger can be found in Twilio's log. The caller's number never reaches here.
+  function start({ script = null, userAgent = '', dryRun = false, clientKey = null, client = null, channel = null, phoneSid = null } = {}) {
     const signals = normalizeClient(client);
     const call = {
       // clientKey is the caller's address for the PIN guard. It never goes to the ledger or the browser.
@@ -1023,7 +1041,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       pinTries: 0, turn: 0, pending: null, pauseOffered: false, openDraftId: null, lastDraftId: null, lastSaid: null, lastSaidTurn: 0, lastSaidPending: null, ended: false, endedAt: null,
       noticeExpired: false, lastActiveAt: now().getTime(), plan: null, record: { subscription: null, invoice: null, charge: null, cover: null }, queue: Promise.resolve(), chargeAsked: null, coverAsked: null,
       // The greeting, turn 0, is finished as soon as the call starts. gapTurns holds the turns that already have a gap.
-      lastFinishedTurn: 0, lastFinishedAt: performance.now(), gapTurns: new Set(),
+      lastFinishedTurn: 0, lastFinishedAt: monotonic(), gapTurns: new Set(), silences: 0,
     };
     calls.set(call.id, call);
     log(call, {
@@ -1034,8 +1052,10 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // The sponsor's hold and the staff rule this call ran on, so pilot-check holds a cover to them.
       sponsorHoldId: config.cover?.holdId ?? null, coverRule: config.cover ? { maxDollars: config.cover.maxDollars, windowDays: config.cover.windowDays, perYear: config.cover.perYear } : null,
       ...(dryRun ? { dryRun: true } : {}),
+      ...(channel ? { channel } : {}),
+      ...(phoneSid ? { phoneSid } : {}),
     });
-    const reply = say.greeting(config.orgName);
+    const reply = channel === 'phone' ? say.phoneGreeting(config.orgName) : say.greeting(config.orgName);
     log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, claims: reply.claims, ms: 0 });
     call.lastSaid = reply;
     return { callId: call.id, reply: reply.text, turn: 0, state: stateFor(call) };
@@ -1068,12 +1088,14 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     start,
     /**
      * The arrival facts are taken before the turn waits in the queue, so they say which replies existed when it
-     * arrived (I1). receivedAt is when the HTTP server got the request. Tests and the dry run send none.
+     * arrived (I1). receivedAt is when the HTTP server got the request. Tests and the dry run send none. spoken says the
+     * caller hears the replies on a phone, so a yes also has to come after the time the last reply takes to say.
      */
-    turn: (callId, input = {}, { receivedAt = null } = {}) => {
+    turn: (callId, input = {}, { receivedAt = null, spoken = false } = {}) => {
       const call = getCall(callId);
       const arrival = { arrivedAfter: call.lastFinishedTurn };
       if (Number.isFinite(receivedAt)) arrival.afterReplyMs = Math.round(receivedAt - call.lastFinishedAt);
+      if (spoken) arrival.spokenFloorMs = spokenFloor(call.lastSaid?.text);
       return enqueue(call, () => runTurn(call, input, Object.freeze(arrival)));
     },
     logGap: (callId, { turn, gapMs, source, muted, played }) => {

@@ -13,6 +13,7 @@ import { createRefundDesk } from './refund-desk.js';
 import { TEMPLATE_HASH } from './template-words.js';
 import { PILOT_SCRIPTS, displayLines } from './pilot-scripts.js';
 import { staffCalls, staffCall, staffKeyMatches } from './staff.js';
+import { createPhoneLine, formFields, PHONE_PATHS, TWIML_TYPE } from './phone.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -173,6 +174,8 @@ export function createWebhookHandler({ paypal, ledger, webhookId, log }) {
 export function buildDeps(config, overrides = {}) {
   const now = overrides.now ?? (() => new Date());
   const log = overrides.log ?? createLogger();
+  // The clock for how long after a reply a turn arrived. Only a phone test sets it, to play a reply's words in no real time.
+  const monotonic = overrides.monotonic ?? (() => performance.now());
   const ledger = overrides.ledger ?? createLedger({ path: overrides.ledgerPath ?? config.ledgerPath, now });
   const tokens = createTokens({ now, ttlMs: config.limits.tokenTtlMs });
   let webhooks = null;
@@ -185,8 +188,8 @@ export function buildDeps(config, overrides = {}) {
   // Only the public Render service needs it. Locally the line listens on this computer alone, and Script 8 uses three wrong PINs.
   const pinGuard = config.trustProxy ? createPinGuard({ limit: config.limits.wrongPinsPerHour, windowMs: HOUR_MS, now: () => now().getTime() }) : null;
   const desk = createRefundDesk({ ledger, tokens });
-  const calls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, desk, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
-  return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now };
+  const calls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, desk, monotonic, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
+  return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now, monotonic, phoneOptions: overrides.phoneOptions ?? {} };
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8', headers = {}) {
@@ -307,6 +310,11 @@ function createApi(deps) {
   const turns = createRateLimiter({ limit: config.limits.turnsPerMinute, windowMs: MINUTE_MS });
   const scripts = PILOT_SCRIPTS.map((s) => ({ number: s.number, title: s.title, lines: displayLines(s), expected: s.expected }));
   const staffRequests = createRateLimiter({ limit: config.limits.staffPerMinute, windowMs: MINUTE_MS });
+  const phoneCallers = createRateLimiter({ limit: config.limits.newCallsPerHour, windowMs: HOUR_MS });
+  const phoneCalls = createRateLimiter({ limit: config.limits.phoneCallsPerHour, windowMs: HOUR_MS });
+  const phone = config.phone?.enabled
+    ? createPhoneLine({ config, calls, log: deps.log ?? createLogger(), monotonic: deps.monotonic, allowCall: (key) => phoneCallers.allow(key) && phoneCalls.allow('line'), ...deps.phoneOptions })
+    : null;
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
 
   // A second gap for a turn is a 409, and so is one for a reply the line has not finished (Test 4).
@@ -355,6 +363,25 @@ function createApi(deps) {
     return send(res, 200, { call });
   }
 
+  /**
+   * Twilio's webhooks. A 404 until TWILIO_AUTH_TOKEN and PHONE_ENABLED are both set. Every one, the status callback too,
+   * must carry a good X-Twilio-Signature, or nothing in it is used. The receipt time is taken first, as in callRoute (I1).
+   */
+  async function phoneRoute(req, res, pathname) {
+    if (!phone || !PHONE_PATHS.includes(pathname)) throw new HttpError(404, 'Not found.');
+    if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
+    const receivedAt = deps.monotonic();
+    const fields = formFields(await readBody(req, WEBHOOK_LIMIT_BYTES));
+    if (!phone.verified(req.url, fields, req.headers['x-twilio-signature'])) throw new HttpError(403, 'Forbidden.');
+    const query = new URLSearchParams(req.url.split('?')[1] ?? '');
+    const { status, twiml } = await phone.handle(pathname, query, fields, receivedAt);
+    if (status === 204) {
+      res.writeHead(204, SECURITY_HEADERS);
+      return res.end();
+    }
+    return send(res, status, twiml, TWIML_TYPE);
+  }
+
   async function webhookRoute(req, res) {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
     const rawBody = await readBody(req, WEBHOOK_LIMIT_BYTES);
@@ -365,6 +392,7 @@ function createApi(deps) {
   }
 
   return async function route(req, res, pathname, ip) {
+    if (pathname === '/phone' || pathname.startsWith('/phone/')) return phoneRoute(req, res, pathname);
     if (pathname === '/staff' || pathname === '/api/staff' || pathname.startsWith('/api/staff/')) return staffRoute(req, res, pathname, ip);
     if (pathname === '/healthz' && req.method === 'GET') return send(res, 200, { ok: true, mode: { paypal: config.paypal.mode, router: config.router.mode } });
     if (pathname === '/api/pilot-scripts' && req.method === 'GET') return send(res, 200, { scripts });

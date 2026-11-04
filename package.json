@@ -17,6 +17,7 @@
     "pilot:dry": "node --env-file-if-exists=.env scripts/pilot-dry-run.js",
     "pilot:check": "node --env-file-if-exists=.env scripts/pilot-check.js",
     "vocabulary": "node src/vocabulary.js",
+    "phone:fake": "PAYPAL_MODE=mock ROUTER_MODE=rules node scripts/fake-twilio.js",
     "audit": "node --env-file-if-exists=.env scripts/claim-audit.js"
   },
   "dependencies": {

@@ -35,3 +35,7 @@ services:
         sync: false
       - key: STAFF_KEY
         sync: false
+      - key: PHONE_ENABLED
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false

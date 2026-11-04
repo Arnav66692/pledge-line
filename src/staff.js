@@ -19,8 +19,8 @@ export const HIDDEN_EMAIL = 'an email address, hidden';
 
 // The fields each event type may show, beside type, seq, ts and turn. Anything else is dropped.
 const FIELDS = Object.freeze({
-  call_start: ['script', 'browser', 'engine', 'mode', 'timeZone', 'orgName', 'subscriptionId', 'templates', 'dryRun'],
-  heard: ['source', 'answering', 'arrivedAfter', 'afterReplyMs'],
+  call_start: ['channel', 'script', 'browser', 'engine', 'mode', 'timeZone', 'orgName', 'subscriptionId', 'templates', 'dryRun'],
+  heard: ['source', 'answering', 'arrivedAfter', 'afterReplyMs', 'spokenFloorMs', 'silent'],
   route: ['intent', 'amountDollars', 'latencyMs', 'model', 'error'],
   read: ['what', 'id', 'status', 'debugId', 'ms', 'notFound', 'error'],
   proposed: ['pendingId', 'kind', 'targetId', 'origin'],

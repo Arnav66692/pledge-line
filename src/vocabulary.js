@@ -41,6 +41,8 @@ const plain = (text) => ({ text, facts: [] });
 /** Every exported template in say.js, rendered with the fixtures above. The vocabulary test fails when one is missing. */
 export const TEMPLATE_RENDERS = Object.freeze({
   greeting: () => [say.greeting(ORG)],
+  phoneGreeting: () => [say.phoneGreeting(ORG)],
+  notCaught: () => [say.notCaught()],
   askPin: () => [say.askPin()],
   pinOk: () => [say.pinOk()],
   pinBad: () => [say.pinBad(2), say.pinBad(1)],
@@ -178,6 +180,8 @@ const PLAIN_CLAIM_FREE = [
   'Thank you.',
   'Thanks for calling.',
   'This is a PayPal sandbox demo, so no real money moves.',
+  // Read Nov 3, the phone line's first sentence. It says what the line is, which holds on every call, and nothing about PayPal or a result.
+  'This is an automated line, not a person.',
   'To keep your gift safe, please enter your PIN on the keypad, or say its digits.',
   'What else can I help with?',
   'What would you like to do?',

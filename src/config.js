@@ -41,6 +41,13 @@ export const LIMITS = Object.freeze({
   wrongPinsPerHour: 10,
   // Staff view requests from one address in a minute, wrong keys included.
   staffPerMinute: 60,
+  // A phone reply takes at least this long per word to say, 400 words a minute, faster than any voice Twilio lists is
+  // set to read. A guess kept low on purpose, so it can only refuse a yes that came before the words could have ended (I1).
+  spokenFloorMsPerWord: 150,
+  // Turns in a row with no input before the phone line says goodbye and ends the call.
+  phoneSilencesMax: 3,
+  // New phone calls an hour across every caller, so a dialer can't run up the Twilio bill. One number gets newCallsPerHour.
+  phoneCallsPerHour: 60,
 });
 // Covered Month's staff rule (PICK.md), the defaults when the env sets none. A charge above the cap, older than the window,
 // or past the yearly count is never offered, and with no sponsor hold the move stays off.
@@ -49,6 +56,10 @@ export const COVER_DEFAULTS = Object.freeze({ maxDollars: 50, windowDays: 30, pe
 const COVER_WINDOW_MAX = 180;
 const COVER_PER_YEAR_MAX = 12;
 const HOLD_ID = /^[A-Za-z0-9-]{1,100}$/;
+// A Twilio voice name, basic, Amazon Polly or Google. The default costs a little per character, see TWILIO-SETUP.md.
+export const PHONE_VOICE = 'Polly.Joanna-Neural';
+const PHONE_VOICE_NAME = /^(?:man|woman|Polly\.[A-Za-z-]+|Google\.[A-Za-z0-9-]+)$/;
+const SWITCH_ON = new Set(['1', 'true', 'yes', 'on']);
 // The staff key guards every donor's call record, so a short one is refused.
 export const STAFF_KEY_MIN = 16;
 
@@ -127,6 +138,15 @@ function parseStaffKey(raw, errors) {
   // The page sends it as a header, and a browser refuses a header with a space or a character outside plain ASCII.
   if (!/^[\x21-\x7e]+$/.test(raw)) errors.push('STAFF_KEY must use plain letters, digits and marks, with no spaces');
   return raw;
+}
+
+/** Off unless both are set, and then every /phone route is a 404. The token only checks Twilio's signatures. */
+function parsePhone(env, errors) {
+  const authToken = clean(env.TWILIO_AUTH_TOKEN);
+  const voice = clean(env.PHONE_VOICE) ?? PHONE_VOICE;
+  if (!PHONE_VOICE_NAME.test(voice)) errors.push(`PHONE_VOICE must be a Twilio voice name such as ${PHONE_VOICE}`);
+  const asked = SWITCH_ON.has((clean(env.PHONE_ENABLED) ?? '').toLowerCase());
+  return Object.freeze({ enabled: asked && Boolean(authToken), authToken, voice });
 }
 
 function parseModes(env, errors) {
@@ -232,6 +252,7 @@ export function loadConfig(env = process.env, { partial = false } = {}) {
     router: parseRouter(env, routerMode, partial, errors),
     pin: parsePin(env, paypalMode, partial, errors),
     staffKey: parseStaffKey(clean(env.STAFF_KEY), errors),
+    phone: parsePhone(env, errors),
     demoSubscriptionId: ids.subscriptionId,
     demoPlanId: ids.planId,
     cover: parseCover(env, ids.holdId, errors),
