@@ -28,12 +28,16 @@ const FIELDS = Object.freeze({
   no: ['pendingId'],
   withdrawn: ['pendingId'],
   expired: ['pendingId'],
-  write: ['kind', 'targetId', 'ok', 'debugId', 'ms', 'error', 'httpStatus'],
+  write: ['kind', 'targetId', 'ok', 'debugId', 'ms', 'error', 'httpStatus', 'amountValue', 'currency', 'resultId', 'captureId'],
   staging_write: ['kind', 'id', 'ok', 'debugId', 'ms', 'error'],
   refused: ['reason'],
   said: ['facts', 'claims', 'ms', 'repeats'],
   gap: ['gapMs', 'source', 'muted', 'played'],
   call_end: ['reason'],
+  // The charge staff are asked to look at. No payer name or email, which the snapshot never keeps either.
+  refund_request: ['subscriptionId', 'transactionId', 'amountValue', 'amountCurrency', 'chargeTime'],
+  // A covered month's two moves and how they ended. The fees are PayPal's own numbers, which staff need to see.
+  cover_month: ['subscriptionId', 'transactionId', 'holdId', 'amountValue', 'currency', 'outcome', 'captureId', 'refundId', 'refundStatus', 'captureStatus', 'chargeFee', 'captureFee'],
 });
 
 /** The key check. Both sides are hashed first, so the buffers are always equal length and the key's length never shows. */
@@ -101,6 +105,7 @@ function paypalNow(events) {
 const writesOf = (events) => events.filter((e) => e.type === 'write' || e.type === 'staging_write').map((e) => ({
   kind: e.kind, ok: Boolean(e.ok), debugId: e.debugId ?? null, staging: e.type === 'staging_write', ts: e.ts ?? null,
   ...(Number.isInteger(e.httpStatus) ? { httpStatus: e.httpStatus } : {}),
+  ...(e.amountValue ? { amountValue: e.amountValue, currency: e.currency ?? null } : {}),
 }));
 
 /** One row of the list, from one call's events, oldest first. The receipts are the ones the line and pilot-check build. */
@@ -124,6 +129,10 @@ export function summarizeCall(events, config, receipts = buildReceipts(events, r
     paypalNow: paypalNow(events),
     counts: countVerdicts(receipts),
     callback: events.some((e) => e.type === 'staff_callback'),
+    refundRequests: events.filter((e) => e.type === 'refund_request').map((e) => ({ transactionId: e.transactionId ?? null, amountValue: e.amountValue ?? null,
+      amountCurrency: e.amountCurrency ?? null, chargeTime: e.chargeTime ?? null, ts: e.ts ?? null })),
+    covers: events.filter((e) => e.type === 'cover_month').map((e) => ({ outcome: e.outcome ?? null, transactionId: e.transactionId ?? null, amountValue: e.amountValue ?? null,
+      currency: e.currency ?? null, refundStatus: e.refundStatus ?? null, captureStatus: e.captureStatus ?? null, chargeFee: e.chargeFee ?? null, captureFee: e.captureFee ?? null, ts: e.ts ?? null })),
     dryRun: start.dryRun === true,
     mock: mode.paypal === 'mock' || mode.router === 'rules',
   };

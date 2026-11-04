@@ -3,7 +3,7 @@ import { tokenize, numberRuns, runValue, isNumberWord, isWellFormedRun } from '.
 import { EMPATHY_PHRASES, asksForAmount } from './say.js';
 
 export const INTENTS = Object.freeze(['gift_status', 'stop_gift', 'cancel_now', 'pause_gift', 'resume_gift', 'one_time_gift',
-  'other_email', 'how_do_you_know', 'repeat', 'help', 'staff_callback', 'goodbye', 'unclear']);
+  'other_email', 'charge_check', 'hardship_cover', 'how_do_you_know', 'repeat', 'help', 'staff_callback', 'goodbye', 'unclear']);
 // The model picks one of these keys and say.js speaks the fixed phrase for it (I3).
 export const EMPATHY = Object.freeze(Object.keys(EMPATHY_PHRASES));
 const MAX_TOKENS = 400;
@@ -152,6 +152,16 @@ const RULES = Object.freeze({
   stop: /\b(stop|cancel|cancelling|canceling|end|quit|terminate|discontinue|unsubscribe)\b/,
   insist: /\b(right now|immediately|just cancel|no pause|don't pause|do not pause|not pause|anyway|i said cancel|cancel now)\b/,
   newEmail: /\b(new|different|another|other|updated)\s+(email|e mail|address)\b/,
+  // A charge the caller doesn't know, or doubts, or wants back. Checked before the gift and amount rules, so
+  // "I was charged twenty five dollars and I don't recognize it" reads the charge rather than drafting a gift.
+  charge: /\b(recogni[sz]e|unknown charge|strange charge|weird charge|this charge|that charge|the charge|a charge|charged|fraud|scam|unauthori[sz]ed|refund|money back|my statement|bank statement|dispute)\b/,
+  // Words that doubt a charge. Without one, a question about the next charge, as in "When will I be charged next?", stays a gift question.
+  chargeDoubt: /\b(recogni[sz]e|unknown|strange|weird|fraud|scam|unauthori[sz]ed|refund|money back|statement|dispute|real|twice)\b/,
+  nextCharge: /\b(next|will i be|will you charge|going to charge|each month|every month|upcoming)\b/,
+  // A donor who can't afford this month, Covered Month (PICK.md). An explicit stop, pause or restart is checked first and wins,
+  // and a charge she doubts stays a charge check, since nobody should be offered a sponsor for a charge she thinks is fraud.
+  hardship: /\b(lost my job|lost my work|lost my income|laid off|out of work|unemployed|between jobs|furloughed|hardship|can't afford|cant afford|cannot afford|can not afford|can't do it this month|cant do it this month|cannot do it this month|can't manage|cant manage|can't give this month|cant give this month|can't pay this month|cant pay this month|money is tight|money's tight|tight this month|give this month back|cover this month)\b/,
+  fraudDoubt: /\b(recogni[sz]e|unknown|strange|weird|fraud|scam|unauthori[sz]ed|dispute)\b/,
   // The caller asks how the line knows what it said, so it reads PayPal again and says what the fresh read shows.
   proof: /\b(how do you know|how do i know|how would you know|are you sure|you sure|says who|who says|prove it|prove that|show me proof|how can i be sure|how can i trust|is that right|is that true|is that correct)\b/,
   oneTime: /\b(one time|onetime|once|one off|extra gift|another gift|invoice|donate|give)\b/,
@@ -179,6 +189,8 @@ export function rulesRoute(text, state = {}) {
   if (has('stop')) return { intent: 'stop_gift', amountDollars: 0 };
   // A new address can carry digits, so only an amount said as money counts with it.
   if (has('newEmail')) return { intent: 'other_email', amountDollars: parseAmountDollars(text, { needCurrency: true }) };
+  if (has('hardship') && !has('fraudDoubt')) return { intent: 'hardship_cover', amountDollars: 0 };
+  if (has('charge') && (has('chargeDoubt') || !has('nextCharge'))) return { intent: 'charge_check', amountDollars: 0 };
   if (has('oneTime') || amountDollars > 0) return { intent: 'one_time_gift', amountDollars };
   // After the gift rule, so "Is that right? I want to give twenty dollars." keeps its amount.
   if (has('proof')) return { intent: 'how_do_you_know', amountDollars: 0 };
@@ -217,6 +229,8 @@ pause_gift, asks to pause, hold or skip the monthly gift.
 resume_gift, asks to restart, resume or unpause the monthly gift.
 one_time_gift, wants to give a one-time amount. Put the dollar amount from the caller's words in amount_dollars, or 0 if none.
 other_email, asks to use an email that is not the one on file. If an amount is named too, put it in amount_dollars.
+charge_check, sees a PayPal charge they don't recognize, asks what a charge was or whether it is real, fears fraud, or wants money back for a charge, as in I see a charge I don't recognize. Is this charge real? I want a refund.
+hardship_cover, says they lost income or can't afford this month's gift and did not ask to stop, pause or restart it, as in I lost my job, I can't do it this month. Money is tight. A charge they doubt stays charge_check.
 how_do_you_know, asks how the line knows what it said, whether it is sure, or for proof, as in How do you know? Are you sure? Says who? Prove it. How can I be sure that's right?
 repeat, asks to hear that again.
 help, asks what the line can do.
@@ -227,7 +241,8 @@ unclear, anything else.
 amount_dollars is 0 unless the caller names an amount for a one-time gift.
 empathy picks a short fixed phrase the line says before its answer. Use sorry when the caller is stopping, pausing or cancelling a gift or sounds upset, thanks when the caller gives or thanks the line, understand when the caller explains a reason, and none otherwise. The line never speaks your own words, only the phrase you pick.`;
 
-const PENDING_LABELS = Object.freeze({ suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending a one-time gift invoice' });
+const PENDING_LABELS = Object.freeze({ suspend: 'pausing the monthly gift', activate: 'restarting the monthly gift', cancel: 'cancelling the monthly gift', send_invoice: 'sending a one-time gift invoice',
+  refund_request: 'asking staff to look at a refund for a charge', cover_month: 'giving this month back with a sponsor covering it' });
 const stripNumbers = (text) => String(text ?? '').replace(/\$\d[\d,]*(?:\.\d+)?/g, '[amount]').replace(/\d+/g, '[number]').slice(0, 400);
 
 export function buildRouterContent({ text, state = {} }) {

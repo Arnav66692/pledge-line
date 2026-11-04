@@ -15,7 +15,8 @@ const YES_PHRASES = ['that is right', "that's right", 'go ahead', 'please do', '
 // Every other word must come from this list. A question, a delay, a new detail or a second action is never a yes.
 const YES_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'correct', 'ok', 'okay', 'confirm', 'confirmed', 'please', 'thanks', 'it', 'now']);
 // The one action word each pending kind may repeat back, as in "yes, pause it".
-const KIND_WORDS = Object.freeze({ suspend: ['pause', 'suspend'], activate: ['restart', 'resume', 'unpause', 'reactivate'], cancel: ['cancel'], send_invoice: ['send'] });
+const KIND_WORDS = Object.freeze({ suspend: ['pause', 'suspend'], activate: ['restart', 'resume', 'unpause', 'reactivate'], cancel: ['cancel'], send_invoice: ['send'],
+  refund_request: ['ask', 'staff', 'refund'], cover_month: ['refund', 'cover', 'give', 'back', 'me'] });
 const QUESTION_MARK = /[?\uFF1F\u00BF]/;
 const NO_STARTS = ['no', 'nope', 'nah', "don't", 'dont', 'do not', 'not now', 'never mind', 'nevermind', 'keep it', 'leave it'];
 const CURLY_QUOTES = /[\u2018\u2019`]/g;
@@ -79,15 +80,16 @@ export function createTokens({ now = () => new Date(), ttlMs = 60000 } = {}) {
     for (const [id, record] of store) if (record.expiresAt <= at) store.delete(id);
   }
 
-  function mint({ callId, pendingId, kind, targetId }) {
+  // binding is what a money token is tied to beside its kind and target, the exact amount and currency (Covered Month).
+  function mint({ callId, pendingId, kind, targetId, binding = null }) {
     const at = now().getTime();
     prune(at);
     const id = randomUUID();
-    store.set(id, { callId, pendingId, kind, targetId, expiresAt: at + ttlMs });
+    store.set(id, { callId, pendingId, kind, targetId, binding, expiresAt: at + ttlMs });
     return id;
   }
 
-  function consume(tokenId, { kind, targetId, callId } = {}) {
+  function consume(tokenId, { kind, targetId, callId, binding = null } = {}) {
     if (typeof tokenId !== 'string' || tokenId === '') throw new WriteNotAuthorized('missing');
     const record = store.get(tokenId);
     if (!record) throw new WriteNotAuthorized('unknown_or_used');
@@ -96,6 +98,7 @@ export function createTokens({ now = () => new Date(), ttlMs = 60000 } = {}) {
     if (record.kind !== kind) throw new WriteNotAuthorized('wrong_kind');
     if (record.targetId !== targetId) throw new WriteNotAuthorized('wrong_target');
     if (record.callId !== callId) throw new WriteNotAuthorized('wrong_call');
+    if (record.binding !== binding) throw new WriteNotAuthorized('wrong_amount');
     return record;
   }
 
@@ -110,12 +113,13 @@ export function describeError(error) {
 }
 
 export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlMs = 120000, minAnswerMs = LIMITS.minAnswerMs }) {
-  function propose(call, { kind, targetId, readBack, origin, turn }) {
+  // legs, when a proposal has them, are the writes its one yes may run, each {kind, targetId, amountValue, currency, binding}.
+  function propose(call, { kind, targetId, readBack, origin, turn, legs = null }) {
     const createdAt = now().getTime();
     // askedTurn is the last turn whose reply spoke this proposal, the only turn a yes may answer.
-    const pending = Object.freeze({ id: randomUUID(), kind, targetId, origin, readBack, turn, askedTurn: turn, createdAt, expiresAt: createdAt + pendingTtlMs });
+    const pending = Object.freeze({ id: randomUUID(), kind, targetId, origin, readBack, turn, askedTurn: turn, createdAt, expiresAt: createdAt + pendingTtlMs, legs });
     call.pending = pending;
-    ledger.append({ type: 'proposed', callId: call.id, turn, pendingId: pending.id, kind, targetId, origin, readBack: readBack.text });
+    ledger.append({ type: 'proposed', callId: call.id, turn, pendingId: pending.id, kind, targetId, origin, readBack: readBack.text, ...(legs ? { legs: legs.map(({ binding, ...shown }) => shown) } : {}) });
     return pending;
   }
 
@@ -151,9 +155,21 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
     if (Number.isFinite(arrival.afterReplyMs) && !(arrival.afterReplyMs >= minAnswerMs)) return null;
     if (now().getTime() >= pending.expiresAt) return null;
     if (!isClearYes(text, pending.kind)) return null;
+    if (pending.legs) return approveLegs(call, pending, text, turn);
     const token = tokens.mint({ callId: call.id, pendingId: pending.id, kind: pending.kind, targetId: pending.targetId });
     ledger.append({ type: 'yes', callId: call.id, turn, pendingId: pending.id, tokenId: token, text });
     return { token, pending };
+  }
+
+  /**
+   * One yes to a proposal with legs mints one token per leg, each one-time and bound to its own kind, target and amount,
+   * so I1 stays one token to one write. The yes event names them all, and the grader ties each write back to it.
+   */
+  function approveLegs(call, pending, text, turn) {
+    const legTokens = Object.fromEntries(pending.legs.map((leg) => [leg.kind, tokens.mint({ callId: call.id, pendingId: pending.id, kind: leg.kind, targetId: leg.targetId, binding: leg.binding })]));
+    const tokenIds = Object.values(legTokens);
+    ledger.append({ type: 'yes', callId: call.id, turn, pendingId: pending.id, tokenId: tokenIds[0], tokenIds, text });
+    return { tokens: legTokens, pending };
   }
 
   function clearWith(call, event) {
@@ -169,12 +185,12 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
     return clearWith(call, { type: 'expired' });
   }
 
-  async function execute(call, approval, writer, turn) {
-    const { token, pending } = approval;
+  /** Runs one write with its token and logs it, with extra fields on the write event. */
+  async function runWrite(call, { kind, targetId, token, turn, fields = {} }, writer) {
     const started = performance.now();
     let outcome;
     try {
-      const result = await writer(pending.targetId, token);
+      const result = await writer(targetId, token);
       outcome = { ok: true, result, debugId: result?.debugId ?? null };
     } catch (error) {
       outcome = { ok: false, error, debugId: error?.debugId ?? null };
@@ -183,9 +199,26 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
     // PayPal's own answer code, 0 for a timeout or a lost connection, so check.js tells a refusal from a lost answer (L2).
     const status = outcome.error?.status;
     const errorText = outcome.ok ? {} : { error: describeError(outcome.error), ...(Number.isInteger(status) ? { httpStatus: status } : {}) };
-    ledger.append({ type: 'write', callId: call.id, turn, kind: pending.kind, targetId: pending.targetId, tokenId: token, ok: outcome.ok, debugId: outcome.debugId, ms, ...errorText });
+    const resultId = outcome.result?.id ? { resultId: outcome.result.id } : {};
+    ledger.append({ type: 'write', callId: call.id, turn, kind, targetId, tokenId: token, ok: outcome.ok, debugId: outcome.debugId, ms, ...fields, ...resultId, ...errorText });
+    return { ...outcome, ms, kind, targetId };
+  }
+
+  async function execute(call, approval, writer, turn) {
+    const { token, pending } = approval;
+    const result = await runWrite(call, { kind: pending.kind, targetId: pending.targetId, token, turn }, writer);
     if (call.pending?.id === pending.id) call.pending = null;
-    return { ...outcome, ms, kind: pending.kind, targetId: pending.targetId };
+    return result;
+  }
+
+  /** Runs one leg of a yes, with the token minted for it. The proposal stays open until finish, so no leg can run for a later one. */
+  function executeLeg(call, approval, kind, writer, turn, fields = {}) {
+    const leg = approval.pending.legs.find((item) => item.kind === kind);
+    return runWrite(call, { kind, targetId: leg.targetId, token: approval.tokens[kind], turn, fields: { amountValue: leg.amountValue, currency: leg.currency, ...fields } }, writer);
+  }
+
+  function finish(call, approval) {
+    if (call.pending?.id === approval.pending.id) call.pending = null;
   }
 
   return {
@@ -197,5 +230,7 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
     withdraw: (call, turn) => clearWith(call, { type: 'withdrawn', turn }),
     expireIfStale,
     execute,
+    executeLeg,
+    finish,
   };
 }

@@ -88,3 +88,12 @@ If `PILOT-RESULTS.md` says no grade, it says why. Fix that and run it again.
 The gate is the earlier of Wed Nov 4 at 9:00 pm PT and the end of your 6th logged hour. Finish every call and the payment before then, and grade before then too. If you run `npm run seed` again later for a demo, set `.env` back to the pilot's values before any regrade.
 
 If a sandbox call returns 403 NOT_AUTHORIZED right after you tick a PayPal feature, restart the line so it gets a fresh PayPal token.
+
+## Covered Month's sponsor hold
+
+Only for filming the money move, and only after a sandbox spike. Seed it within 3 days of filming, since a hold lasts 29 days and PayPal advises capturing within 3.
+
+1. `npm run seed:hold`, optionally with `-- --amount 100`. It prints a link.
+2. Open the link and log in as a sandbox personal account for the sponsor, not the donor's. Approve it. That is the sponsor's one consent.
+3. `npm run seed:hold -- --authorize` saves the hold in `.pilot/state.json`. On Render, set `SPONSOR_HOLD_ID` to the id it prints.
+4. `npm run seed:hold -- --check` shows what PayPal has for it.

@@ -10,6 +10,7 @@ import { createMockPayPal } from '../src/paypal-mock.js';
 import { createTokens, createGate } from '../src/gate.js';
 import { createRouter } from '../src/router.js';
 import { createCallService } from '../src/call.js';
+import { createRefundDesk } from '../src/refund-desk.js';
 import { scriptTurns } from '../src/pilot-scripts.js';
 
 const made = [];
@@ -72,7 +73,8 @@ export function buildStack({ env = {}, clock = makeClock(), mockOptions = {}, ro
   const paypal = code.createMockPayPal({ tokens, now: clock.now, ...mockOptions });
   const gate = code.createGate({ ledger, tokens, now: clock.now, pendingTtlMs: config.limits.pendingTtlMs });
   const routerImpl = router ?? code.createRouter({ mode: 'rules' });
-  const calls = code.createCallService({ config, ledger, paypal, router: routerImpl, gate, now: clock.now, sleep: async () => {} });
+  const desk = createRefundDesk({ ledger, tokens });
+  const calls = code.createCallService({ config, ledger, paypal, router: routerImpl, gate, now: clock.now, sleep: async () => {}, desk });
   // The turn of the last reply each call received, sent with the next turn as the page does.
   return { config, ledger, tokens, paypal, gate, router: routerImpl, calls, clock, answered: new Map() };
 }

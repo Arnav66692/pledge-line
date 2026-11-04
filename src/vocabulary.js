@@ -24,6 +24,12 @@ const DRAFT = { id: 'INV2-1', status: 'DRAFT', number: '0001', amount_value: '50
 // Every mix of a missing number, amount, status and recipient, so each sentence the invoice templates can say is listed.
 const INVOICES = [...['0001', null].flatMap((number) => ['50.00', null].flatMap((amount) => ['DRAFT', 'SENT', 'UNPAID', 'PAID', null]
   .flatMap((status) => [DRAFT.recipient_email, null].map((email) => ({ ...DRAFT, number, amount_value: amount, status, recipient_email: email }))))), null];
+// The gift's latest charge, as GET /v1/billing/subscriptions/{id}/transactions gives it, in each status PayPal lists.
+const CHARGE = { transaction_id: 'MOCKTX00000000042', status: 'COMPLETED', amount_value: '25.00', amount_currency: 'USD', time: '2026-11-01T10:00:00Z', count: 1 };
+const CHARGES = ['COMPLETED', 'PENDING', 'DECLINED', 'REFUNDED', 'PARTIALLY_REFUNDED'].map((status) => ({ ...CHARGE, status }));
+// Covered Month's reads after the yes, the donor's charge by its own id and the sponsor's capture, in each state PayPal can give them.
+const GIFT_CHARGES = [...['REFUNDED', 'PARTIALLY_REFUNDED', 'COMPLETED'].map((status) => ({ id: CHARGE.transaction_id, status, amount_value: '25.00', amount_currency: 'USD', fee_value: '1.21' })), null];
+const CAPTURES = [...['COMPLETED', 'PENDING'].map((status) => ({ id: 'MOCKCAP0000000001', status, amount_value: '25.00', amount_currency: 'USD', fee_value: '1.21' })), null];
 const KINDS = ['suspend', 'activate', 'cancel', 'send_invoice'];
 const GIFT_KINDS = KINDS.slice(0, 3);
 // How a write can end: ok, refused by PayPal, or with no clear answer, a timeout or a 5xx (L2).
@@ -82,6 +88,30 @@ export const TEMPLATE_RENDERS = Object.freeze({
     ...INVOICES.map((inv) => say.recheck(ACTIVE, PLANS[0], inv)),
     say.recheck(ACTIVE, PLANS[0], null, { draftGone: true }),
   ],
+  // call.js offers a refund request only for a charge it can read aloud in full (say.chargeReadable).
+  chargeOffer: () => CHARGES.filter((charge) => !say.NO_REFUND_STATUSES.includes(charge.status)).map((charge) => say.chargeOffer(charge, ORG, { timeZone: TIME_ZONE })),
+  // A refunded or declined charge is read with no offer.
+  chargeNoOffer: () => CHARGES.filter((charge) => say.NO_REFUND_STATUSES.includes(charge.status)).map((charge) => say.chargeNoOffer(charge, ORG, { timeZone: TIME_ZONE })),
+  noCharge: () => [say.noCharge()],
+  chargeUnread: () => [say.chargeUnread()],
+  noRefundRequest: () => [say.noRefundRequest()],
+  afterRefundRequest: () => [
+    ...CHARGES.map((charge) => say.afterRefundRequest(charge, { ok: true, same: true, timeZone: TIME_ZONE })),
+    say.afterRefundRequest(CHARGE, { ok: true, same: false }),
+    say.afterRefundRequest(null, { ok: true, same: false }),
+    say.afterRefundRequest(CHARGE, { ok: false }),
+  ],
+  hardshipSorry: () => [say.hardshipSorry()],
+  coverOffer: () => SUBS.filter(Boolean).map((sub) => say.coverOffer(CHARGE, sub, ORG, { timeZone: TIME_ZONE })),
+  coverTurnedDown: () => ['too_old', 'too_big', 'used', 'prior', 'no_hold'].map((reason) => say.coverTurnedDown(reason)),
+  coverNotReady: () => CHARGES.map((charge) => say.coverNotReady(charge, ORG, { timeZone: TIME_ZONE })),
+  coverChanged: () => [say.coverChanged()],
+  coverCaptureFailed: () => [say.coverCaptureFailed()],
+  coverCaptureUnclear: () => [say.coverCaptureUnclear()],
+  coverRefundUnclear: () => [say.coverRefundUnclear()],
+  coverUnwound: () => [say.coverUnwound({ ok: false }), say.coverUnwound({ ok: true, capture: null, giftCharge: null }),
+    say.coverUnwound({ ok: true, capture: { ...CAPTURES[0], status: 'REFUNDED' }, giftCharge: GIFT_CHARGES[2] }), say.coverUnwound({ ok: true, capture: { ...CAPTURES[0], status: 'PARTIALLY_REFUNDED' }, giftCharge: GIFT_CHARGES[2] })],
+  afterCover: () => [false, true].flatMap((unclear) => GIFT_CHARGES.flatMap((giftCharge) => CAPTURES.flatMap((capture) => SUBS.map((sub) => say.afterCover({ giftCharge, capture, sub, orgName: ORG, unclear, timeZone: TIME_ZONE }))))),
   EMPATHY_PHRASES: () => Object.values(say.EMPATHY_PHRASES).map(plain),
   empathyPhrase: () => Object.keys(say.EMPATHY_PHRASES).map((key) => plain(say.filterEmpathy(say.empathyPhrase(key)))),
 });
@@ -92,7 +122,7 @@ export const TEMPLATE_RENDERS = Object.freeze({
  */
 export const NOT_TEMPLATES = Object.freeze(['combine', 'numberToWords', 'formatMoney', 'formatDate', 'spokenStatus', 'last4', 'maskEmail',
   'FACT_SOURCES', 'STATUS_WORDS', 'filterEmpathy', 'scanSpoken', 'extractSpokenFacts', 'saysPhrase', 'spokenForm', 'wordsOf', 'asksForAmount',
-  'SLOT_MARKS', 'slotFacts', 'sentencesOf', 'limitsPhrase']);
+  'SLOT_MARKS', 'slotFacts', 'sentencesOf', 'limitsPhrase', 'chargeReadable', 'NO_REFUND_STATUSES']);
 
 /**
  * The template sentences that state no PayPal result and nothing the line did, each one read and passed by hand.
@@ -112,6 +142,15 @@ const PLAIN_CLAIM_FREE = [
   'I can also set up a one-time gift as a PayPal invoice to the email on file, or ask staff to call you back.',
   'I can read you your monthly gift, pause it, restart it, cancel it, or set up a one-time gift.',
   'I can read you your monthly gift, pause it, restart it, or cancel it.',
+  "If you see a PayPal charge you don't recognize, I can tell you what it was.",
+  // Covered Month, read Nov 3. Offers and pointers, none says money moved. "This does not change" is what a refund does, and the grader fails any gift write in a cover's turn.
+  "If you can't afford this month, I can see if a sponsor can cover it.",
+  'If next month is hard too, you can ask me to pause it.',
+  'Should I give it back?',
+  'This does not change your monthly gift.',
+  'You can ask me to pause your monthly gift instead.',
+  // An offer. The yes it asks for logs a request for staff and changes nothing in PayPal.
+  "If you still don't recognize it, I can ask staff to look at a refund.",
   // Its limits are config facts, which check.js holds to the config.
   'I can set up a one-time gift from one dollar to five hundred dollars.',
   'I understand.',
@@ -142,6 +181,7 @@ const PLAIN_CLAIM_FREE = [
   'To keep your gift safe, please enter your PIN on the keypad, or say its digits.',
   'What else can I help with?',
   'What would you like to do?',
+  'Would you like me to ask staff?',
   'Would you like me to pause it?',
   'You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift.',
 ];
@@ -154,6 +194,11 @@ const PLAIN_CLAIM_FREE = [
 const SLOT_FRAMES = [
   // The safety check stops the pilot when a draft names any email but the one on file.
   'It would go to the email on file, {invoice.recipient_email}.',
+  // The charge check's read-back. Each slot comes from one read of the gift's own charges (PICK.md).
+  'In your PayPal activity, it is the transaction {charge.id_last4}.',
+  // Covered Month's offer, read Nov 3. It says what the yes would do, and its one slot comes from the charge read aloud.
+  "I can give that {charge.amount} back to you, and a sponsor's hardship fund would pay the same amount to {org}.",
+  'PayPal shows the latest charge for your monthly gift to {org} was {charge.amount} on {charge.date}, with the status {charge.status}.',
   'PayPal now shows invoice with the status {invoice.status}.',
   'PayPal now shows invoice {invoice.number_last4} with the status {invoice.status}.',
   'PayPal now shows invoice {invoice.number_last4}, for {invoice.amount}, with the status {invoice.status}.',
@@ -197,6 +242,35 @@ export const CLAIMED = Object.freeze({
   'I asked PayPal to send it.': ['wrote_send_invoice'],
   "I can't find that invoice in PayPal now, so I can't confirm it went out.": ['invoice_unread'],
   "I couldn't find a monthly gift in PayPal for this line.": ['no_gift'],
+  // Read Nov 3, the charge check (PICK.md). A request for staff is not a refund, and no sentence says one happened.
+  "I couldn't pass that request to staff just now, so nothing changed.": ['refund_request_failed'],
+  "I've asked staff to look at a refund for the charge I read you.": ['wrote_refund_request'],
+  "I've asked staff to look at a refund of {charge.amount} for the charge on {charge.date}.": ['refund_matches_read', 'wrote_refund_request'],
+  "OK, I won't ask staff for a refund.": ['no_refund_request'],
+  "PayPal didn't return a charge I can read clearly, so I won't guess.": ['charge_unread'],
+  'PayPal now shows that charge as {charge.status}.': ['refund_matches_read'],
+  'PayPal shows no recent charge for your monthly gift.': ['no_charge'],
+  'Staff will follow up during open hours.': ['wrote_refund_request'],
+  // Read Nov 3, Covered Month. Each sentence that says money moved or didn't is proved from that turn's own writes and reads.
+  "PayPal shows the sponsor's hold is open.": ['hold_open'],
+  "That charge is too old for the hardship fund, so I can't give it back here.": ['cover_too_old'],
+  "That charge is more than the hardship fund can cover, so I can't give it back here.": ['cover_too_big'],
+  "A charge on this gift was already given back in the last year, so the hardship fund can't cover another.": ['cover_used'],
+  "Staff are already looking at this charge, so I won't move any money.": ['cover_prior'],
+  "The sponsor's hardship fund isn't open in PayPal right now, so I can't cover this month.": ['cover_no_hold'],
+  "That charge can't be given back right now.": ['cover_not_ready'],
+  "Something changed since I read that to you, so I didn't move any money.": ['cover_changed'],
+  "PayPal didn't accept the sponsor's payment, so I didn't give the month back and no money moved.": ['cover_capture_failed'],
+  "PayPal didn't answer clearly about the sponsor's payment, so I didn't give the month back.": ['cover_capture_unclear'],
+  "PayPal didn't answer clearly about the refund, so I can't say it went through.": ['cover_refund_unclear'],
+  "PayPal didn't accept the refund, and I couldn't return the sponsor's payment.": ['cover_unwind_failed'],
+  "PayPal didn't accept the refund, so I asked PayPal to return the sponsor's payment.": ['cover_refund_failed', 'wrote_cover_unwind'],
+  "PayPal now shows the sponsor's payment as {capture.status}.": ['cover_unwound'],
+  'Your charge stays as it was.': ['cover_charge_unchanged'],
+  'I asked PayPal to give it back.': ['wrote_cover_refund'],
+  "I asked PayPal to take the sponsor's payment.": ['wrote_cover_capture'],
+  'PayPal now shows your charge of {gift_charge.amount} as {gift_charge.status}.': ['cover_refund_read', 'wrote_cover_refund'],
+  "PayPal shows the sponsor's payment of the same amount to {org}, with the status {capture.status}.": ['cover_capture_read', 'wrote_cover_capture'],
   // Read Nov 2. It says the line read the gift again just now, which gift_rechecked proves with a read in that turn.
   "I just checked PayPal's record again.": ['gift_rechecked'],
   'I need a clear yes or no before I change anything.': ['unchanged'],
