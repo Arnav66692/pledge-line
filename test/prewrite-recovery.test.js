@@ -99,6 +99,37 @@ test('a ledger failure after a successful invoice send defers every cleanup path
   assert.equal(eventsOf(stack, callId, 'draft_cleanup_deferred').length, 1);
 });
 
+test('an unrecorded send cannot be repeated even when PayPal still reads the invoice as a draft', async () => {
+  const stack = buildStack();
+  const callId = await verifiedCall(stack);
+  await say(stack, callId, 'Give fifty dollars once.');
+  const append = stack.ledger.append;
+  let fail = true;
+  stack.ledger.append = (event) => {
+    if (fail && event.type === 'write' && event.kind === 'send_invoice') {
+      fail = false;
+      throw new Error('injected invoice ledger failure');
+    }
+    return append(event);
+  };
+  const send = stack.paypal.sendInvoice;
+  const read = stack.paypal.getInvoice;
+  let sends = 0;
+  stack.paypal.sendInvoice = async (...args) => { sends += 1; return send(...args); };
+  stack.paypal.getInvoice = async (...args) => {
+    const result = await read(...args);
+    // Simulate a stale PayPal read after the successful remote send.
+    if (sends > 0 && result.data) result.data.status = 'DRAFT';
+    return result;
+  };
+  await assert.rejects(() => say(stack, callId, 'Yes.'), /injected invoice ledger failure/);
+  const repeat = await say(stack, callId, 'Repeat that.');
+  assert.doesNotMatch(repeat.reply, /do you want me to send|should i send/i);
+  await say(stack, callId, 'Yes.');
+  assert.equal(sends, 1);
+  assert.deepEqual(eventsOf(stack, callId, 'staging_write').map((event) => event.kind), ['create_draft']);
+});
+
 test('a temporary readback error is retried without repeating the financial write', async () => {
   const stack = buildStack();
   const callId = await verifiedCall(stack);

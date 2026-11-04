@@ -932,6 +932,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
   /** A yes applies only to the exact PayPal state read to the caller at proposal time. */
   async function revalidateProposal(ctx, pending) {
     const baseline = ctx.call.proposalBaseline;
+    // A prior send may still be resolving, even when a fresh read temporarily shows DRAFT.
+    if (pending.kind === 'send_invoice' && pending.targetId === ctx.call.uncertainDraftId) return false;
     if (!baseline || baseline.pendingId !== pending.id || (pending.kind !== 'send_invoice' && readTarget(ctx.call, pending) !== config.demoSubscriptionId)) return false;
     if (pending.kind === 'refund_request') {
       const charge = await readCharges(ctx, pending.targetId);
@@ -983,7 +985,17 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
     // Set this before the remote send. A later exception while recording the result must not trigger draft deletion.
     if (pending.kind === 'send_invoice') call.uncertainDraftId = pending.targetId;
-    const result = await timed(ctx, () => gate.execute(call, approval, writer, ctx.turn));
+    let result;
+    try {
+      result = await timed(ctx, () => gate.execute(call, approval, writer, ctx.turn));
+    } catch (error) {
+      if (pending.kind === 'send_invoice') {
+        // The send may have happened before local recording failed. Invalidate consent even if logging also fails.
+        call.pending = null;
+        call.proposalBaseline = null;
+      }
+      throw error;
+    }
     // A 4xx is PayPal saying no. A timeout or a 5xx leaves it open, since PayPal may have made the change and lost its
     // answer, so the line reads PayPal again as for an ok write and says what it shows (L2).
     const unclear = unanswered(result);
@@ -1022,7 +1034,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       return say.noRefundRequest();
     }
     if (pending.kind === 'send_invoice') {
-      await deleteDraft(ctx, pending.targetId);
+      const deleted = await deleteDraft(ctx, pending.targetId);
+      if (!deleted) return say.paypalProblem();
       const inv = await timed(ctx, () => readSnapshot(ctx, 'invoice', pending.targetId));
       return say.draftDeleted(inv === null);
     }
