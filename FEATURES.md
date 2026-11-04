@@ -80,6 +80,44 @@ Sponsor first, since a refund can fail for want of funds and the capture is what
 - **The fee.** It is not hidden. The "Covered month" card and the staff view say the nonprofit ends one fee short of a gift that stood, with PayPal's own number for the sponsor's payment. The brief's figures are $0.99 at the charity rate, and the mock's fee is $1.21.
 - **The sponsor's id.** The donor's browser never gets the hold id. Staff see it.
 
+## The recovery timeline
+
+Added Tue Nov 3 on the `feat/self-resolving` branch, to merge only after the pilot is graded. A donor on a live call hears only what PayPal just proved, and when something goes wrong the page shows how the line handled it, with no staff in the loop.
+
+`src/recovery.js` exports `buildRecovery(events)`, pure over one call's ledger events like receipts, and the call state carries it as `recovery`, `{run, incidents}`. Each incident has four rows, "You wanted", "What went wrong", "What the line did" and "What PayPal shows now". A row has its text, its time and PayPal's reference, and `seq` and `refSeq` name the ledger events those came from, so nothing on it can be invented. A row with no PayPal answer says so, and a timeout has no reference, so none is shown.
+
+- **Lost answer.** A write with a timeout or a 5xx, and how many fresh reads followed. "Now" is the latest read of that record.
+- **Refusal.** A write PayPal answered with a 4xx.
+- **Changed record.** Two reads of one record that differ with no write of this call between them. A proposal the line set aside because of it is named. A refused write is told once, as a refusal.
+- **Unclear amount.** The caller's own words, why code didn't take them, that no draft was made, then the draft her answer made. A question naming an amount that isn't the gift's shows here too, and one naming the gift's own amount shows nothing.
+- **A failed step.** A read or a draft step PayPal failed where the line said it got no clear answer.
+
+The other things a caller can be told no about, such as a new email or a wrong PIN, are rules working and don't show here. With no read after a fault, "now" says the line can't say what PayPal shows, or names the older read it points at, and never a status no read gave. No row carries a token, a PayPal id or the sponsor's hold.
+
+`run` labels a mock call or a dry run, and `FAULT_DRILL` labels a fault drill, from what `call_start` logged. `src/fault-drill.js` stages one fault on the mock, once, and `loadConfig` refuses it in any other mode. A real sandbox call gets no label. `web/app.js` draws the timeline with `textContent` only, on the gift cards' surface, and its gap timing code did not change. It was checked at 1440 and 375 px, in dark and light. The staff view does not show it yet.
+
+## A question when an amount is unclear
+
+Added Tue Nov 3 on the `feat/self-resolving` branch, to merge only after the pilot is graded. There is no AI planner, so the AI still only routes.
+
+`src/amount.js` holds the amount parser, moved from `router.js`, and `readGift(text)`, which gives the amount only when it is clearly the gift. `settleGiftRoute` holds every router's answer to the caller's own words, in `call.js`, so the rules router, Gemini and Haiku all pass through it.
+
+- **It asks, and creates nothing,** on an age ("I'm 75"), a correction with or without a number after it ("I mean double that", "scratch that"), a relative word (double, twice, half, same, more), two different numbers, a hedge ("about fifty"), a negation ("I don't want to give fifty dollars"), an amount per month, or a bare number not said as money.
+- **A question or a statement about the gift she has goes to the gift's status.** "Is my gift still seventy five dollars a month?", "Did you take seventy five dollars?" and "I gave fifty dollars last month" read PayPal and offer nothing.
+- **A model's number is never used alone.** It counts only when code reads the same clear amount from her words. A slip, a number read in passing, or an amount only the model can read asks. The `route` event keeps what the router said, and an `amount_unclear` event says why code set it aside.
+- **The answer counts.** A bare number answers the line's own question. "I mean double that" while a draft waits deletes the draft and asks.
+- The rule also holds beside a refused new email.
+
+The question is "How much would you like to give?", a sentence already on the review, so there is no new sentence and `npm run vocabulary` added no list. Every pilot script line routes as it did, and `test/amount.test.js` lists them.
+
+## The gate over the plain agent
+
+Added Tue Nov 3 on the `feat/self-resolving` branch, logged in `EVAL.md`'s change log before any code. The pitch is a published count of what a plain agent would have said wrongly, and that count is the audit's unbacked column. This view shows the sentences behind it.
+
+`src/claim-gate.js` builds it from each baseline transcript and its audit. Each sentence of each reply is unbacked, backed or no claim, by the audit's own verdict, and points at its claims by their place in the audit, so it adds no score and counts nothing twice. An unbacked sentence is replaced by what the record that claim was held to says, and that is what a donor would have heard. A backed status no read had shown passes, and stays in its own column. It goes in the markdown and in the JSON under `gate`.
+
+A mismatch with Pledge Line's templates is never a reason, since that would flag every free text sentence. Pledge Line's own sentences are templates, so a gate on them blocks almost nothing, and the report says so. It has run with `--fake` only, and the scripted fake model marks nothing, so no real number exists.
+
 ## Unseen look
 
 Added Nov 2 on the `feat/unseen-look` branch. The donor page and the staff view now follow unseen.co's design language. Only the look changed. `app.js`, `staff.js`, every element id, the server routes and the policy are the same, so the pilot grades the same page.

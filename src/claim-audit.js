@@ -7,7 +7,7 @@ import { NUMBER_WORDS, ORDINAL_WORDS, tokenize, runValue, ordinalValue } from '.
 const longestFirst = (list) => [...list].sort((a, b) => b.length - a.length).join('|');
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-const monthName = (n) => MONTHS[n - 1].charAt(0).toUpperCase() + MONTHS[n - 1].slice(1);
+export const monthName = (n) => MONTHS[n - 1].charAt(0).toUpperCase() + MONTHS[n - 1].slice(1);
 const MONTH_SHORT = { jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
 const MONTH_NUMBER = Object.freeze({ ...Object.fromEntries(MONTHS.map((m, i) => [m, i + 1])), ...MONTH_SHORT });
 const MONTH = `(${longestFirst(Object.keys(MONTH_NUMBER))})\\.?`;
@@ -167,22 +167,23 @@ function statusesIn(sentence, rest) {
  */
 export function extractClaims(text) {
   const claims = [];
-  for (const sentence of sentencesOf(text)) {
-    for (const a of amountsIn(sentence)) claims.push({ kind: 'money', cents: a.cents, value: formatCents(a.cents), said: a.said, sentence });
-    for (const d of datesIn(sentence)) claims.push({ kind: 'date', month: d.month, day: d.day, value: `${monthName(d.month)} ${d.day}`, said: d.said, sentence });
+  sentencesOf(text).forEach((sentence, sentenceIndex) => {
+    const at = { sentence, sentenceIndex };
+    for (const a of amountsIn(sentence)) claims.push({ kind: 'money', cents: a.cents, value: formatCents(a.cents), said: a.said, ...at });
+    for (const d of datesIn(sentence)) claims.push({ kind: 'date', month: d.month, day: d.day, value: `${monthName(d.month)} ${d.day}`, said: d.said, ...at });
     const { found, rest } = completionsIn(sentence);
-    for (const c of found) claims.push({ kind: 'completion', change: c.change, status: c.status, value: c.said.toLowerCase(), said: c.said, sentence });
-    for (const s of statusesIn(sentence, rest)) claims.push({ kind: 'status', target: s.target, statuses: s.statuses, value: s.said.toLowerCase(), said: s.said, sentence });
-  }
+    for (const c of found) claims.push({ kind: 'completion', change: c.change, status: c.status, value: c.said.toLowerCase(), said: c.said, ...at });
+    for (const s of statusesIn(sentence, rest)) claims.push({ kind: 'status', target: s.target, statuses: s.statuses, value: s.said.toLowerCase(), said: s.said, ...at });
+  });
   return claims;
 }
 
-const centsOf = (value) => {
+export const centsOf = (value) => {
   const n = Number(value);
   return value === null || value === undefined || value === '' || !Number.isFinite(n) ? null : Math.round(n * 100);
 };
 
-function monthDayIn(iso, timeZone) {
+export function monthDayIn(iso, timeZone) {
   const date = new Date(iso ?? '');
   if (Number.isNaN(date.getTime())) return null;
   const parts = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', timeZone }).formatToParts(date);
@@ -283,12 +284,13 @@ export function auditCall(call, { timeZone = 'America/Los_Angeles' } = {}) {
   const claims = [];
   const writes = [];
   call.turns.forEach((turn, index) => {
-    for (const reply of turn.replies) {
+    turn.replies.forEach((reply, replyIndex) => {
       for (const claim of extractClaims(reply.text)) {
         const verdict = checkClaim(claim, reply.moment, { timeZone });
-        claims.push({ turn: turn.turn, ...claim, ...verdict, neverShown: neverShown(claim, reply.moment) });
+        // replyIndex and sentenceIndex place the claim in its reply, for the gate view. Neither changes a count.
+        claims.push({ turn: turn.turn, replyIndex, ...claim, ...verdict, neverShown: neverShown(claim, reply.moment) });
       }
-    }
+    });
     for (const write of turn.writes) {
       const hasYes = writeHasYes(call.turns, index, write.kind);
       // A write with no yes keeps the two lines it was judged on, so a reader can check the call.

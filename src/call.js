@@ -1,11 +1,12 @@
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import * as say from './say.js';
-import { parseAmountDollars, amountConflict } from './router.js';
+import { readGift as readGiftAmount, settleGiftRoute } from './router.js';
 import { spokenDigits, maskPinText, textHasPin } from './numbers.js';
 import { isClearYes, isClearNo, isAcknowledgment, normalize, describeError } from './gate.js';
 import { toSnapshot, PayPalError } from './paypal.js';
 import { liveTemplates } from './vocabulary.js';
 import { buildReceipts, receiptOptions } from './receipt.js';
+import { buildRecovery } from './recovery.js';
 import { createRefundDesk } from './refund-desk.js';
 import { COVER_LEGS, COVER_MONTH, LEG_CAPTURE, LEG_REFUND, LEG_UNWIND, MOVED_STATUSES, YEAR_MS, coverBlock, holdCovers, isRefundedStatus, moneyBinding, requestIds, sameMoney, toCents } from './cover.js';
 
@@ -264,6 +265,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       record: formatRecord(call, config.timeZone),
       // Built from the same ledger events, with the same orgName and subscription, that pilot-check grades.
       receipts: buildReceipts(ledger.byCall(call.id), receiptOptions(config)),
+      // The same way, so the recovery timeline can only say what the ledger holds.
+      recovery: buildRecovery(ledger.byCall(call.id)),
     };
   }
 
@@ -452,10 +455,11 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return createGiftDraft(ctx, amount);
   }
 
-  async function otherEmailTurn(ctx, text, routedAmount = 0) {
+  async function otherEmailTurn(ctx, text) {
     refused(ctx, 'other_email');
     // Only an amount said as money counts here, so digits left over from a spoken address never become a gift.
-    const amount = routedAmount > 0 ? routedAmount : parseAmountDollars(stripEmails(text), { needCurrency: true });
+    const { amount, why, marked } = readGiftAmount(stripEmails(text), { needCurrency: true });
+    if (why && marked) log(ctx.call, { type: 'amount_unclear', turn: ctx.turn, why, intent: 'other_email' });
     if (!(amount > 0)) return say.combine(say.otherEmail(), say.amountForFile());
     return say.combine(say.otherEmail(), await oneTimeTurn(ctx, amount));
   }
@@ -769,7 +773,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     // The model only picks a phrase key, so the words spoken here are always our own (I3).
     const empathy = say.filterEmpathy(say.empathyPhrase(routed.empathy));
     if (empathy) ctx.empathy = { text: empathy, facts: [] };
-    return routed;
+    // Code, not the router, decides whether a number is clearly the gift. The route event above keeps what the router said.
+    const settled = settleGiftRoute(routed, text, state);
+    if (settled.amountUnclear) {
+      const named = settled.namedDollars > 0 ? { namedDollars: settled.namedDollars } : {};
+      log(call, { type: 'amount_unclear', turn: ctx.turn, why: settled.amountUnclear, intent: settled.intent, routerIntent: routed.intent, routerAmount: routed.amountDollars, ...named });
+    }
+    return settled;
   }
 
   // A proposal that expired or was set aside is never read out again as if it still waited for a yes. A repeat notes the
@@ -781,10 +791,6 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return say.repeat(call.lastSaid);
   }
 
-  // The router's amount, unless the caller's own words correct it or name another number, as in "fifty dollars, I mean
-  // sixty". Then the line asks, whatever the router heard, so a model that picks the first number never drafts it (R3-1).
-  const routedAmount = (routed, words) => (amountConflict(words) ? 0 : routed.amountDollars);
-
   async function handleIntent(ctx, routed, text) {
     const { call } = ctx;
     switch (routed.intent) {
@@ -793,9 +799,9 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       case 'cancel_now': return cancelTurn(ctx);
       case 'pause_gift': return pauseTurn(ctx);
       case 'resume_gift': return resumeTurn(ctx);
-      // The router's amount only. When it heard none, the line asks, rather than reading another number in the turn as one.
-      case 'one_time_gift': return oneTimeTurn(ctx, routedAmount(routed, text));
-      case 'other_email': return otherEmailTurn(ctx, text, routedAmount(routed, stripEmails(text)));
+      // settleGiftRoute has held the amount to her own words. When it isn't clearly the gift, the line asks and creates nothing.
+      case 'one_time_gift': return routed.amountUnclear ? say.askAmount() : oneTimeTurn(ctx, routed.amountDollars);
+      case 'other_email': return otherEmailTurn(ctx, text);
       case 'charge_check': return chargeCheckTurn(ctx);
       case 'hardship_cover': return hardshipTurn(ctx);
       case 'help': return say.help();
@@ -1034,6 +1040,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
       // The sponsor's hold and the staff rule this call ran on, so pilot-check holds a cover to them.
       sponsorHoldId: config.cover?.holdId ?? null, coverRule: config.cover ? { maxDollars: config.cover.maxDollars, windowDays: config.cover.windowDays, perYear: config.cover.perYear } : null,
       ...(dryRun ? { dryRun: true } : {}),
+      // A staged fault, on the mock only, so the page can label the call as a drill.
+      ...(config.faultDrill ? { faultDrill: config.faultDrill } : {}),
     });
     const reply = say.greeting(config.orgName);
     log(call, { type: 'said', turn: 0, text: reply.text, facts: reply.facts, claims: reply.claims, ms: 0 });

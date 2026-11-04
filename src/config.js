@@ -49,6 +49,8 @@ export const COVER_DEFAULTS = Object.freeze({ maxDollars: 50, windowDays: 30, pe
 const COVER_WINDOW_MAX = 180;
 const COVER_PER_YEAR_MAX = 12;
 const HOLD_ID = /^[A-Za-z0-9-]{1,100}$/;
+// Faults the mock PayPal can stage on purpose, once each, so the recovery timeline can be seen and filmed. Mock only.
+export const FAULT_DRILLS = Object.freeze(['suspend-timeout', 'suspend-503', 'suspend-refused', 'gift-changed']);
 // The staff key guards every donor's call record, so a short one is refused.
 export const STAFF_KEY_MIN = 16;
 
@@ -126,6 +128,14 @@ function parseStaffKey(raw, errors) {
   if (raw.length < STAFF_KEY_MIN) errors.push(`STAFF_KEY must be at least ${STAFF_KEY_MIN} characters when set`);
   // The page sends it as a header, and a browser refuses a header with a space or a character outside plain ASCII.
   if (!/^[\x21-\x7e]+$/.test(raw)) errors.push('STAFF_KEY must use plain letters, digits and marks, with no spaces');
+  return raw;
+}
+
+/** Optional. A staged fault runs only on the mock, so it can never touch a real PayPal call. */
+function parseFaultDrill(raw, paypalMode, errors) {
+  if (raw === null) return null;
+  if (paypalMode !== 'mock') errors.push('FAULT_DRILL needs PAYPAL_MODE=mock');
+  if (!FAULT_DRILLS.includes(raw)) errors.push(`FAULT_DRILL must be one of ${FAULT_DRILLS.join(', ')}`);
   return raw;
 }
 
@@ -232,6 +242,7 @@ export function loadConfig(env = process.env, { partial = false } = {}) {
     router: parseRouter(env, routerMode, partial, errors),
     pin: parsePin(env, paypalMode, partial, errors),
     staffKey: parseStaffKey(clean(env.STAFF_KEY), errors),
+    faultDrill: parseFaultDrill(clean(env.FAULT_DRILL), paypalMode, errors),
     demoSubscriptionId: ids.subscriptionId,
     demoPlanId: ids.planId,
     cover: parseCover(env, ids.holdId, errors),

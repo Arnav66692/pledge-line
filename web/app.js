@@ -21,6 +21,7 @@
     invNumber: $('inv-number'), invStatus: $('inv-status'), invAmount: $('inv-amount'), invDebug: $('inv-debug'), invLink: $('inv-link'),
     events: $('events'), gift: $('gift'), subRead: $('sub-read'), subChange: $('sub-change'), demo: $('demo'),
     receipts: $('receipts'), receiptsSummary: $('receipts-summary'), receiptsScroll: $('receipts-scroll'),
+    recovery: $('recovery'), recoveryRun: $('recovery-run'), recoveryList: $('recovery-list'),
   };
 
   // Read times show in Pacific time, the line's own zone, whatever zone the viewer's computer is in.
@@ -388,6 +389,37 @@
     if (lastGiftRead && state.giftShown) renderGiftRead(lastGiftRead.ts, lastGiftRead.status);
   }
 
+  // ---- The recovery timeline, built on the server from the call's ledger events, so the page only draws it ----
+
+  /** When a row happened and which PayPal answer backs it, or plainly that this row has no PayPal answer. */
+  function recoveryMeta(row) {
+    const time = clockTime(row.ts, { seconds: true });
+    const reference = row.reference ? `PayPal reference ${row.reference}` : 'no PayPal reference';
+    return time ? `${time}, ${reference}` : reference;
+  }
+
+  function recoveryRow(row) {
+    const item = element('li', `recovery-step recovery-step-${String(row.part ?? '')}`);
+    item.append(element('p', 'recovery-label', String(row.label ?? '')));
+    item.append(element('p', 'recovery-text', String(row.text ?? '')));
+    item.append(element('p', 'recovery-meta', recoveryMeta(row)));
+    return item;
+  }
+
+  function renderRecovery(recovery) {
+    const incidents = listOf(recovery?.incidents);
+    els.recovery.hidden = incidents.length === 0;
+    els.recoveryRun.hidden = incidents.length === 0 || !recovery?.run;
+    els.recoveryRun.textContent = incidents.length > 0 && recovery?.run ? String(recovery.run.text ?? '') : '';
+    els.recoveryList.replaceChildren(...incidents.map((incident) => {
+      const item = element('li', 'recovery-incident');
+      const rows = element('ol', 'recovery-steps');
+      rows.append(...listOf(incident.steps).map(recoveryRow));
+      item.append(rows);
+      return item;
+    }));
+  }
+
   const statusText = (status) => String(STATUS_WORDS[status] ?? status).replace(/_/g, ' ').toLowerCase();
   // A PIN turn reaches the page with its numbers hidden as #, so the log says a PIN came in rather than quote the marks.
   const isHiddenPin = (text) => /^[#\s]+$/.test(String(text ?? ''));
@@ -424,6 +456,7 @@
         if (e.kind === 'create_draft') return e.ok ? `Made a draft invoice, ${e.id}. It isn't sent.` : 'Couldn\'t make a draft invoice.';
         return e.ok ? `Deleted the draft invoice ${e.id}.` : `Couldn't delete the draft invoice ${e.id}.`;
       case 'refused': return `Turned that down because ${REASONS[e.reason] || e.reason}.`;
+      case 'amount_unclear': return e.why === 'existing_gift' ? 'You were asking about your gift, so the line read it and made no draft.' : 'That amount wasn\'t clear, so the line asked and made no draft.';
       case 'expired': return 'No answer in time, so nothing changed.';
       case 'withdrawn': return 'The request was set aside.';
       case 'staff_callback': return 'Noted that you want a call back from staff.';
@@ -441,6 +474,7 @@
       // A page that moved on to a new call keeps that call's view.
       if (callId !== state.callId) return;
       renderReceipts(data.receipts);
+      renderRecovery(data.recovery);
       // The card shows the call's latest gift read, so its time comes from that read, spoken or not.
       const giftRead = listOf(data.events).filter((e) => e.type === 'read' && e.what === 'subscription' && !e.error).at(-1);
       if (giftRead && state.giftShown) renderGiftRead(giftRead.ts, giftRead.status);
@@ -484,6 +518,7 @@
     renderRecord(s.record);
     renderCover(s.record?.cover);
     renderReceipts(s.receipts);
+    renderRecovery(s.recovery);
     if (state.ended) stopListening();
     setControls();
   }

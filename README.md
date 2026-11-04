@@ -56,6 +56,8 @@ npm run audit -- --fake
 
 `--fake` runs the baseline with a scripted fake model, so it needs no key and makes no network call. Its table checks the plumbing and is never a result. The table and a JSON file with every claim land in `.pilot/claim-audit/`. It runs from any checkout, writes only inside `.pilot/claim-audit/`, which git ignores, and refuses to write the pilot ledger. The real run, `npm run audit` with no flag, calls Gemini with `GEMINI_API_KEY`, spaces its requests like the dry run and stops on a 429. Per `EVAL.md` it waits until the pilot is graded and Arnav says go.
 
+The report also has a view called the gate over the plain agent. For each reply the plain agent gave, it marks which sentences hold a claim the audit found unbacked, and says what a donor would have heard instead, from the record that claim was held to. It reads the same claims the tables count, so it is no new score. Pledge Line's own sentences are templates, so a gate on them blocks almost nothing, and the report says so. The scripted fake model follows its rules, so a `--fake` run marks nothing, and the tests script the mistakes.
+
 ## Run it against the sandbox
 
 Follow `SETUP.md` first. It covers the PayPal sandbox app, the free Gemini key, and Render.
@@ -80,7 +82,7 @@ After Script 5 sends its invoice, the record card links to PayPal's payer page. 
 - Every amount, date, invoice number and status the line speaks comes from a PayPal read earlier in the same call, of the gift's own subscription, its plan, or the call's own draft. The grader also checks that each of those facts is actually said, that every other word is one the line's own templates use, and that every sentence, with its facts as slots, is one the templates say. A sentence that says what PayPal or the line did, such as "Done." or "PayPal no longer shows it", is checked against what PayPal actually returned in that call.
 - After a change, the line reads PayPal again and says what PayPal shows. It never claims a status PayPal did not return.
 - Invoices only go to the email already on file with PayPal. A new email from the caller is refused, however it is said, as in "bob [at] gmail [dot] com", "bob @ gmail.com", "bob, at gmail, dot com", "gmail dotcom", "gmail point com", "gmail .com", "gmail. com" or "bob -at- gmail -dot- com". The looser forms, with commas or marks around the words, count only when the caller also says an email word or a mail domain such as gmail, so "pause it at the end of the period, me and my wife are away" is a pause, not an email.
-- A one-time gift needs one clear amount. If the caller corrects it, as in "fifty dollars, I mean sixty, one time", or names two different numbers, as in "fifty and sixty dollars", the line asks for the amount again, whatever amount Haiku heard.
+- A one-time gift needs one clear amount, and code decides that, not the model. A number the caller gave as an age, a correction, a relative word such as "double that", two different numbers, or an amount the router picked that isn't in her words all get "How much would you like to give?", and nothing is created. A question about the gift she has, as in "Is my gift still seventy five dollars a month?", reads that gift from PayPal.
 - The PIN never lands in the log, the browser, a reply or the Haiku router, whether it is typed, said digit by digit, said as numbers like "twenty four sixty eight", or typed as superscript, circled or full-width characters. Keys stay in `.env` and are never logged.
 - The words said before an answer are one of four fixed phrases the line owns. Haiku only picks which one, so it can't put a number or a claim in the line's mouth.
 
@@ -96,6 +98,18 @@ After the PIN, try "I lost my job, I can't do it this month." In mock mode the f
 - In the sandbox, the sponsor consents once in the browser. `npm run seed:hold` makes the order and prints the link, then `npm run seed:hold -- --authorize` saves the hold. With no hold, the line says the fund isn't open and moves nothing. A hold lasts 29 days, so seed it within 3 days of filming.
 - The page and the staff view both show the fee a refund leaves behind. PayPal keeps its fee on the refunded gift and takes one on the sponsor's payment, so the nonprofit ends one fee short of a gift that stood.
 - `PICK.md` says why, `FEATURES.md` has the details and `SPEC.md` the contract.
+
+## When something goes wrong in a call
+
+The call state carries `recovery`, built on the server from the call's ledger events the same way receipts are. When something goes wrong and the line handles it, the page shows a short timeline under "PayPal's record": what the donor wanted, what went wrong, what the line did and what PayPal shows now, each with its time in PT and PayPal's reference when there is one. It covers a timeout or 5xx followed by a fresh read, a refusal, a record someone else changed, a failed PayPal step and an unclear amount. When nothing went wrong, nothing shows.
+
+To see it, stage a fault on the mock. `FAULT_DRILL` is refused unless `PAYPAL_MODE` is mock, it fires once, and each such call is labeled a fault drill on the page. A mock call is labeled too.
+
+```
+FAULT_DRILL=suspend-timeout npm run dev
+```
+
+The drills are `suspend-timeout`, `suspend-503`, `suspend-refused` and `gift-changed`. After the PIN, say "Pause my gift.", then "Yes.". For `gift-changed`, say "Are you sure?" instead of yes. `FEATURES.md` has the details.
 
 ## Receipts and "How do you know?"
 
@@ -163,14 +177,12 @@ The pass bar and how each test is graded live in `PILOT.md`. The bar was set bef
   - A caller who reads back the masked email on file, as in "Is it going to s b at personal dot example dot com?", is asked again for a yes or no, not refused. A new email said that way is still refused.
   - A write PayPal answers with a 4xx is said as refused, "PayPal didn't accept that change." A timeout or a 5xx may have gone through, so the line reads PayPal again and says "PayPal didn't answer clearly, so I checked again." and what PayPal now shows. A send PayPal shows as sent is never deleted at the end of the call. The write event logs PayPal's answer code as `httpStatus`, 0 for a timeout.
 - Still open after the sixth review.
-  - With Haiku, a number the caller said once in passing, as in "I'm 75 and I want to make a one-time gift", is drafted if Haiku reads it as the amount. Only a correction or two different numbers makes the line ask whatever Haiku heard. The line reads PayPal's draft back, and nothing is sent without a separate yes.
-  - A correction with no number after it, as in "fifty dollars, I mean double that", is not caught, and the $50.00 draft is read back for a yes or a no.
   - Some spoken email forms are still plain words, such as "gmail dot c o m", "gmail full stop com", an address spelled letter by letter, "point me" for a .me ending, "period co period uk", a domain split in two, as in "bob at g mail.com", or a loose form with no email word, as in "bob at acme, dot, org". The draft still goes to the email on file.
   - The strict email forms still count in plain speech, so "look at the polka dot dress" or "at this point net of fees" is read as an email, and so does "period. Net" beside an email word, as in "Email me at the end of the period. Net of fees I am fine." The line says it can only use the email on file and sends nothing, but a graded call that hears one fails its behavior check, so rerun it.
 - A write PayPal applied but whose answer was lost still fails that call's behavior check, and the gift or invoice may have changed. Before you rerun the script, listen to what the line said PayPal now shows, and put the gift back first if it changed, for example restart it in a free call before rerunning Script 2.
 - The page measures the gap, so a deliberately faked client could still post one false gap per turn. The line now takes only one gap per turn, only for a reply it finished, and the grader flags a gap shorter than the line's own time for that reply.
 - The same holds for a yes. A deliberately faked client that waits a quarter second after a proposal could still send a yes for a proposal it never showed. The line refuses any sooner yes, and any yes that arrived before the proposal existed.
-- In rules mode, used only in mock runs and tests, a bare number counts as an amount only right after give or donate, or as the answer to the line's own amount question. Haiku reads the amount in the pilot, unless the caller's words correct it or name two different numbers, and the line reads PayPal's draft back before any send.
+- Since `feat/self-resolving`, the line takes an amount only when code reads the same clear amount from the caller's words that the router returned, so a bare number counts only right after give or donate, or as the answer to the line's own amount question. Nothing in code reads "fifty quid", so that asks, even when a model heard $50. The line can't change a monthly amount, so "I want to give fifty dollars a month" asks and makes no draft.
 - A PIN said by voice that starts with an "oh", as in "Oh, 2468", reads as a wrong PIN, since oh can mean zero. The scripts use the keypad, so type the PIN there.
 - Some PayPal sandbox details are unconfirmed, such as whether a sent invoice reads SENT or UNPAID. The code accepts both. See `.pilot/facts-paypal.md`.
 - Render's free service sleeps after 15 minutes, and waking wipes its event list. PayPal retries webhooks for 3 days, and `npm run pilot:check -- --render URL --resend` wakes the service, asks PayPal to send the paid event again, then checks Render's list for up to about two minutes.

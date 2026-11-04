@@ -245,6 +245,8 @@ export function amountOutOfRange(min, max) {
   const facts = [fact('money', formatMoney(min), 'config.invoice_min_dollars'), fact('money', formatMoney(max), 'config.invoice_max_dollars')];
   return part(`I can set up a one-time gift ${limitsPhrase(min, max)}. ${AMOUNT_QUESTION}`, facts);
 }
+/** Said when the words name a number that isn't clearly the gift, as in "I'm 75" or "I mean double that". */
+export const askAmount = () => part(AMOUNT_QUESTION);
 /** Said after a new email is refused, when the turn named no amount as money. */
 export const amountForFile = () => part(AMOUNT_FOR_FILE);
 /** True when the line's last reply asked for an amount, so a bare number in the next turn answers it. */

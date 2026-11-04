@@ -8,6 +8,7 @@ import { createPayPal } from './paypal.js';
 import { createMockPayPal } from './paypal-mock.js';
 import { createTokens, createGate } from './gate.js';
 import { createRouter } from './router.js';
+import { applyFaultDrill } from './fault-drill.js';
 import { createCallService, CallNotFound, GapRefused, LIVE_TEMPLATE_HASH, LIVE_UNREVIEWED, LIVE_TEMPLATE_ERROR } from './call.js';
 import { createRefundDesk } from './refund-desk.js';
 import { TEMPLATE_HASH } from './template-words.js';
@@ -177,7 +178,7 @@ export function buildDeps(config, overrides = {}) {
   const tokens = createTokens({ now, ttlMs: config.limits.tokenTtlMs });
   let webhooks = null;
   const paypal = config.paypal.mode === 'mock'
-    ? createMockPayPal({ tokens, now, onWebhook: (delivery) => webhooks?.handle(delivery), ...(overrides.mockOptions ?? {}) })
+    ? applyFaultDrill(createMockPayPal({ tokens, now, onWebhook: (delivery) => webhooks?.handle(delivery), ...(overrides.mockOptions ?? {}) }), config.faultDrill, tokens)
     : createPayPal({ baseUrl: config.paypal.baseUrl, clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, tokens, fetchImpl: overrides.fetchImpl ?? fetch });
   webhooks = createWebhookHandler({ paypal, ledger, webhookId: config.paypal.webhookId, log });
   const router = overrides.router ?? createRouter({ mode: config.router.mode, apiKey: config.router.apiKey, model: config.router.model });
