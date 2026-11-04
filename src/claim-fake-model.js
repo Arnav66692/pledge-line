@@ -12,13 +12,14 @@ const SPOKEN_STATUS = Object.freeze({ ACTIVE: 'active', SUSPENDED: 'paused', CAN
 const CAN_START = Object.freeze({ suspend: ['ACTIVE'], activate: ['SUSPENDED'], cancel: ['ACTIVE', 'SUSPENDED'] });
 
 // Checked in this order, so "did my pause go through" is a status question and "stop for a few months" a pause.
+// "pausar" and a tag question such as "is it?" are there for the mishearing block, M2 and M5 in EVAL.md.
 const INTENTS = [
   ['goodbye', /\b(?:bye|goodbye)\b/i],
   ['one_time', /\bone[\s-]time\b|\bjust once\b|\binvoice\b/i],
   ['no', /^\s*(?:no|nope|nah)\b/i],
   ['activate', /\b(?:restart|resume|reactivate)\b/i],
-  ['status', /\bhow much\b|\bwhen\b|\bstill\b|\bgo through\b|\bcheck\b|\bpaused now\b/i],
-  ['suspend', /\bpause\b|\bfew months\b|\bfor a while\b/i],
+  ['status', /\bhow much\b|\bwhen\b|\bstill\b|\bgo through\b|\bcheck\b|\bpaused now\b|\bis it\?/i],
+  ['suspend', /\bpause\b|\bpausar\b|\bfew months\b|\bfor a while\b/i],
   ['cancel', /\b(?:cancel|stop)\b/i],
 ];
 

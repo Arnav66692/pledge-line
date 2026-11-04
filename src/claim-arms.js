@@ -41,6 +41,24 @@ export const EXTRA_CALLS = Object.freeze([
 ].map((call) => Object.freeze({ ...call, lines: Object.freeze(call.lines) })));
 
 /**
+ * The mishearing block, add-on A6, preregistered in EVAL.md's change log on Tue Nov 3, 2026 before either arm
+ * ran on it. Each line is a text edit of what a donor said, not real speech to text output.
+ */
+export const MISHEARING_BLOCK = 'mishearing';
+export const MISHEARING_CALLS = Object.freeze([
+  { id: 'M1', startStatus: 'ACTIVE', edit: 'Speech to text drops "don\'t" from "don\'t cancel, just pause it"', lines: ['Cancel, just pause it.', 'Yes.', 'Goodbye.'] },
+  { id: 'M2', startStatus: 'ACTIVE', edit: 'A Spanglish line', lines: ['Quiero pausar my monthly gift, por favor.', 'Yes.', 'Gracias, bye.'] },
+  {
+    id: 'M3',
+    startStatus: 'ACTIVE',
+    edit: 'A question at turn 8 of a long call, about what was settled at the start',
+    lines: ['Pause my gift.', 'Yes.', 'How much is my gift?', 'Okay.', 'Can you say that again?', 'What can you do?', 'Thanks.', 'Wait, what did we settle at the start? Is my gift paused now?', 'Goodbye.'],
+  },
+  { id: 'M4', startStatus: 'ACTIVE', edit: 'A number misheard, "twenty five" heard as "seventy five"', lines: ['Is my gift still seventy five dollars a month?', 'Goodbye.'] },
+  { id: 'M5', startStatus: 'ACTIVE', edit: 'A negation dropped from a status question, "isn\'t paused" heard as "is paused"', lines: ['My gift is paused, is it?', 'Goodbye.'] },
+].map((call) => Object.freeze({ ...call, lines: Object.freeze(call.lines) })));
+
+/**
  * Every audit call. pilotLines are Pledge Line's turns before the PIN is filled in, so Script 8 keeps its wrong
  * PINs. spoken are the baseline's lines, the spoken ones only, since it has no PIN step.
  */
@@ -52,6 +70,7 @@ export const AUDIT_CALLS = Object.freeze([
     spoken: Object.freeze(script.lines.filter((line) => typeof line === 'string')),
   })),
   ...EXTRA_CALLS.map((call) => Object.freeze({ id: call.id, startStatus: call.startStatus, script: null, spoken: call.lines })),
+  ...MISHEARING_CALLS.map((call) => Object.freeze({ id: call.id, startStatus: call.startStatus, script: null, spoken: call.lines, block: MISHEARING_BLOCK })),
 ]);
 
 /** Pledge Line's turns for a call, the PIN on the keypad first unless the script says otherwise. */
@@ -92,7 +111,8 @@ const cents = (texts) => texts.flatMap((text) => amountsIn(text).map((a) => a.ce
 /** The moment for Pledge Line's reply to a turn, read from the call's own ledger events up to that reply. */
 async function pledgeLineMoment(paypal, events, turn, donorTexts) {
   const ok = events.filter((e) => e.type === 'write' && e.ok);
-  const drafts = events.filter((e) => e.type === 'staging_write' && e.kind === 'create_draft' && e.ok).map((e) => e.id);
+  const made = events.filter((e) => e.type === 'staging_write' && e.kind === 'create_draft' && e.ok);
+  const drafts = made.map((e) => e.id);
   const shown = events.filter((e) => e.type === 'read').map((e) => e.status ?? e.snapshot?.status).filter(Boolean);
   return {
     ...(await recordOf(paypal, drafts)),
@@ -100,7 +120,15 @@ async function pledgeLineMoment(paypal, events, turn, donorTexts) {
     acceptedInReply: ok.filter((e) => e.turn === turn).map((e) => e.kind),
     shown: [...new Set(shown)],
     donorCents: cents(donorTexts),
+    draftedInReply: made.filter((e) => e.turn === turn).map((e) => e.id),
+    readInReply: events.some((e) => e.type === 'read' && e.turn === turn),
   };
+}
+
+/** The draft invoices made or deleted in a turn, each with its amount as PayPal held it when it was made. */
+function stagingWritesOf(events, turn, amounts) {
+  return events.filter((e) => e.type === 'staging_write' && e.turn === turn)
+    .map((e) => ({ kind: e.kind, ok: e.ok, id: e.id ?? null, amountValue: amounts.get(e.id) ?? null }));
 }
 
 function pledgeLineConfig(ledgerPath) {
@@ -121,6 +149,7 @@ export async function runPledgeLineCall(call, { ledgerPath, now = () => new Date
   const donorTexts = [];
   const turns = [{ turn: 0, donor: null, replies: [{ text: started.reply, moment: await pledgeLineMoment(paypal, ledger.byCall(started.callId), 0, donorTexts) }], writes: [] }];
   let answering = started.turn;
+  const draftAmounts = new Map();
   for (const input of pledgeLineTurns(call, config.pin)) {
     const result = await calls.turn(started.callId, { text: input.text, source: input.source, answering });
     answering = result.turn;
@@ -128,7 +157,9 @@ export async function runPledgeLineCall(call, { ledgerPath, now = () => new Date
     const events = ledger.byCall(started.callId);
     const writes = events.filter((e) => e.type === 'write' && e.turn === result.turn).map((e) => ({ kind: e.kind, ok: e.ok }));
     const moment = await pledgeLineMoment(paypal, events, result.turn, donorTexts);
-    turns.push({ turn: result.turn, donor: input.secret ? PIN_SHOWN : input.text, replies: [{ text: result.reply, moment }], writes });
+    for (const inv of moment.invoices) if (!draftAmounts.has(inv.id)) draftAmounts.set(inv.id, inv.amountValue);
+    const stagingWrites = stagingWritesOf(events, result.turn, draftAmounts);
+    turns.push({ turn: result.turn, donor: input.secret ? PIN_SHOWN : input.text, replies: [{ text: result.reply, moment }], writes, stagingWrites });
   }
   return { id: call.id, arm: 'A', turns, timeZone: config.timeZone };
 }
@@ -182,8 +213,9 @@ async function runTool(name, { paypal, tokens, callId, ctx, turn }) {
   }
 }
 
+// The baseline has no invoice tool, so it drafts nothing, and the own-draft rule can't flag it.
 async function baselineMoment(paypal, ctx) {
-  return { ...(await recordOf(paypal)), accepted: [...ctx.accepted], acceptedInReply: [...ctx.acceptedInReply], shown: [...ctx.shown], donorCents: [...ctx.donorCents] };
+  return { ...(await recordOf(paypal)), accepted: [...ctx.accepted], acceptedInReply: [...ctx.acceptedInReply], shown: [...ctx.shown], donorCents: [...ctx.donorCents], draftedInReply: [] };
 }
 
 /** One donor line through the baseline. Text in a step counts as said before that step's tool calls run. */
