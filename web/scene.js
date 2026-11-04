@@ -2,12 +2,12 @@
 
 // The room behind the page, in raw WebGL2. It is Arnav's Blender room from his portfolio build (web/room/README.md):
 // plaster walls with their sunlight and shadows baked into a light map, an arcade of three arches in the left wall open
-// onto a dusk world, a high window and a ledge, standing in still water. Here the bake is re-coloured into a warm pink
-// plaster with lilac shade, the world outside is a peach and lilac dusk, and the water is a real planar mirror: the
-// room is drawn upside down into a texture each frame, then the water samples it through slow ripples. A pearl floats
-// past the end of the headline's first line, specks drift in the air, and the camera wanders like a hand-held shot and
-// turns a few degrees toward the pointer. The pointer also stirs a flow field that smears the picture and settles in
-// about 1.5 s, and a last pass adds grain, a soft vignette and a slight RGB split at the edges.
+// onto a dusk world, a high window and a ledge, standing in still water. The donor page uses the light palette: white
+// plaster, a blue dusk and blue water, with a gold sun in the arcade. The staff view keeps its own dark palette. The
+// water is a real planar mirror: the room is drawn upside down into a texture each frame, then the water samples it
+// through slow ripples. A pearl floats past the end of the headline's first line, specks drift in the air, and the
+// camera wanders like a hand-held shot and turns a few degrees toward the pointer. The pointer also stirs a flow field
+// that smears the picture and settles in about 1.5 s, and a last pass adds grain and a soft vignette.
 // The page works the same without it: html keeps no "has-gl" class and the CSS paints a still of the room.
 (() => {
   const noop = () => {};
@@ -18,7 +18,6 @@
   if (!canvas) return;
   const root = document.documentElement;
   const reduceMq = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
   const isCase = root.dataset.page === 'staff';
 
   let gl = null;
@@ -720,13 +719,14 @@ void main() {
   const SUN = norm([0.78, -0.56, -0.28]); // the way the light travels through the left window
   const KEY = SUN.map((v) => -v);
   const DUSK = norm([-0.75, 0.06, -0.66]); // the glow sits past the arcade, out of sight of the headline
-  // Warm pastel pink plaster in lilac shade with a peach sun, a peach and lilac dusk, lilac water.
+  // The donor palette: white plaster in pale blue shade, a blue dusk and blue water, and a gold sun in the arcade.
+  // keep is 0 so the bake's crimson bounce does not tint the walls, and film is 0 so the pearl shows no rainbow.
   const LIGHT = {
-    lit: '#f9d8c8', mid: '#e6b7af', shade: '#cea9b3', deep: '#a3859a', keep: 0.12, exposure: 1.0, sheen: 0.6,
-    horizon: '#f7cbb5', zenith: '#b4b1de', glowCol: '#ffd2ae', glow: 0.85, cloudLit: '#ffe4d2', cloudDark: '#d6b2c8', clouds: 0.5,
-    ridgeFar: '#d5b0ca', ridgeMid: '#bb91b7', ridgeNear: '#9b77a4',
-    water: '#ad9ebd', reflect: 0.9, blur: 1.0, wave: 0.012, fog: '#edd2cc', fogDensity: 0.0045, sunCol: '#fff3ea',
-    mote: '#fff8f2', moteAmt: 0.6, body: '#f4ece9', spec: 1, film: 1, mist: '#f4e7e3', floor: '#efe2e4', floorAmt: 0.56,
+    lit: '#fff1c4', mid: '#f1f7fc', shade: '#cfe1f0', deep: '#8db2d6', keep: 0, exposure: 1.0, sheen: 0.5,
+    horizon: '#d3eaf8', zenith: '#2b67b3', glowCol: '#ffc439', glow: 1.0, cloudLit: '#fff6dc', cloudDark: '#8fb7e0', clouds: 0.5,
+    ridgeFar: '#a9cce9', ridgeMid: '#739fcc', ridgeNear: '#4b7aae',
+    water: '#2a62a6', reflect: 0.9, blur: 1.0, wave: 0.012, fog: '#eaf4fc', fogDensity: 0.0045, sunCol: '#ffd96b',
+    mote: '#ffffff', moteAmt: 0.6, body: '#f8fbfe', spec: 1, film: 0, mist: '#eef6fc', floor: '#ffffff', floorAmt: 0.8,
   };
   const DARK = {
     lit: '#68505f', mid: '#4f4055', shade: '#372e44', deep: '#262031', keep: 0.14, exposure: 1.0, sheen: 0.5,
@@ -744,7 +744,8 @@ void main() {
     calm: 0, calmTarget: 0,
     pearl: null, pearlTarget: null,
     intro: 0, entry: 0,
-    dark: isCase || darkMq.matches ? 1 : 0,
+    // The donor page is always light. Only the staff view uses the dark palette.
+    dark: isCase ? 1 : 0,
     pointer: { x: 0.5, y: 0.5, px: 0.5, py: 0.5, moved: false, look: [0, 0], lookTarget: [0, 0] },
     t0: performance.now(), last: performance.now(), running: false, raf: 0, hidden: document.hidden,
     slow: 0, frames: 0, loaded: isCase,
@@ -1040,7 +1041,8 @@ void main() {
     gl.uniform1f(po.u.uTime, time);
     gl.uniform1f(po.u.uFlowAmt, flowOk && !reduced() ? 0.55 : 0);
     gl.uniform1f(po.u.uGrain, isCase ? 0.055 : s.dark ? 0.04 : 0.045);
-    gl.uniform1f(po.u.uCA, isCase ? 0.028 : 0.016);
+    // The donor page has no RGB split: on white plaster the fringes would read as red and cyan.
+    gl.uniform1f(po.u.uCA, isCase ? 0.028 : 0);
     gl.uniform1f(po.u.uVig, isCase ? 0.35 : s.dark ? 0.24 : 0.14);
     gl.uniform1f(po.u.uCalm, s.calm * 0.55);
     gl.uniform1f(po.u.uIntro, s.intro);
@@ -1109,7 +1111,6 @@ void main() {
     else kick();
   });
   window.addEventListener('resize', () => { resize(); kick(); });
-  darkMq.addEventListener('change', () => { state.dark = isCase || darkMq.matches ? 1 : 0; kick(); });
   reduceMq.addEventListener('change', () => { stop(); kick(); });
   canvas.addEventListener('webglcontextlost', (e) => {
     e.preventDefault();
