@@ -8,6 +8,10 @@ import { createCheckoutStore } from './checkout-store.js';
 import { createSandboxCheckout } from './sandbox-checkout.js';
 import { createCheckoutRecovery } from './checkout-recovery.js';
 import { validateProcurementQuote } from './procurement.js';
+import { startHostedSupplierLab } from './hosted-supplier-lab.js';
+import { createDonorStore } from './donor-store.js';
+import { createDurableLedger } from './durable-ledger.js';
+import { createDonorDurability } from './donor-durability.js';
 
 export const SANDBOX_WRITE_UNLOCK_AT = '2026-11-05T05:00:00.000Z';
 // The HTTP adapter uses this fixed organization; requests cannot nominate another tenant.
@@ -52,10 +56,14 @@ export function readSupplierRegistry(file, env = process.env) {
 }
 
 /** No migration or paid probe happens at startup. Configured storage errors prevent startup. */
-export async function configureRuntimeServices({ config, database, env = process.env, now = () => new Date(), fetchImpl = globalThis.fetch } = {}) {
+export async function configureRuntimeServices({ config, database, env = process.env, now = () => new Date(), fetchImpl = globalThis.fetch,
+  startSupplierLab = startHostedSupplierLab } = {}) {
   const paid = config.router.mode === 'anthropic';
   if (config.router.mode === 'haiku') fail('USE_GUARDED_ANTHROPIC_MODE');
   let gateway = null, agent = null, suppliers = null, checkoutStore = null, checkout = null, checkoutRecovery = null;
+  let ledger = null, durability = null, donorStore = null;
+  let hostedSupplierLab = null, closePromise = null;
+  const close = () => { closePromise ??= Promise.resolve().then(() => hostedSupplierLab?.close()); return closePromise; };
   if (paid) {
     if (!database?.pool) fail('AI_DATABASE_REQUIRED');
     if (env.AI_PREPAID_ONLY_CONFIRMED !== 'true') fail('AI_PREPAID_CONFIRMATION_REQUIRED');
@@ -69,11 +77,26 @@ export async function configureRuntimeServices({ config, database, env = process
   }
   const supplierMode = env.PROCUREMENT_SUPPLIER_MODE || 'mock';
   if (!['mock', 'mcp-sandbox'].includes(supplierMode)) fail('SUPPLIER_MODE_INVALID');
+  const hosted = env.HOSTED_SUPPLIER_LAB_ENABLED === 'true';
+  if (hosted && supplierMode !== 'mcp-sandbox') fail('HOSTED_SUPPLIER_LAB_MODE_REQUIRED');
   const writePolicy = () => sandboxWritePolicy(env, now());
   const writesAllowed = () => writePolicy().enabled;
+  try {
+  if (env.DONOR_DURABILITY_ENABLED === 'true') {
+    if (!database?.pool) fail('DONOR_DATABASE_REQUIRED');
+    donorStore = createDonorStore({ pool: database.pool, organizationId: CHECKOUT_ORGANIZATION_ID, now });
+    await donorStore.checkSchema();
+    ledger = createDurableLedger({ store: donorStore, now });
+    await ledger.ready();
+    durability = createDonorDurability({ store: donorStore, ledger, now });
+  }
   if (supplierMode === 'mcp-sandbox') {
     if (!database?.pool) fail('CHECKOUT_DATABASE_REQUIRED');
-    suppliers = createMcpSuppliers({ registry: readSupplierRegistry(env.SUPPLIER_REGISTRY_PATH || '.suppliers.json', env), now });
+    if (hosted) {
+      if ([3160, 3161, 3162].includes(config.port)) fail('HOSTED_SUPPLIER_LAB_PORT_CONFLICT');
+      hostedSupplierLab = await startSupplierLab({ pool: database.pool, payeeId: env.SUPPLIER_LAB_PAYEE_ID, now });
+    }
+    suppliers = createMcpSuppliers({ registry: hostedSupplierLab?.registry ?? readSupplierRegistry(env.SUPPLIER_REGISTRY_PATH || '.suppliers.json', env), now });
     const registered = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
     checkoutStore = createCheckoutStore({ pool: database.pool });
     await checkoutStore.checkSchema();
@@ -111,12 +134,15 @@ export async function configureRuntimeServices({ config, database, env = process
       });
     }
   }
-  return { agent, aiGateway: gateway, suppliers, checkout, checkoutStore, checkoutRecovery, commerceStatus: () => ({
+  return { agent, aiGateway: gateway, suppliers, checkout, checkoutStore, checkoutRecovery, close,
+    ...(donorStore ? { ledger, durability, donorStore } : {}), commerceStatus: () => ({
     suppliers: supplierMode, payments: supplierMode === 'mcp-sandbox' ? 'paypal-sandbox' : 'mock',
     sandboxWritesEnabled: supplierMode === 'mcp-sandbox' && writesAllowed(), sandboxWriteUnlockAt: SANDBOX_WRITE_UNLOCK_AT,
     sandboxWriteBlockedReason: supplierMode === 'mcp-sandbox' ? writePolicy().blockedReason : 'mock_mode',
     checkoutRecovery: checkoutRecovery?.status() ?? { enabled: false, running: false, inFlight: false },
-    supplierProvenance: suppliers ? env.LAB_MERCHANT_MODE === 'placeholder' ? 'Controlled sandbox supplier lab. Merchant IDs are placeholders and checkout writes are disabled. No independent business participation or fulfillment.' : 'Operator-registered endpoints. Independent business participation and fulfillment are not verified.' : 'Simulated suppliers.',
+    hostedSupplierLab: hostedSupplierLab?.status() ?? null,
+    supplierProvenance: hostedSupplierLab ? hostedSupplierLab.status().provenance : suppliers ? env.LAB_MERCHANT_MODE === 'placeholder' ? 'Controlled sandbox supplier lab. Merchant IDs are placeholders and checkout writes are disabled. No independent business participation or fulfillment.' : 'Operator-registered endpoints. Independent business participation and fulfillment are not verified.' : 'Simulated suppliers.',
     livePayments: false,
   }) };
+  } catch (error) { try { await close(); } catch { /* Preserve the startup failure after attempting private listener cleanup. */ } throw error; }
 }

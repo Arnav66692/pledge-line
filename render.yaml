@@ -1,4 +1,4 @@
-# Render Blueprint for the Pledge Line pilot. One free Node web service.
+# Render Blueprint for Pledge Line's guarded sandbox release. One free Node web service.
 # Field reference, https://render.com/docs/blueprint-spec
 # Values marked sync false are asked for once, when the Blueprint is first created.
 # Change them later on the service's Environment page in the Render Dashboard.
@@ -13,25 +13,58 @@ services:
     healthCheckPath: /healthz
     autoDeployTrigger: commit
     envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PUBLIC_BASE_URL
+        value: https://pledge-line.onrender.com
       - key: PAYPAL_MODE
         value: sandbox
+      - key: PAYPAL_BASE_URL
+        value: https://api-m.sandbox.paypal.com
       - key: ROUTER_MODE
-        value: gemini
+        value: anthropic
       - key: ORG_NAME
-        value: Sunny Hollow Pantry
+        value: Pledge Line Sandbox Pantry
+      - key: TIME_ZONE
+        value: America/Los_Angeles
+      - key: DONOR_DURABILITY_ENABLED
+        value: "true"
+      - key: PROCUREMENT_SUPPLIER_MODE
+        value: mcp-sandbox
+      - key: HOSTED_SUPPLIER_LAB_ENABLED
+        value: "true"
+      - key: SUPPLIER_LAB_PAYEE_ID
+        value: VL6MYE4R2TBSJ
+      - key: PAYPAL_SANDBOX_CHECKOUT_WRITES
+        value: "true"
+      - key: CHECKOUT_RECOVERY_ENABLED
+        value: "true"
+      # This release uses the operator-attested API-credit scope; deployment must not reset it.
+      - key: AI_PREPAID_ONLY_CONFIRMED
+        value: "true"
+      - key: AI_BUDGET_SCOPE
+        value: pledge-line-functional-20261105
+      - key: AI_ANTHROPIC_LIMIT_USD
+        value: "3.00"
+      - key: AI_JEV_LIMIT_USD
+        value: "0.10"
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TYPESAFE_API_KEY
+        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
-      - key: GEMINI_API_KEY
-        sync: false
       - key: PILOT_PIN
         sync: false
       - key: DEMO_SUBSCRIPTION_ID
         sync: false
-      - key: PUBLIC_BASE_URL
+      - key: SPONSOR_HOLD_ID
         sync: false
       - key: STAFF_KEY
         sync: false

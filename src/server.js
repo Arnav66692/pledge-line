@@ -21,6 +21,7 @@ import { createProcurementService } from './procurement.js';
 import { createProcurementHttp } from './procurement-http.js';
 import { connectDatabase } from './database.js';
 import { configureRuntimeServices } from './runtime-services.js';
+import { wrapDurableCalls, observeMockPayPal } from './donor-durability.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -129,8 +130,10 @@ export function createWebhookHandler({ paypal, ledger, webhookId, log, journal =
   const verifiedIds = new Set(ledger.byType('webhook').filter((e) => e.verified && e.eventId).map((e) => e.eventId));
   const inflight = new Map();
 
-  function record(entry) {
+  async function record(entry) {
+    await ledger.ensureCapacity?.();
     ledger.append({ type: 'webhook', ...entry }, { durable: true });
+    await ledger.flush?.();
     log.info(`webhook ${entry.eventType} ${entry.resourceId} verified=${entry.verified}`);
   }
 
@@ -138,16 +141,17 @@ export function createWebhookHandler({ paypal, ledger, webhookId, log, journal =
     const { verified, verifyStatus } = await paypal.verifyWebhookSignature({ headers, rawBody, webhookId });
     if (verified && journal) await journal.acceptVerifiedWebhook({ organizationId, provider: 'paypal-sandbox', eventId: entry.eventId, rawBody, verified: true });
     // The id is untrusted until this delivery is verified. A forged body must not inherit a prior event's status.
-    if (verified && verifiedIds.has(entry.eventId)) {
+    if (verified && (verifiedIds.has(entry.eventId) || ledger.byType('webhook').some((event) => event.verified && event.eventId === entry.eventId))) {
       log.info(`webhook ${entry.eventType} ${entry.resourceId} duplicate`);
       return { verified: true, verifyStatus: 'DUPLICATE' };
     }
-    record({ ...entry, verified, verifyStatus });
+    await record({ ...entry, verified, verifyStatus });
     if (verified) verifiedIds.add(entry.eventId);
     return { verified, verifyStatus };
   }
 
   async function handle({ rawBody, headers }) {
+    await ledger.reload?.();
     let event = null;
     try {
       event = JSON.parse(Buffer.from(rawBody).toString('utf8'));
@@ -161,7 +165,7 @@ export function createWebhookHandler({ paypal, ledger, webhookId, log, journal =
       transmissionId: clip(headers?.['paypal-transmission-id'], 200),
     };
     if (!entry.eventId) {
-      record({ ...entry, verified: false, verifyStatus: 'BAD_BODY' });
+      await record({ ...entry, verified: false, verifyStatus: 'BAD_BODY' });
       return { verified: false, verifyStatus: 'BAD_BODY' };
     }
     const before = inflight.get(entry.eventId) ?? Promise.resolve();
@@ -197,18 +201,20 @@ export function buildDeps(config, overrides = {}) {
   const ledger = overrides.ledger ?? createLedger({ path: overrides.ledgerPath ?? config.ledgerPath, now });
   const tokens = createTokens({ now, ttlMs: config.limits.tokenTtlMs });
   let webhooks = null;
-  const paypal = config.paypal.mode === 'mock'
+  let paypal = config.paypal.mode === 'mock'
     ? applyFaultDrill(createMockPayPal({ tokens, now, onWebhook: (delivery) => webhooks?.handle(delivery), ...(overrides.mockOptions ?? {}) }), config.faultDrill, tokens)
     : createPayPal({ baseUrl: config.paypal.baseUrl, clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, tokens, fetchImpl: overrides.fetchImpl ?? fetch });
+  if (overrides.durability) paypal = observeMockPayPal(paypal);
   webhooks = createWebhookHandler({ paypal, ledger, webhookId: config.paypal.webhookId, log, journal: overrides.journal ?? null });
   const router = overrides.router ?? overrides.agent ?? (['anthropic', 'haiku'].includes(config.router.mode)
     ? { mode: config.router.mode, route: async () => ({ intent: 'unclear', amountDollars: 0, empathy: 'none', latencyMs: 0, model: config.router.model, error: 'AI_GATEWAY_REQUIRED' }) }
     : createRouter({ mode: config.router.mode, apiKey: config.router.apiKey, model: config.router.model }));
-  const gate = createGate({ ledger, tokens, now, pendingTtlMs: config.limits.pendingTtlMs });
+  const gate = createGate({ ledger, tokens, now, pendingTtlMs: config.limits.pendingTtlMs, durability: overrides.durability });
   // Only the public Render service needs it. Locally the line listens on this computer alone, and Script 8 uses three wrong PINs.
   const pinGuard = config.trustProxy ? createPinGuard({ limit: config.limits.wrongPinsPerHour, windowMs: HOUR_MS, now: () => now().getTime() }) : null;
   const desk = createRefundDesk({ ledger, tokens });
-  const calls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, desk, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
+  const rawCalls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, desk, durability: overrides.durability, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
+  const calls = overrides.durability ? wrapDurableCalls({ calls: rawCalls, store: overrides.donorStore, ledger, durability: overrides.durability, paypal, now }) : rawCalls;
   // Off, with every receipt route a 404, unless RECEIPT_SIGNING_KEY is set.
   const receiptSigner = config.receiptSigningKey ? createReceiptSigner(config.receiptSigningKey) : null;
   return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now, receiptSigner, journal: overrides.journal ?? null,
@@ -361,9 +367,9 @@ function createApi(deps) {
   });
 
   // A drill asked for with a script, by an unknown name, or on the sandbox before the deadline is refused (A12).
-  function startCall(input) {
+  async function startCall(input) {
     try {
-      return calls.start(input);
+      return await calls.start(input);
     } catch (error) {
       if (error instanceof DrillRefused) throw new HttpError(error.status, error.message);
       throw error;
@@ -371,9 +377,9 @@ function createApi(deps) {
   }
 
   // A second gap for a turn is a 409, and so is one for a reply the line has not finished (Test 4).
-  function logGap(id, gap) {
+  async function logGap(id, gap) {
     try {
-      return calls.logGap(id, gap);
+      return await calls.logGap(id, gap);
     } catch (error) {
       if (error instanceof GapRefused) throw new HttpError(error.status, error.message);
       throw error;
@@ -381,21 +387,22 @@ function createApi(deps) {
   }
 
   async function callRoute(req, res, ip, id, action) {
+    // Keep arrival time before storage/authentication waits. An early yes must never become late consent.
+    const receivedAt = performance.now();
     const secret = req.headers['x-call-secret'];
-    if (!calls.authenticate(id, typeof secret === 'string' ? secret : '')) throw new HttpError(401, 'That call session is not available.');
+    if (!await calls.authenticate(id, typeof secret === 'string' ? secret : '')) throw new HttpError(401, 'That call session is not available.');
     if (!action) {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
-      return send(res, 200, calls.get(id));
+      return send(res, 200, await calls.get(id));
     }
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
     // When the turn reached the server, before its body is read, so a yes can't count before a person could answer (I1).
-    const receivedAt = performance.now();
     const body = await readJson(req);
     if (action === 'turn') {
       limitOr429(turns, ip);
       return send(res, 200, await calls.turn(id, validTurnBody(body), { receivedAt }));
     }
-    if (action === 'gap') return send(res, 200, logGap(id, validGapBody(body)));
+    if (action === 'gap') return send(res, 200, await logGap(id, validGapBody(body)));
     return send(res, 200, await calls.end(id, 'client'));
   }
 
@@ -403,7 +410,7 @@ function createApi(deps) {
    * The staff view. Off, as a 404, when STAFF_KEY is unset. The page itself holds no data. The API needs the key in
    * x-staff-key, and the limit runs before the key check, so wrong keys are limited too.
    */
-  function staffRoute(req, res, pathname, ip) {
+  async function staffRoute(req, res, pathname, ip) {
     if (!config.staffKey) throw new HttpError(404, 'Not found.');
     if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
     if (pathname === '/staff') return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'staff.html'));
@@ -412,6 +419,7 @@ function createApi(deps) {
     limitOr429(staffRequests, ip);
     const given = req.headers['x-staff-key'];
     if (!staffKeyMatches(typeof given === 'string' ? given : '', config.staffKey)) throw new HttpError(401, 'That staff key is not right.');
+    await deps.ledger.reload?.();
     if (!match[1]) return send(res, 200, { calls: staffCalls(deps.ledger, config) });
     const call = staffCall(deps.ledger, match[1], config);
     if (!call) throw new HttpError(404, 'That call is not in the record.');
@@ -446,9 +454,10 @@ function createApi(deps) {
     limitOr429(receiptRequests, ip);
     const given = req.headers['x-receipt-secret'];
     if (!secretMatches(signer, match[1], typeof given === 'string' ? given : '')) throw new HttpError(401, "That receipt link isn't right for this call.");
+    await deps.ledger.reload?.();
     const { text, error } = receiptFile(deps.ledger.byCall(match[1]), config, signer);
     if (error === 'not_ended') throw new HttpError(409, 'The call is still going. Its receipt is ready once it ends.');
-    if (error) throw new HttpError(404, 'The line no longer has this call. Its server forgets calls when it restarts.');
+    if (error) throw new HttpError(404, 'That call is not in the receipt record.');
     return send(res, 200, text);
   }
 
@@ -469,7 +478,7 @@ function createApi(deps) {
       return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'procurement.html'), { paymentMode: deps.commerceStatus?.().payments ?? 'mock' });
     }
     if (pathname === '/api/procurement' || pathname.startsWith('/api/procurement/')) return procurementRoute(req, res, pathname, ip);
-    if (pathname === '/api/storage-status' && req.method === 'GET') return send(res, 200, { procurementJournal: deps.journal ? 'postgres' : 'memory', donorLedger: 'local', livePayments: false });
+    if (pathname === '/api/storage-status' && req.method === 'GET') return send(res, 200, { procurementJournal: deps.journal ? 'postgres' : 'memory', donorLedger: deps.ledger.durable ? 'postgres' : 'local', livePayments: false });
     if (pathname === '/api/commerce-status' && req.method === 'GET') return send(res, 200, deps.commerceStatus?.() ?? { suppliers: 'mock', payments: 'mock', sandboxWritesEnabled: false, livePayments: false });
     if (pathname === '/api/ai/status' && req.method === 'GET') return send(res, 200, deps.aiGateway ? { ...await deps.aiGateway.status(), enabled: true, mainAgent: 'claude-sonnet-5-5', reviewer: 'jev-1.14.0', jevPaymentAuthority: false } : { enabled: false, stopped: true, apiKeyOnly: true, providerBalanceVerified: false });
     if (pathname === '/staff' || pathname === '/api/staff' || pathname.startsWith('/api/staff/')) return staffRoute(req, res, pathname, ip);
@@ -480,7 +489,7 @@ function createApi(deps) {
     if (pathname === '/api/pilot-scripts' && req.method === 'GET') return send(res, 200, { scripts });
     // The fault drills, listed only while one may start: in mock mode, or on the sandbox after the deadline (A12).
     if (pathname === '/api/drills' && req.method === 'GET') return send(res, 200, { drills: drillOpen(config.paypal.mode, clock()) ? drills : [] });
-    if (pathname === '/api/webhooks' && req.method === 'GET') return send(res, 200, { webhooks: webhooks.recent(WEBHOOK_LIST_MAX) });
+    if (pathname === '/api/webhooks' && req.method === 'GET') { await deps.ledger.reload?.(); return send(res, 200, { webhooks: webhooks.recent(WEBHOOK_LIST_MAX) }); }
     if (pathname === '/webhooks/paypal') return webhookRoute(req, res);
     if (pathname === '/api/calls') {
       if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
@@ -488,7 +497,7 @@ function createApi(deps) {
       limitOr429(newCalls, ip);
       const userAgent = typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] ?? '';
       // The page's engine signals, which a user-agent override does not change. call.js keeps only those fields.
-      const started = startCall({ script: body.script ?? null, userAgent, client: body.client ?? null, clientKey: ip, drill: body.drill ?? null });
+      const started = await startCall({ script: body.script ?? null, userAgent, client: body.client ?? null, clientKey: ip, drill: body.drill ?? null });
       // Only the page that started the call gets its receipt secret. It is never logged or stored.
       return send(res, 200, deps.receiptSigner ? { ...started, receiptSecret: deps.receiptSigner.secretFor(started.callId) } : started);
     }
@@ -554,17 +563,30 @@ export function listenWithRecovery({ server, host, port, recovery = null }) {
 }
 
 /** All shutdown signals share one drain, retaining storage until recovery has stopped. */
-export function createServerShutdown({ server, recovery = null, pool = null, beforeClose = () => {}, onComplete = () => {} }) {
+export async function drainRuntimeServices({ calls = null, runtime = null } = {}) {
+  let failure;
+  try { await calls?.flush?.(); } catch (error) { failure = error; }
+  try { await runtime?.close?.(); } catch (error) { failure ??= error; }
+  if (failure) throw failure;
+}
+
+export function createServerShutdown({ server, recovery = null, pool = null, beforeClose = () => {}, beforePoolClose = async () => {}, onComplete = () => {} }) {
   let stopping = null;
   return function stop() {
     if (stopping) return stopping;
     stopping = (async () => {
-      beforeClose();
-      const closed = new Promise((resolve) => server.close((error) => resolve(error)));
-      await recovery?.stop();
+      let failure;
+      const attempt = async (work) => { try { await work(); } catch (error) { failure ??= error; } };
+      try { beforeClose(); } catch (error) { failure = error; }
+      const closed = new Promise((resolve) => {
+        try { server.close((error) => resolve(error)); } catch (error) { resolve(error); }
+      });
+      await attempt(() => recovery?.stop());
       const error = await closed;
-      if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') throw error;
-      await pool?.end();
+      if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') failure ??= error;
+      await attempt(beforePoolClose);
+      await attempt(() => pool?.end());
+      if (failure) throw failure;
       await onComplete();
     })();
     return stopping;
@@ -583,14 +605,17 @@ async function main() {
   let runtime;
   try { runtime = await configureRuntimeServices({ config, database }); }
   catch (error) { await database?.pool.end(); throw error; }
-  const deps = buildDeps(config, { journal: database?.store, ...runtime });
-  const server = createServer(deps);
-  for (const warning of templateWarnings()) deps.log.error(warning);
-  try { await listenWithRecovery({ server, host: config.host, port: config.port, recovery: runtime.checkoutRecovery }); }
+  let deps, server;
+  try {
+    deps = buildDeps(config, { journal: database?.store, ...runtime });
+    server = createServer(deps);
+    for (const warning of templateWarnings()) deps.log.error(warning);
+    await listenWithRecovery({ server, host: config.host, port: config.port, recovery: runtime.checkoutRecovery });
+  }
   catch (error) {
-    await runtime.checkoutRecovery?.stop();
-    await new Promise((resolve) => server.close(resolve));
-    await database?.pool.end();
+    const cleanup = createServerShutdown({ server: server ?? { close: (done) => done() },
+      recovery: runtime.checkoutRecovery, pool: database?.pool, beforePoolClose: () => runtime.close?.() });
+    try { await cleanup(); } catch { /* Every cleanup runs; retain the original startup error. */ }
     throw error;
   }
   deps.log.info(`Pledge Line listening on http://${config.host}:${server.address().port}, PayPal ${config.paypal.mode}, router ${config.router.mode}`);
@@ -600,7 +625,8 @@ async function main() {
   const sweeper = setInterval(() => { deps.calls.sweep().catch((error) => deps.log.error(`sweep failed ${error?.name ?? 'Error'}`)); }, SWEEP_EVERY_MS);
   sweeper.unref();
   const stop = createServerShutdown({ server, recovery: runtime.checkoutRecovery, pool: database?.pool,
-    beforeClose: () => clearInterval(sweeper), onComplete: () => process.exit(0) });
+    beforeClose: () => clearInterval(sweeper), beforePoolClose: () => drainRuntimeServices({ calls: deps.calls, runtime }),
+    onComplete: () => process.exit(0) });
   const stopOnSignal = () => { void stop().catch(() => { deps.log.error('shutdown failed'); process.exitCode = 1; }); };
   process.on('SIGTERM', stopOnSignal);
   process.on('SIGINT', stopOnSignal);

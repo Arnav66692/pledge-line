@@ -16,4 +16,6 @@ node_modules
 .suppliers.env
 .suppliers.json
 .sandbox.env
+.acceptance.env
+.acceptance/
 .supplier-lab/

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { createCheckoutRecovery } from '../src/checkout-recovery.js';
-import { listenWithRecovery, createServerShutdown } from '../src/server.js';
+import { listenWithRecovery, createServerShutdown, drainRuntimeServices } from '../src/server.js';
 
 const deferred = () => {
   let resolve;
@@ -85,4 +85,27 @@ test('shutdown also supports the default runtime with no recovery controller or 
   const stop = createServerShutdown({ server: { close(callback) { callback(); } }, onComplete() { completed += 1; } });
   await stop(); await stop();
   assert.equal(completed, 1);
+});
+
+test('shutdown drains runtime-owned suppliers and audit state before closing the pool', async () => {
+  const calls = [];
+  const stop = createServerShutdown({ server: { close(callback) { calls.push('http-close'); callback(); } },
+    beforePoolClose: async () => { calls.push('runtime-drain'); },
+    pool: { async end() { calls.push('pool-close'); } } });
+  await stop(); await stop();
+  assert.deepEqual(calls, ['http-close', 'runtime-drain', 'pool-close']);
+});
+
+test('an audit flush rejection still closes private listeners and the pool while preserving the error', async () => {
+  const calls = [], failure = new Error('AUDIT_FLUSH_FAILED');
+  const stop = createServerShutdown({ server: { close(callback) { calls.push('http-close'); callback(); } },
+    beforePoolClose: () => drainRuntimeServices({
+      calls: { async flush() { calls.push('audit-flush'); throw failure; } },
+      runtime: { async close() { calls.push('private-close'); } },
+    }),
+    pool: { async end() { calls.push('pool-close'); } }, onComplete() { calls.push('success'); } });
+  const first = stop();
+  assert.equal(stop(), first);
+  await assert.rejects(first, (error) => error === failure);
+  assert.deepEqual(calls, ['http-close', 'audit-flush', 'private-close', 'pool-close']);
 });

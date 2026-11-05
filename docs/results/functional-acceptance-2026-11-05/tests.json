@@ -1,0 +1,22 @@
+{
+  "at": "2026-11-05T09:56:19.147Z",
+  "total": 732,
+  "passed": 725,
+  "failed": 0,
+  "skipped": 7,
+  "hostedEnabled": [
+    "donor runtime",
+    "supplier quote store"
+  ],
+  "skippedCases": [
+    "hosted PostgreSQL enforces atomic AI claims and latched stops across independent clients",
+    "authenticated MCP and hosted runtime journal recover a sandbox workflow with simulated PayPal responses",
+    "actual PostgreSQL recovery filtering and transaction lease contention",
+    "actual PostgreSQL keeps expired unpaid closure terminal without a schema change",
+    "actual PostgreSQL preserves checkout creation/capture identities and unknown states across clients",
+    "actual PostgreSQL keeps reservations, consent and unknown outcomes across clients",
+    "procurement dispatch awaits the hosted journal and preserves exact completed and unknown legs"
+  ],
+  "serial": true,
+  "nodeHeapLimitMiB": 128
+}

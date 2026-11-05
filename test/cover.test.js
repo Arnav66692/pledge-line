@@ -2,7 +2,10 @@
 // same amount to the org, on one spoken yes. Mock PayPal only.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStack, verifiedCall, say, eventsOf, makeClock, tempLedgerPath } from './helpers.js';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { buildStack, verifiedCall, say, eventsOf, makeClock, tempLedgerPath, tempDir } from './helpers.js';
 import { rulesRoute, INTENTS, SYSTEM_PROMPT, ROUTE_TOOL, buildRouterContent } from '../src/router.js';
 import { PILOT_SCRIPTS } from '../src/pilot-scripts.js';
 import { createPayPal, PayPalError, WriteNotAuthorized, toSnapshot } from '../src/paypal.js';
@@ -106,8 +109,17 @@ test('the staff rule defaults are safe, come from the env, and a bad value is a 
   for (const [name, value] of [['COVER_MAX_DOLLARS', '0'], ['COVER_MAX_DOLLARS', 'lots'], ['COVER_MAX_DOLLARS', '501'], ['COVER_WINDOW_DAYS', '181'], ['COVER_WINDOW_DAYS', '1.5'], ['COVER_PER_YEAR', '-1'], ['SPONSOR_HOLD_ID', 'a/b']]) {
     assert.throws(() => loadConfig({ ...base, [name]: value }), new RegExp(name), `${name}=${value}`);
   }
-  const live = loadConfig({ PAYPAL_MODE: 'sandbox', ROUTER_MODE: 'rules', PILOT_PIN: '2468', PAYPAL_CLIENT_ID: 'a', PAYPAL_CLIENT_SECRET: 'b' });
-  assert.equal(live.cover.holdId, null, 'in the sandbox, the move stays off until a hold is seeded');
+  // Never let a developer's private seeded state decide a config-default assertion.
+  const directory = tempDir();
+  const moduleUrl = new URL('../src/config.js', import.meta.url).href;
+  const sandbox = { PAYPAL_MODE: 'sandbox', ROUTER_MODE: 'rules', PILOT_PIN: '2468', PAYPAL_CLIENT_ID: 'a', PAYPAL_CLIENT_SECRET: 'b' };
+  const inspect = () => JSON.parse(execFileSync(process.execPath, ['--max-old-space-size=64', '--input-type=module', '--eval',
+    `import { loadConfig } from ${JSON.stringify(moduleUrl)}; process.stdout.write(JSON.stringify(loadConfig(${JSON.stringify(sandbox)}).cover));`],
+  { cwd: directory, encoding: 'utf8' }));
+  assert.equal(inspect().holdId, null, 'in an unseeded sandbox, the move stays off');
+  fs.mkdirSync(path.join(directory, '.pilot'));
+  fs.writeFileSync(path.join(directory, '.pilot', 'state.json'), JSON.stringify({ sponsorHoldId: 'AUTH-FIXTURE1' }));
+  assert.equal(inspect().holdId, 'AUTH-FIXTURE1', 'a seeded sandbox retains its configured hold');
 });
 
 test('coverBlock holds the cap, the window, the yearly count and the status at their edges', () => {

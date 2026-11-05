@@ -226,6 +226,9 @@ function createTransport({ baseUrl, clientId, clientSecret, fetchImpl, timeoutMs
   }
 
   async function request(method, pathname, { body, rawBody, headers = {}, idempotent = false, requestId = null, allow404 = false } = {}) {
+    if (requestId !== null && (typeof requestId !== 'string' || !/^[A-Za-z0-9-]{1,108}$/.test(requestId))) {
+      throw new PayPalError({ status: 400, name: 'BAD_REQUEST_ID', message: 'Committed request identity is invalid' });
+    }
     const token = await accessToken();
     const init = {
       method,
@@ -264,23 +267,33 @@ export function createPayPal({ baseUrl, clientId, clientSecret, tokens, fetchImp
   /** The move's own answer: its id, its status and the amount PayPal says it moved, so the line checks them before the next leg. */
   const moved = (res) => ({ id: str(res.data?.id), status: str(res.data?.status) ?? str(res.data?.state)?.toUpperCase() ?? null,
     amountValue: str(res.data?.amount?.value) ?? str(res.data?.amount?.total), debugId: res.debugId, ms: res.ms });
+  // A durable caller records returned identities before any later read or spoken claim can fail.
+  function validateObserver(ctx) {
+    if (ctx?.onResponse !== undefined && typeof ctx.onResponse !== 'function') throw new Error('DONOR_RESPONSE_OBSERVER_INVALID');
+  }
+  async function observed(result, ctx) {
+    if (ctx?.onResponse) await ctx.onResponse(result);
+    return result;
+  }
 
   /** One authorized draw on the sponsor's hold. final_capture false leaves the hold open for later months. No items, so no donation-item permission is needed. */
   async function captureSponsorHold(holdId, token, ctx) {
+    validateObserver(ctx);
     authorize(token, 'cover_capture', holdId, ctx, moneyBinding(ctx?.amountValue, ctx?.currency));
     const amount = moneyOf(ctx);
     const res = await request('POST', `/v2/payments/authorizations/${safeId(holdId)}/capture`, {
       body: { amount, final_capture: false, note_to_payer: ctx.note }, requestId: ctx.requestId, headers: { Prefer: 'return=representation' } });
-    return moved(res);
+    return observed(moved(res), ctx);
   }
 
   /** The refund of a capture, v2 first. Only a 404 falls back to v1's sale refund, since a 404 means v2 moved nothing. */
   async function refundById(id, ctx) {
+    validateObserver(ctx);
     const amount = moneyOf(ctx);
     const headers = { Prefer: 'return=representation' };
     const v2 = await request('POST', `/v2/payments/captures/${safeId(id)}/refund`, { body: { amount, note_to_payer: ctx.note }, requestId: ctx.requestId, headers, allow404: true });
-    if (!v2.notFound) return moved(v2);
-    return moved(await request('POST', `/v1/payments/sale/${safeId(id)}/refund`, { body: { amount: { total: amount.value, currency: amount.currency_code } }, requestId: ctx.requestId }));
+    if (!v2.notFound) return observed(moved(v2), ctx);
+    return observed(moved(await request('POST', `/v1/payments/sale/${safeId(id)}/refund`, { body: { amount: { total: amount.value, currency: amount.currency_code } }, requestId: ctx.requestId })), ctx);
   }
 
   async function read(pathname) {
@@ -290,13 +303,15 @@ export function createPayPal({ baseUrl, clientId, clientSecret, tokens, fetchImp
   }
 
   async function subscriptionWrite(action, kind, id, token, ctx) {
+    validateObserver(ctx);
     authorize(token, kind, id, ctx);
     const reason = REASONS[kind].slice(0, REASON_MAX);
-    const res = await request('POST', `/v1/billing/subscriptions/${safeId(id)}/${action}`, { body: { reason } });
-    return { debugId: res.debugId, ms: res.ms };
+    const res = await request('POST', `/v1/billing/subscriptions/${safeId(id)}/${action}`, { body: { reason }, requestId: ctx?.requestId ?? null });
+    return observed({ debugId: res.debugId, ms: res.ms }, ctx);
   }
 
-  async function createDraftInvoice({ recipientEmail, amountValue, currency, orgName }) {
+  async function createDraftInvoice({ recipientEmail, amountValue, currency, orgName }, ctx = {}) {
+    validateObserver(ctx);
     if (typeof recipientEmail !== 'string' || !recipientEmail.includes('@')) throw new PayPalError({ status: 400, name: 'BAD_RECIPIENT', message: 'No email on file' });
     if (!MONEY_PATTERN.test(String(amountValue))) throw new PayPalError({ status: 400, name: 'BAD_AMOUNT', message: 'Amount must have two decimals' });
     const body = {
@@ -305,10 +320,10 @@ export function createPayPal({ baseUrl, clientId, clientSecret, tokens, fetchImp
       primary_recipients: [{ billing_info: { email_address: recipientEmail } }],
       items: [{ name: 'One-time gift', quantity: '1', unit_amount: { currency_code: currency, value: String(amountValue) }, unit_of_measure: 'AMOUNT' }],
     };
-    const res = await request('POST', '/v2/invoicing/invoices', { body, idempotent: true, headers: { Prefer: 'return=representation' } });
+    const res = await request('POST', '/v2/invoicing/invoices', { body, idempotent: true, requestId: ctx.requestId ?? null, headers: { Prefer: 'return=representation' } });
     const id = str(res.data?.id) ?? idFromHref(res.data?.href);
     if (!id) throw new PayPalError({ status: res.status, name: 'NO_INVOICE_ID', message: 'PayPal did not return an invoice id', debugId: res.debugId });
-    return { id, data: res.data, debugId: res.debugId, ms: res.ms };
+    return observed({ id, data: res.data, debugId: res.debugId, ms: res.ms }, ctx);
   }
 
   async function verifyWebhookSignature({ headers, rawBody, webhookId }) {
@@ -349,21 +364,34 @@ export function createPayPal({ baseUrl, clientId, clientSecret, tokens, fetchImp
       return refundById(ctx.captureId, ctx);
     },
     createDraftInvoice,
-    deleteDraftInvoice: async (id) => {
-      const res = await request('DELETE', `/v2/invoicing/invoices/${safeId(id)}`);
-      return { debugId: res.debugId, ms: res.ms };
+    deleteDraftInvoice: async (id, ctx = {}) => {
+      validateObserver(ctx);
+      const res = await request('DELETE', `/v2/invoicing/invoices/${safeId(id)}`, { requestId: ctx.requestId ?? null });
+      return observed({ debugId: res.debugId, ms: res.ms }, ctx);
     },
     suspendSubscription: (id, token, ctx) => subscriptionWrite('suspend', 'suspend', id, token, ctx),
     activateSubscription: (id, token, ctx) => subscriptionWrite('activate', 'activate', id, token, ctx),
     cancelSubscription: (id, token, ctx) => subscriptionWrite('cancel', 'cancel', id, token, ctx),
     sendInvoice: async (id, token, ctx) => {
+      validateObserver(ctx);
       authorize(token, 'send_invoice', id, ctx);
-      const res = await request('POST', `/v2/invoicing/invoices/${safeId(id)}/send`, { body: { send_to_recipient: true, send_to_invoicer: true } });
-      return { debugId: res.debugId, ms: res.ms, status: res.status };
+      const res = await request('POST', `/v2/invoicing/invoices/${safeId(id)}/send`, { body: { send_to_recipient: true, send_to_invoicer: true }, requestId: ctx?.requestId ?? null });
+      return observed({ debugId: res.debugId, ms: res.ms, status: res.status }, ctx);
     },
     verifyWebhookSignature,
     ...createSetupMethods(request),
   };
+}
+
+// This endpoint rejects fractional seconds even though the subscription transaction endpoint accepts them.
+function webhookStartTime(value) {
+  const form = /^(\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+  const match = typeof value === 'string' ? form.exec(value) : null;
+  const milliseconds = match ? Date.parse(value) : NaN;
+  if (!Number.isFinite(milliseconds) || new Date(`${match[1]}T00:00:00Z`).toISOString().slice(0, 10) !== match[1]) {
+    throw new PayPalError({ status: 400, name: 'INVALID_START_TIME', message: 'The webhook start time must be a valid timestamp with a timezone' });
+  }
+  return new Date(Math.floor(milliseconds / 1000) * 1000).toISOString().replace('.000Z', 'Z');
 }
 
 function createSetupMethods(request) {
@@ -427,7 +455,7 @@ function createSetupMethods(request) {
       return { id: str(res.data?.id), data: res.data, debugId: res.debugId, ms: res.ms };
     },
     listWebhookEvents: async ({ eventType, startTime, pageSize = 50 }) => {
-      const query = new URLSearchParams({ page_size: String(pageSize), event_type: eventType, start_time: startTime });
+      const query = new URLSearchParams({ page_size: String(pageSize), event_type: eventType, start_time: webhookStartTime(startTime) });
       const res = await request('GET', `/v1/notifications/webhooks-events?${query}`);
       return { events: Array.isArray(res.data?.events) ? res.data.events : [], debugId: res.debugId, ms: res.ms };
     },

@@ -33,6 +33,7 @@
   // Read times show in Pacific time, the line's own zone, whatever zone the viewer's computer is in.
   const READ_ZONE = 'America/Los_Angeles';
   const DEMO_OPEN_KEY = 'pledge-line.demo-open';
+  const CALL_SESSION_KEY = 'pledge-line.call-session';
   const STATUS_WORDS = { ACTIVE: 'Active', SUSPENDED: 'Paused', CANCELLED: 'Cancelled', EXPIRED: 'Expired', APPROVAL_PENDING: 'Waiting for approval' };
   // The line says "suspended", PayPal's word, so the card says once that it is the same thing as paused.
   const STATUS_NOTES = { SUSPENDED: " PayPal's word for a pause is suspended." };
@@ -93,7 +94,7 @@
   };
   const END_WORDS = {
     goodbye: 'Call ended after you said goodbye.', locked: 'Call ended, locked after wrong PINs.',
-    idle: 'Call ended after a long quiet.', client: 'Call ended when the page closed.',
+    idle: 'Call ended after a long quiet.', client: 'Call ended at your request.',
   };
   const REASONS = {
     other_email: 'the line only sends to the email on file', locked: 'the call is locked', ended: 'the call has ended',
@@ -113,7 +114,7 @@
 
   // lastTurn is the turn of the last reply this page received. Each turn says it answers that reply, so a yes only counts for a proposal the caller heard.
   // giftStatus is the status the gift card last showed in this call, so a change's read-back can be marked when it lands.
-  // receiptSecret is the call's own key to its receipt, given only to this page when the call started. It stays in memory.
+  // The original session and receipt keys stay in this tab's sessionStorage so a reload can resume the same call.
   const state = { callId: null, sessionSecret: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], drills: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false, receiptSecret: null };
 
   // Engine signals a user-agent override, such as Chrome's device toolbar, does not change. The line checks them against the agent.
@@ -124,8 +125,63 @@
     if (state.callId && path.startsWith(`/api/calls/${state.callId}`) && state.sessionSecret) init.headers['x-call-secret'] = state.sessionSecret;
     const res = await fetch(path, init);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'The line didn\'t answer. Please try again.');
+    if (!res.ok) {
+      const error = new Error(data.error || 'The line didn\'t answer. Please try again.');
+      error.status = res.status;
+      throw error;
+    }
     return data;
+  }
+
+  function forgetStoredCall() {
+    try { window.sessionStorage.removeItem(CALL_SESSION_KEY); } catch { /* Storage may be blocked. */ }
+  }
+
+  function rememberCall() {
+    if (!state.callId || !state.sessionSecret || state.ended) return;
+    try {
+      window.sessionStorage.setItem(CALL_SESSION_KEY, JSON.stringify({ callId: state.callId,
+        sessionSecret: state.sessionSecret, receiptSecret: state.receiptSecret }));
+    } catch { /* The call still works while this page remains open. */ }
+  }
+
+  async function restoreCall() {
+    let saved;
+    try {
+      const encoded = window.sessionStorage.getItem(CALL_SESSION_KEY);
+      if (!encoded) return;
+      saved = JSON.parse(encoded);
+      if (!saved || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(saved.callId ?? '') ||
+        !/^[0-9a-f]{64}$/i.test(saved.sessionSecret ?? '') ||
+        !(saved.receiptSecret === null || (typeof saved.receiptSecret === 'string' && saved.receiptSecret.length <= 512))) {
+        forgetStoredCall();
+        return;
+      }
+    } catch { forgetStoredCall(); return; }
+    setBusy(true);
+    state.callId = saved.callId;
+    state.sessionSecret = saved.sessionSecret;
+    state.receiptSecret = saved.receiptSecret;
+    try {
+      const data = await api(`/api/calls/${saved.callId}`);
+      if (state.callId !== saved.callId) return;
+      applyState(data);
+      if (Number.isSafeInteger(data.turn) && data.turn >= 0) state.lastTurn = data.turn;
+      const previousReply = listOf(data.events).filter((event) => event.type === 'said' && typeof event.text === 'string').at(-1);
+      els.reply.textContent = data.restored && !data.verified && !data.ended
+        ? 'Call restored. Enter your PIN, then make a new request.' : previousReply?.text ?? '';
+      renderEventView(data);
+      if (data.ended) forgetStoredCall();
+      // A restored reply is displayed only. No input, approval or speech is replayed.
+    } catch (error) {
+      if ([401, 403, 404, 410].includes(error.status)) {
+        forgetStoredCall();
+        state.callId = null;
+        state.sessionSecret = null;
+        state.receiptSecret = null;
+      }
+      els.status.textContent = error.message;
+    } finally { setBusy(false); }
   }
 
   const isMuted = () => els.mute.checked || !canSpeak;
@@ -523,6 +579,8 @@
       case 'amount_unclear': return e.why === 'existing_gift' ? 'You were asking about your gift, so the line read it and made no draft.' : 'That amount wasn\'t clear, so the line asked and made no draft.';
       case 'expired': return 'No answer in time, so nothing changed.';
       case 'withdrawn': return 'The request was set aside.';
+      case 'session_restored': return e.requiresPin === false ? 'Ended call restored for review.' : 'Call restored. The PIN and a new request are required before a change.';
+      case 'donor_action_reconciled': return 'Checked the earlier change with PayPal and saved its confirmed result.';
       case 'staff_callback': return 'Noted that you want a call back from staff.';
       case 'refund_request': return `Noted the charge ending in ${String(e.transactionId ?? '').slice(-4)} for staff to look at.`;
       case 'cover_month': return COVER_WORDS[e.outcome] ?? null;
@@ -531,32 +589,41 @@
     }
   }
 
+  function renderEventView(data, transcriptTurn = null) {
+    // Never display raw input: the server has the PIN and masks it before recording a heard event.
+    // Until that event arrives, keep the neutral placeholder rather than revealing an interim transcript.
+    if (transcriptTurn !== null) {
+      const heard = listOf(data.events).find((e) => e.type === 'heard' && e.turn === transcriptTurn);
+      if (heard) els.transcript.textContent = heard.source === 'keypad' ? 'PIN entered.' : heard.text;
+    }
+    renderReceipts(data.receipts);
+    renderRecovery(data.recovery);
+    // The card shows the call's latest gift read, so its time comes from that read, spoken or not.
+    const giftRead = listOf(data.events).filter((e) => e.type === 'read' && e.what === 'subscription' && !e.error).at(-1);
+    if (giftRead && state.giftShown) renderGiftRead(giftRead.ts, giftRead.status);
+    els.events.replaceChildren();
+    for (const e of [...listOf(data.events)].reverse()) {
+      const text = describe(e);
+      if (!text) continue;
+      const item = document.createElement('li');
+      item.className = `event event-${e.type}`;
+      item.textContent = text;
+      els.events.append(item);
+    }
+  }
+
   async function refreshEvents(callId = state.callId, transcriptTurn = null) {
     if (!callId) return;
     try {
       const data = await api(`/api/calls/${callId}`);
-      // A page that moved on to a new call keeps that call's view.
-      if (callId !== state.callId) return;
-      // Never display raw input: the server has the PIN and masks it before recording a heard event.
-      // Until that event arrives, keep the neutral placeholder rather than revealing an interim transcript.
-      if (transcriptTurn !== null) {
-        const heard = listOf(data.events).find((e) => e.type === 'heard' && e.turn === transcriptTurn);
-        if (heard) els.transcript.textContent = heard.source === 'keypad' ? 'PIN entered.' : heard.text;
+      // A delayed GET must not replace a newer reply or another call's view.
+      if (callId !== state.callId || (Number.isSafeInteger(data.turn) && data.turn < state.lastTurn)) return;
+      if (typeof data.verified === 'boolean' && typeof data.ended === 'boolean') {
+        applyState(data);
+        if (Number.isSafeInteger(data.turn) && data.turn >= 0) state.lastTurn = data.turn;
+        if (data.ended) forgetStoredCall();
       }
-      renderReceipts(data.receipts);
-      renderRecovery(data.recovery);
-      // The card shows the call's latest gift read, so its time comes from that read, spoken or not.
-      const giftRead = listOf(data.events).filter((e) => e.type === 'read' && e.what === 'subscription' && !e.error).at(-1);
-      if (giftRead && state.giftShown) renderGiftRead(giftRead.ts, giftRead.status);
-      els.events.replaceChildren();
-      for (const e of [...data.events].reverse()) {
-        const text = describe(e);
-        if (!text) continue;
-        const item = document.createElement('li');
-        item.className = `event event-${e.type}`;
-        item.textContent = text;
-        els.events.append(item);
-      }
+      renderEventView(data, transcriptTurn);
     } catch {
       // The log is a convenience. The call keeps working without it.
     }
@@ -574,6 +641,7 @@
     els.pinClear.disabled = !live;
     for (const key of els.keys) key.disabled = !live;
     els.start.textContent = live ? 'End call' : 'Start call';
+    els.start.disabled = state.busy;
     renderKeep();
   }
 
@@ -593,7 +661,9 @@
     state.locked = Boolean(s.locked);
     if (s.locked) els.status.textContent = 'This call is locked after too many wrong PINs.';
     else if (s.ended) els.status.textContent = 'Call ended. Press Start call for a new one.';
-    else if (!s.verified) els.status.textContent = 'Enter your PIN on the keypad, or say the numbers.';
+    else if (!s.verified) els.status.textContent = s.restored
+      ? 'Call restored. Enter your PIN again, then make a new request.'
+      : 'Enter your PIN on the keypad, or say the numbers.';
     else if (s.drill) els.status.textContent = 'PIN accepted. This is a fault drill, so ask to pause the gift and say yes.';
     else els.status.textContent = s.script ? `PIN accepted. Say the next line from Script ${s.script} once the line stops talking.` : 'PIN accepted. Go ahead and ask about your monthly gift.';
     renderPending(s.pending);
@@ -659,6 +729,7 @@
       els.transcript.textContent = '';
       els.reply.textContent = data.reply;
       applyState(data.state);
+      rememberCall();
       speak(data.reply, () => {});
       await refreshEvents();
     } catch (error) {
@@ -672,19 +743,17 @@
 
   async function endCall() {
     const callId = state.callId;
+    setBusy(true);
     stopSpeaking();
-    stopListening();
+    discardListening();
     try {
-      await api(`/api/calls/${callId}/end`, {});
-    } catch {
-      // The server ends idle calls on its own, so the page can move on either way.
-    }
-    state.ended = true;
-    state.locked = false;
-    els.status.textContent = 'Call ended. Press Start call for a new one.';
-    renderPending(null);
-    setControls();
-    await refreshEvents(callId);
+      const data = await api(`/api/calls/${callId}/end`, {});
+      applyState(data.state);
+      forgetStoredCall();
+      await refreshEvents(callId);
+    } catch (error) {
+      els.status.textContent = error.message;
+    } finally { setBusy(false); }
   }
 
   async function sendTurn(text, source, startedAt) {
@@ -702,6 +771,7 @@
       speak(data.reply, (played) => logGap(callId, data.turn, startedAt, source, muted, played));
       await refreshEvents(callId, data.turn);
     } catch (error) {
+      await refreshEvents(callId);
       els.status.textContent = error.message;
     } finally {
       setBusy(false);
@@ -783,6 +853,20 @@
     session.timer = setTimeout(() => finish(session), FINAL_WAIT_MS);
   }
 
+  // Leaving a page or explicitly ending a call must never submit unfinished recognition as a new turn.
+  function discardListening() {
+    const session = state.listening;
+    if (!session) return;
+    session.done = true;
+    clearTimeout(session.timer);
+    state.listening = null;
+    els.talk.classList.remove('listening');
+    try {
+      if (typeof session.rec.abort === 'function') session.rec.abort();
+      else session.rec.stop();
+    } catch { /* Recognition was already stopped. */ }
+  }
+
   // ---- Keypad and typed box ----
 
   function typesText(target) {
@@ -851,10 +935,9 @@
       sendTurn(text, 'typed', startedAt);
     });
     window.addEventListener('pagehide', () => {
-      if (state.callId && state.sessionSecret && !state.ended) {
-        fetch(`/api/calls/${state.callId}/end`, { method: 'POST', keepalive: true,
-          headers: { 'Content-Type': 'application/json', 'x-call-secret': state.sessionSecret }, body: '{}' }).catch(() => {});
-      }
+      discardListening();
+      stopSpeaking();
+      rememberCall();
     });
   }
 
@@ -872,6 +955,7 @@
     wire();
     setControls();
     loadScripts();
+    restoreCall();
   }
 
   init();

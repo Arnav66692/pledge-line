@@ -2,7 +2,7 @@
 
 The after-hours donor line for small nonprofits.
 
-A monthly donor opens the line in a browser and proves who she is with a PIN. When she asks to stop her gift, the line reads her amount from PayPal's own record and offers a pause. Only after her separate spoken yes does it call PayPal's suspend, and then it reads the new status back from a fresh PayPal read. A one-time gift becomes a PayPal draft invoice. The line reads the draft back from PayPal, sends it only on yes, and deletes it on no.
+A monthly donor opens the line in a browser and passes a shared pilot PIN check. That check gates the fictional demo account; it does not establish a real donor's identity. When she asks to stop her gift, the line reads her amount from PayPal's own record and offers a pause. Only after her separate spoken yes does it call PayPal's suspend, and then it reads the new status back from a fresh PayPal read. A one-time gift becomes a PayPal draft invoice. The line reads the draft back from PayPal, sends it only on yes, and deletes it on no.
 
 A donor who sees a PayPal charge she doesn't recognize can ask the line about it. It reads the gift's latest charge from PayPal and says the amount, the date, the status and the end of the PayPal transaction id. On her yes in the next turn, it asks staff to look at a refund. A charge PayPal shows as refunded or declined gets no offer.
 
@@ -26,7 +26,7 @@ Simulated in mock mode.
 
 The separate Supply desk at `/procurement` defaults to simulated suppliers and mock settlement. Its configured controlled HTTP/MCP lab completed two buyer-approved PayPal sandbox orders and captures totaling $674.15 in test funds. Fresh order/capture reads match the stored amounts, merchant and identities. All three lab endpoints use one owned sandbox merchant; they are project-controlled software, not independent businesses or fulfillment. No mode enables real money.
 
-The donor, Maria, and the nonprofit, Sunny Hollow Pantry, are fictional.
+The donor and nonprofit are fictional. The guarded release uses the name Pledge Line Sandbox Pantry; older pilot records retain Sunny Hollow Pantry.
 
 ## Run it in mock mode
 
@@ -37,7 +37,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000, press Start call, and type the PIN 2468 on the keypad. Mock calls go to `.pilot/mock-ledger.jsonl`, apart from the pilot ledger. The line refuses to start in mock or rules mode if `LEDGER_PATH` points at the pilot ledger.
+Open http://localhost:3000, press Start call, and type the PIN 2468 on the keypad. Without configured donor durability, mock calls go to `.pilot/mock-ledger.jsonl`, apart from the pilot ledger. If you copied the guarded `.env.example`, set `DONOR_DURABILITY_ENABLED=false` for this database-free mode. The line refuses to start in mock or rules mode if `LEDGER_PATH` points at the pilot ledger.
 
 The line allows 20 new calls an hour from one address. On your laptop every browser shares that, so if Start call says to try again later, wait or restart the mock server with `npm run dev`, which clears it.
 
@@ -46,7 +46,7 @@ npm test
 npm run pilot:dry -- --mock
 ```
 
-The default tests and the mock dry run need no external services or keys. Hosted database tests run only when `DATABASE_TEST_URL` is explicitly configured.
+The default tests and the mock dry run need no external services or keys. Hosted database tests are opt-in through `DATABASE_TEST_URL`, `DONOR_RUNTIME_TEST_URL` and `SUPPLIER_QUOTE_TEST_URL`; skipped hosted cases do not count as acceptance.
 
 ## The supply desk
 
@@ -54,11 +54,11 @@ Open `/procurement`, also linked as **Supply desk** in the navigation. Give the 
 
 Review the exact suppliers, payees, quantities, delivery terms and total before approving. Approval is bound to that plan and a separate random session key protects its API. Changed or expired quotes prevent a new settlement. An uncertain result blocks later supplier payments; reconciliation checks the same payment identity. Partial settlement stays visible and never implies an automatic refund or replacement purchase.
 
-Mock recovery controls stage lost responses, pending payments, a supplier decline, a changed payee, expired quotes and missed delivery. In `PROCUREMENT_SUPPLIER_MODE=mcp-sandbox`, an operator registry supplies authenticated MCP endpoints and exact sandbox merchant IDs. Each allocated supplier has a separate PayPal order, buyer approval and capture. Unknown results retain their committed identities and block fresh attempts. The [controlled three-process supplier lab](docs/SUPPLIER-LAB.md) has passed actual HTTP negotiation and persisted-quote recovery. Setup defaults to blocked placeholder merchants; the acceptance run used one owned sandbox merchant for all three endpoints. Independent supplier participation has not been established.
+Mock recovery controls stage lost responses, pending payments, a supplier decline, a changed payee, expired quotes and missed delivery. In `PROCUREMENT_SUPPLIER_MODE=mcp-sandbox`, each allocated supplier has a separate PayPal order, buyer approval and capture. Unknown results retain their committed identities and block fresh attempts. The guarded hosted release enables `HOSTED_SUPPLIER_LAB_ENABLED=true`: three authenticated MCP listeners run privately on loopback ports 3160–3162 inside the same Node process, with immutable quotes stored in PostgreSQL. Only the main web port is public. All three controlled suppliers use one configured sandbox merchant; independent business participation and goods fulfillment have not been established. With the hosted lab disabled, an operator registry and dedicated MCP credentials can connect separately authorized endpoints. The [original supplier lab guide](docs/SUPPLIER-LAB.md) describes the separate-process development option.
 
 An expired plan can be closed in the app only after fresh reads establish that it is unpaid and no capture was attempted. The permanent `closed_unpaid` latch revokes that plan's app authority; it does not cancel PayPal orders. New quotes and exact approval are required afterward. Optional [read-only recovery](docs/CHECKOUT-RECOVERY.md) checks known uncertain identities automatically, without creating or capturing orders or advancing another payment.
 
-Sandbox order creation and capture require both `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and a clock at or after November 4, 2026, 9:00 pm PT (`2026-11-05T05:00:00Z`). The switch alone does not bypass the time gate. [Commerce setup](docs/COMMERCE.md) covers the registry, checkout flow, missing credentials and acceptance work. The original pilot checkout and Render remain unchanged.
+Sandbox order creation and capture require both `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and a clock at or after November 4, 2026, 9:00 pm PT (`2026-11-05T05:00:00Z`). The switch alone does not bypass the time gate. [Commerce setup](docs/COMMERCE.md) covers the registry and checkout protocol. The November 5 completion release is separately authorized for deployment after full-flow acceptance; historical pilot grades and failed attempts remain preserved.
 
 ## Guarded AI setup
 
@@ -66,35 +66,53 @@ The new agent requires explicit `ANTHROPIC_API_KEY` and `TYPESAFE_API_KEY` value
 
 The gateway uses fixed provider hosts and explicit API keys, without an SDK credential chain, subscription/OAuth login, automatic retry or alternate-provider fallback. PostgreSQL reserves a conservative request cost before dispatch. Defaults are $5 for Anthropic and $0.25 for Jev: development allocations, not verified provider balances. Exhaustion, authentication/billing failure or unverified usage latches a shared stop; ambiguous calls retain their full reservation and stop both providers. Restarting does not clear the durable stop.
 
-Current acceptance state: after the first composed quote failed and retained its $0.05124 reservation, one separately approved quote test verified the corrected Anthropic planner, Jev advisory review and three controlled MCP supplier endpoints. It produced a 100-shirt plan for $676.25 within an $800 budget. Jev flagged closer review, and no approval or PayPal payment occurred. The two model requests cost $0.005544906 in total. The test allocation was stopped afterward, and the original stop/reservation remain intact. General model use is not reenabled. V4 remains evidence for its frozen routing version. The completed $674.15 PayPal sandbox checkout used rules routing and remains separate from a unified model-produced purchase. [Acceptance details](docs/AI-STATUS.md) preserve both outcomes.
+Historical acceptance: after the first composed quote failed and retained its $0.05124 reservation, one separately approved quote test verified the corrected Anthropic planner, Jev advisory review and three controlled MCP supplier endpoints. It produced a 100-shirt plan for $676.25 within an $800 budget. Jev flagged closer review, and that bounded test made no approval or PayPal payment. The model requests cost $0.005544906 in total, and that test allocation was stopped afterward. The original stop/reservation remain intact. V4 remains evidence for its frozen routing version. [Acceptance details](docs/AI-STATUS.md) preserve those outcomes.
+
+The separately authorized completion scope is `pledge-line-functional-20261105`, capped at **$3.00 Anthropic and $0.10 Jev across local acceptance and deployment together**. Deployment must reuse that scope's remaining allocation and latched stop, never initialize a fresh budget to bypass it. The complete model-produced purchase, donor, webhook and restart journeys are acceptance gates for the new release; older tests do not stand in for them.
 
 After configuration and explicit migrations, choose one local startup mode:
 
 ```sh
-# Guarded AI with mock PayPal and mock suppliers; API inference still consumes the allocation.
+# Guarded AI with mock PayPal/suppliers; API inference still consumes the allocation.
 PAYPAL_MODE=mock ROUTER_MODE=anthropic node --env-file=.database.env --env-file=.ai.env src/server.js
-# Guarded AI with existing sandbox settings and operator-registered MCP suppliers; writes stay gated.
-PAYPAL_MODE=sandbox ROUTER_MODE=anthropic PROCUREMENT_SUPPLIER_MODE=mcp-sandbox node --env-file=.env --env-file=.database.env --env-file=.ai.env --env-file=.suppliers.env src/server.js
+# Complete sandbox release, after selecting the hosted flags and payee in .env.
+# Load credential files last so empty template fields cannot override their private values.
+node --env-file=.env --env-file=.database.env --env-file=.ai.env --env-file=.sandbox.env src/server.js
 ```
+
+For the second command, set `DONOR_DURABILITY_ENABLED=true`, `PROCUREMENT_SUPPLIER_MODE=mcp-sandbox`, `HOSTED_SUPPLIER_LAB_ENABLED=true`, the owned `SUPPLIER_LAB_PAYEE_ID`, and the required donor/hold/webhook IDs. Enable `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` only for the authorized sandbox checkout run. The Blueprint already carries the hosted flags; private credentials and resource IDs still belong in Render's environment.
 
 Keep keys in those ignored private files, never in command arguments or logs. Check `/api/ai/status` for local allocation/stop status and `/api/commerce-status` for sandbox availability. Neither endpoint proves provider credit balance or production readiness. The frozen [90-point evaluation](docs/AI-EVAL.md) defines the evidence needed; unit tests alone do not establish a score of 72 or 80.
 
 ## PostgreSQL storage
 
-The integration checkout has a Neon PostgreSQL 17 database with verified TLS. The original journal migrations 1 and 2, AI budget schema 1 and sandbox checkout schema 1 have been explicitly applied. With `DATABASE_URL` configured, the server persists mock procurement operations and verified PayPal webhook deliveries; the separate checkout store persists approved network plans, quote evidence, session-key hashes and per-vendor create/capture identities and outcomes. Guarded AI spending uses its own durable allocation records. Startup checks the required schemas and does not fall back to memory if configured storage fails.
+The integration checkout has a Neon PostgreSQL 17 database with verified TLS. The original journal migrations 1 and 2, AI budget schema 1, sandbox checkout schema 1, supplier quote schema 1 and donor schema 1 have been explicitly applied. With `DATABASE_URL` configured, the server persists procurement operations, verified PayPal webhook deliveries, approved network plans, quote evidence, session-key hashes and stable provider identities. Guarded AI spending uses its own durable allocation records. Startup checks the schemas required by the selected flags and does not fall back to memory if configured storage fails.
 
-The donor-call JSONL ledger remains local. Mock procurement sessions and unapproved quote sessions remain in memory. Approved sandbox checkouts can resume from PostgreSQL using the original tab's key retained in `sessionStorage`; return URLs do not grant authority. Losing that key is not permission to start a replacement purchase. The opt-in checkout recovery worker only reconciles existing known uncertain identities and cannot restore donor state or a lost browser key. The persistent stores do not make donor actions or procurement ready for real money.
+With `DONOR_DURABILITY_ENABLED=true`, donor calls and sanitized audit events use PostgreSQL. Every provider write first commits an immutable one-attempt claim, and returned provider identities persist before later confirmation. Uncertain writes remain occupied across restarts; recovery reads known identities without replaying financial writes. The original browser tab retains its session bearer in `sessionStorage`. Restored donor calls require the PIN again and fresh consent; pending approvals and write tokens are not restored. Durable idle cleanup also checks persisted calls that no browser has rehydrated.
+
+Mock procurement sessions and unapproved quote sessions remain in memory. Approved sandbox checkouts can resume from PostgreSQL using the original tab's key; return URLs do not grant authority. Losing that key is not permission to start a replacement purchase. The optional checkout recovery worker reconciles existing known uncertain identities without creating or capturing orders. Turning donor durability off restores the legacy local JSONL behavior. None of these stores enables live payments.
 
 The local `.database.env` holds the restricted runtime connection. Check it and start the integration server with:
 
 ```sh
 node --env-file=.database.env scripts/database-check.js --require-tls
+node --env-file=.database.env scripts/feature-storage-check.js --require-tls
 node --env-file=.database.env src/server.js
 ```
 
+`feature-storage-check.js` checks donor and supplier schemas without writes by default. Applying missing reviewed schemas requires its explicit `--migrate` flag and the separate administrator connection; runtime grants remain a separate operator action. The [database guide](docs/DATABASE.md#setup-and-checks) gives the complete checks and migration commands.
+
 The basic startup command expects the donor-line configuration in the environment. For an offline donor line, prefix it with `PAYPAL_MODE=mock ROUTER_MODE=rules`. For guarded AI and optional MCP checkout, use the complete startup commands above so `.ai.env` and any supplier settings are loaded. `npm start` loads `.env` only; it does not automatically load the other private files.
 
-`.database-admin.env` is reserved for explicit administrator migrations. Both local database files are ignored and should remain mode `600`; never commit or print them. See [the database guide](docs/DATABASE.md) for migration commands and permissions, and [production requirements](PRODUCTION.md) for the remaining live-payment gates. This setup does not deploy to Render or change the pilot checkout.
+`.database-admin.env` is reserved for explicit administrator migrations. Both local database files are ignored and should remain mode `600`; never commit or print them. The runtime role receives only the exact table and sequence privileges its stores need, with no deletion, schema changes or migration writes. See [the database guide](docs/DATABASE.md) for the original journal/AI/checkout details and [production requirements](PRODUCTION.md) for the separate live-payment boundary.
+
+## Deploy the sandbox release after acceptance
+
+Use the existing free Render web service and [render.yaml](render.yaml): `npm ci`, `node src/server.js`, and `/healthz`. Let Render supply `PORT`; set `HOST=0.0.0.0` and `PUBLIC_BASE_URL=https://pledge-line.onrender.com`. Keep the supplier ports private and preserve the configured sandbox merchant. No extra supplier service, paid instance or disk is required.
+
+Configure these privately in Render: the restricted runtime `DATABASE_URL`, `ANTHROPIC_API_KEY`, `TYPESAFE_API_KEY`, sandbox `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `DEMO_SUBSCRIPTION_ID`, `SPONSOR_HOLD_ID`, `PILOT_PIN`, `STAFF_KEY`, and the existing stable `RECEIPT_SIGNING_KEY`. Never upload the administrator database URL. Preserve the signing key across releases so existing receipt links and signatures remain usable. Register the final HTTPS `/webhooks/paypal` URL for the same sandbox app.
+
+Deploy only after the full local flow and restart tests pass. Then check hosted donor/session recovery, exact supplier checkout recovery, a verified PayPal webhook and receipt verification. `/healthz` alone does not establish those behaviors. Existing pilot grades stay historical; this release does not rerun or rewrite their deadline-bound score.
 
 ## The claim audit
 
@@ -110,7 +128,7 @@ The report also has a view called the gate over the plain agent. For each reply 
 
 ## Historical sandbox pilot setup
 
-`SETUP.md` preserves the original PayPal/Gemini pilot bootstrap below. Do not reseed or redeploy that pilot to validate the integration. Use the guarded startup commands above for the new checkout; its template selects `anthropic`, while the historical pilot explicitly selects `gemini`.
+`SETUP.md` preserves the original PayPal/Gemini pilot bootstrap below. Use the guarded startup and deployment instructions above for the separately authorized completion release; retain historical pilot seeds and grade artifacts. The current template selects `anthropic`, while the historical pilot explicitly selects `gemini`.
 
 ```
 cp .env.example .env        then fill in the values
@@ -147,7 +165,7 @@ After the PIN, try "I lost my job, I can't do it this month." In mock mode the f
 - The staff rule is `COVER_MAX_DOLLARS`, `COVER_WINDOW_DAYS` and `COVER_PER_YEAR`, with defaults of $50, 30 days and once a year. `COVER_PER_YEAR=0` turns it off.
 - In the sandbox, the sponsor consents once in the browser. `npm run seed:hold` makes the order and prints the link, then `npm run seed:hold -- --authorize` saves the hold. With no hold, the line says the fund isn't open and moves nothing. A hold lasts 29 days, so seed it within 3 days of filming.
 - The page and the staff view both show the fee a refund leaves behind. PayPal keeps its fee on the refunded gift and takes one on the sponsor's payment, so the nonprofit ends one fee short of a gift that stood.
-- If local recording fails after a money move may have started, the line blocks another Covered Month attempt for that charge until the process restarts. The free Render filesystem is ephemeral, so that in-memory safeguard and the local ledger do not provide durable cross-restart reconciliation. Reconcile PayPal's records before any retry after a restart.
+- With donor durability enabled, a committed claim blocks another Covered Month attempt for that charge across restarts. A returned provider identity is retained for read-only reconciliation; an unknown write without an identity stays blocked. The legacy local-ledger mode does not provide this cross-restart protection.
 - `PICK.md` says why, `FEATURES.md` has the details and `SPEC.md` the contract.
 
 ## When something goes wrong in a call
@@ -180,7 +198,7 @@ Set `RECEIPT_SIGNING_KEY` to 64 hex characters (`SETUP.md` shows how) and, when 
 node scripts/check-receipt.js receipt.json --key receipt-key.json
 ```
 
-Only the page that started a call gets that call's receipt secret. Call APIs also require a separate random session secret kept in the starting page's memory, regardless of whether receipts are enabled. A receipt link or file does not grant access to the call transcript or controls. The file uses a stable, pseudonymous receipt identifier instead of the call's live API ID, and holds no PIN, full email, token ids or user agent. A recipient can still read all of the receipt's contents, so share it only with people you trust. Render's free disk is wiped on restart, so the downloaded file is the copy that lasts. With the key unset, the button and every receipt page are off, as 404s. `FEATURES.md` has the file's format.
+Only the page that started a call gets that call's receipt secret. Call APIs require a separate random session bearer retained by the original tab in `sessionStorage`, regardless of whether receipts are enabled. A receipt link or file does not grant access to the call transcript or controls. The file uses a stable, pseudonymous receipt identifier instead of the call's live API ID, and holds no PIN, full email, token ids or user agent. A recipient can still read all of the receipt's contents, so share it only with people you trust. With donor durability and the same signing key, server receipts remain available after a restart; downloaded files also remain independently verifiable. With the key unset, the button and every receipt page are off, as 404s. `FEATURES.md` has the file's format.
 
 ## The pilot
 
@@ -188,9 +206,11 @@ The pass bar and how each test is graded live in `PILOT.md`. The bar was set bef
 
 ## Known gaps
 
-- The charge check reads `GET /v1/billing/subscriptions/{id}/transactions`, whose field names follow PayPal's Subscriptions v1 reference. They are not yet confirmed by a real sandbox call. A newly approved sandbox subscription may list no completed charge until its first bill, so a demo needs a seeded gift that has billed once.
+The November 5 sandbox run confirmed the subscription transaction-list shape with a completed $25.00 charge. Covered Month then completed a $25.00 sponsor capture and a $25.00 donor refund, each through a confirmed one-attempt action and fresh provider reads; the subscription remained ACTIVE. See the [donor proof](docs/results/functional-acceptance-2026-11-05/donor.json) and [current functional acceptance report](docs/FUNCTIONAL-ACCEPTANCE-2026-11-05.md). This closes the earlier mock-only coverage gap; the complete release acceptance and deployment gates remain tracked in that report.
+
+- A newly approved sandbox subscription may list no completed charge until its first bill, so a charge-check demo needs a gift that has billed once.
 - The charge check reads only the latest charge, and a donor has to link the charge to this nonprofit before she calls.
-- Covered Month has run only against the mock. Capture with `final_capture: false`, a refund of a subscription's transaction, and their reads are built from PayPal's docs and two other teams' sandbox runs, so it needs its own sandbox spike before filming. It also needs that run to show whether the transaction list shows a refund, since the line's refund proof reads `GET /v2/payments/captures/{id}` and only logs the list.
+- Refund confirmation uses a fresh `GET /v2/payments/captures/{id}` showing REFUNDED. This proof does not establish how every subscription transaction-list entry represents a refund.
 - PayPal's read of a hold gives its whole amount, not what is left. A hold drawn down too far is caught when PayPal refuses the capture, which runs first, so the donor hears no money moved.
 
 - After the Nov 2 review, pilot-check reads PILOT.md's checks more strictly than the change log says. Record these in the PILOT.md change log before the graded run if you agree. The bar itself is unchanged.
@@ -246,8 +266,8 @@ The pass bar and how each test is graded live in `PILOT.md`. The bar was set bef
 - Since `feat/self-resolving`, the line takes an amount only when code reads the same clear amount from the caller's words that the router returned, so a bare number counts only right after give or donate, or as the answer to the line's own amount question. Nothing in code reads "fifty quid", so that asks, even when a model heard $50. The line can't change a monthly amount, so "I want to give fifty dollars a month" asks and makes no draft.
 - A PIN said by voice that starts with an "oh", as in "Oh, 2468", reads as a wrong PIN, since oh can mean zero. The scripts use the keypad, so type the PIN there.
 - Some PayPal sandbox details are unconfirmed, such as whether a sent invoice reads SENT or UNPAID. The code accepts both. See `.pilot/facts-paypal.md`.
-- Render's free service sleeps after 15 minutes, and waking wipes its event list. PayPal retries webhooks for 3 days, and `npm run pilot:check -- --render URL --resend` wakes the service, asks PayPal to send the paid event again, then checks Render's list for up to about two minutes.
-- Webhook delivery is acknowledged only after signature verification and a synced local ledger write. The free Render service has an ephemeral filesystem, so an instance replacement or deploy can still erase that record and its deduplication history. Persistent storage is needed before relying on the ledger across instances.
+- Render's free service can sleep while idle. PayPal retries deliveries; the configured PostgreSQL stores preserve accepted webhook evidence and deduplication across process replacement. The historical `pilot:check --resend` command belongs to the old pilot and is not the new release acceptance test.
+- Webhook delivery is acknowledged only after signature verification and persistence. With donor durability enabled, sanitized event evidence and the verified raw delivery journal both use PostgreSQL. With that flag disabled, the donor event cache retains legacy local-ledger limitations.
 - On Render, ten wrong PINs in an hour from one address stop PIN entry from that address for the rest of the hour, across all its calls. The line keys this, and its other limits, on the last address in `X-Forwarded-For`, which a caller can't set.
 
 ## License

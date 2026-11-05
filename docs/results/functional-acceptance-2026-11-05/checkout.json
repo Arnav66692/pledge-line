@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-05T09:21:58.308Z",
+  "workflowId": "2a3765d6-94b8-41ef-9b86-844ece21b6cb",
+  "mainAgent": "anthropic",
+  "advisoryReviewer": "jev",
+  "totalCents": 67625,
+  "quantity": 100,
+  "budgetCents": 80000,
+  "midOrderProcessRestart": true,
+  "legs": [
+    {
+      "supplierId": "lab-campus",
+      "quantity": 60,
+      "totalCents": 39650,
+      "orderId": "4HX848706D051612P",
+      "captureId": "18X57492WS2684406",
+      "createState": "ready",
+      "captureState": "confirmed",
+      "createAttempts": 1,
+      "captureAttempts": 1,
+      "orderStatus": "COMPLETED",
+      "captureStatus": "COMPLETED",
+      "payeeId": "VL6MYE4R2TBSJ"
+    },
+    {
+      "supplierId": "lab-club",
+      "quantity": 40,
+      "totalCents": 27975,
+      "orderId": "0DC5938445454841L",
+      "captureId": "07832687E3018393D",
+      "createState": "ready",
+      "captureState": "confirmed",
+      "createAttempts": 1,
+      "captureAttempts": 1,
+      "orderStatus": "COMPLETED",
+      "captureStatus": "COMPLETED",
+      "payeeId": "VL6MYE4R2TBSJ"
+    }
+  ]
+}

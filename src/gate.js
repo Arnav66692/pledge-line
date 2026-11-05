@@ -112,7 +112,7 @@ export function describeError(error) {
   return `${error.name ?? 'Error'}${status}${reason}`;
 }
 
-export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlMs = 120000, minAnswerMs = LIMITS.minAnswerMs }) {
+export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlMs = 120000, minAnswerMs = LIMITS.minAnswerMs, durability = null }) {
   // legs, when a proposal has them, are the writes its one yes may run, each {kind, targetId, amountValue, currency, binding}.
   function propose(call, { kind, targetId, readBack, origin, turn, legs = null }) {
     const createdAt = now().getTime();
@@ -186,13 +186,17 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
   }
 
   /** Runs one write with its token and logs it, with extra fields on the write event. */
-  async function runWrite(call, { kind, targetId, token, turn, fields = {} }, writer) {
+  async function runWrite(call, { kind, targetId, token, turn, fields = {}, pending = call.pending }, writer) {
     const started = performance.now();
     let outcome;
     try {
-      const result = await writer(targetId, token);
+      const result = durability
+        ? await durability.runWrite(call, { kind, targetId, turn, fields, pending }, (context) => writer(targetId, token, context))
+        : await writer(targetId, token);
       outcome = { ok: true, result, debugId: result?.debugId ?? null };
     } catch (error) {
+      // Refusal before dispatch is an HTTP/storage failure, never a claim that PayPal was asked.
+      if (error?.durableRefused === true) throw error;
       outcome = { ok: false, error, debugId: error?.debugId ?? null };
     }
     const ms = Math.round(performance.now() - started);
@@ -207,7 +211,7 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
 
   async function execute(call, approval, writer, turn) {
     const { token, pending } = approval;
-    const result = await runWrite(call, { kind: pending.kind, targetId: pending.targetId, token, turn }, writer);
+    const result = await runWrite(call, { kind: pending.kind, targetId: pending.targetId, token, turn, pending }, writer);
     if (call.pending?.id === pending.id) call.pending = null;
     return result;
   }
@@ -215,7 +219,8 @@ export function createGate({ ledger, tokens, now = () => new Date(), pendingTtlM
   /** Runs one leg of a yes, with the token minted for it. The proposal stays open until finish, so no leg can run for a later one. */
   function executeLeg(call, approval, kind, writer, turn, fields = {}) {
     const leg = approval.pending.legs.find((item) => item.kind === kind);
-    return runWrite(call, { kind, targetId: leg.targetId, token: approval.tokens[kind], turn, fields: { amountValue: leg.amountValue, currency: leg.currency, ...fields } }, writer);
+    return runWrite(call, { kind, targetId: leg.targetId, token: approval.tokens[kind], turn, pending: approval.pending,
+      fields: { amountValue: leg.amountValue, currency: leg.currency, ...fields } }, writer);
   }
 
   function finish(call, approval) {

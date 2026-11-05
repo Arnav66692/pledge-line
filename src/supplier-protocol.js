@@ -1,6 +1,6 @@
 // Controlled sandbox supplier reference implementation. No real business, goods fulfillment or payment authority.
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { SUPPLIER_PROTOCOL_VERSION, normalizeSupplierRequest, supplierQuoteCosts } from './supplier-mcp.js';
+import { SUPPLIER_PROTOCOL_VERSION, normalizeSupplierRequest, supplierQuoteCosts, validateSupplierQuote } from './supplier-mcp.js';
 
 const MAX_BYTES = 65536;
 const copy = (value) => structuredClone(value);
@@ -24,12 +24,13 @@ const TOOLS = Object.freeze([
 
 export function createSupplierProtocol({ id, name, payeeId, token, capacity = 60, unitPriceCents = 650, floorUnitPriceCents = 600,
   setupCents = 1000, shippingCents = 800, taxBps = 500, leadDays = 2, quoteTtlMs = 15 * 60000,
-  now = () => new Date(), quotes = new Map(), persist = async () => {}, allowedOrigins = [] } = {}) {
+  now = () => new Date(), quotes = new Map(), persist = async () => {}, loadQuote = async () => null, allowedOrigins = [] } = {}) {
   if (!/^[a-z0-9-]{1,48}$/.test(id ?? '') || typeof name !== 'string' || !name.trim() || name.length > 100 ||
       !/^[A-Za-z0-9]{8,64}$/.test(payeeId ?? '') || typeof token !== 'string' || token.length < 24 || token.length > 4096 || /[\x00-\x20\x7f]/.test(token) ||
       !integer(capacity, 1, 500) || !integer(unitPriceCents, 1, 100000000) || !integer(floorUnitPriceCents, 1, unitPriceCents) ||
       !integer(setupCents, 0, 100000000) || !integer(shippingCents, 0, 100000000) || !integer(taxBps, 0, 5000) ||
-      !integer(leadDays, 0, 30) || !integer(quoteTtlMs, 60000, 86400000) || !(quotes instanceof Map) || !Array.isArray(allowedOrigins)) throw new Error('SUPPLIER_CONFIGURATION_INVALID');
+      !integer(leadDays, 0, 30) || !integer(quoteTtlMs, 60000, 86400000) || !(quotes instanceof Map) ||
+      typeof loadQuote !== 'function' || !Array.isArray(allowedOrigins)) throw new Error('SUPPLIER_CONFIGURATION_INVALID');
   const authHash = hash(`Bearer ${token}`), sessions = new Map();
   let issuance = Promise.resolve();
   const at = () => new Date(now()).getTime();
@@ -47,7 +48,27 @@ export function createSupplierProtocol({ id, name, payeeId, token, capacity = 60
     return { content: [{ type: 'text', text: 'Controlled sandbox supplier quote. No real fulfillment or payment.' }],
       structuredContent: copy(quote), isError: false };
   }
+  function pruneExpiredQuotes() {
+    const time = at();
+    for (const [quoteId, record] of quotes) if (!Number.isFinite(Date.parse(record?.quote?.expiresAt)) || Date.parse(record.quote.expiresAt) <= time) quotes.delete(quoteId);
+  }
+  async function storedQuote(quoteId) {
+    if (typeof quoteId !== 'string' || !/^[A-Za-z0-9-]{1,120}$/.test(quoteId)) throw new Error('INVALID_ARGUMENTS');
+    pruneExpiredQuotes();
+    const cached = quotes.get(quoteId);
+    if (cached) return cached;
+    // A replacement process may hydrate before the old process finishes issuing its final quote.
+    const record = await loadQuote({ quoteId });
+    if (!object(record) || Object.keys(record).length !== 2 || !/^[a-f0-9]{64}$/.test(record.requestBinding ?? '') ||
+      record.quote?.quoteId !== quoteId) throw new Error('QUOTE_UNAVAILABLE');
+    const quote = validateSupplierQuote(record.quote, { id, payeeId }, { now: at() });
+    const restored = { quote, requestBinding: record.requestBinding };
+    pruneExpiredQuotes();
+    if (quotes.size < 2000) quotes.set(quoteId, restored);
+    return restored;
+  }
   async function issueNow(request, price) {
+    pruneExpiredQuotes();
     if (quotes.size >= 2000) throw new Error('SUPPLIER_CAPACITY_REACHED');
     const time = at(), quote = { quoteId: `mcp-quote-${randomUUID()}`, supplierId: id, payeeId,
       specificationHash: hash(request.specification), currency: 'USD', minQuantity: 1, maxQuantity: Math.min(request.quantity, capacity),
@@ -105,8 +126,8 @@ export function createSupplierProtocol({ id, name, payeeId, token, capacity = 60
     const tool = body.params?.name, args = body.params?.arguments;
     try {
       if (tool === 'get_quote') {
-        if (!cleanArgs(args, ['quoteId']) || typeof args.quoteId !== 'string' || !/^[A-Za-z0-9-]{1,120}$/.test(args.quoteId)) throw new Error('INVALID_ARGUMENTS');
-        const stored = quotes.get(args.quoteId);
+        if (!cleanArgs(args, ['quoteId'])) throw new Error('INVALID_ARGUMENTS');
+        const stored = await storedQuote(args.quoteId);
         if (!stored || Date.parse(stored.quote.expiresAt) <= at()) throw new Error('QUOTE_UNAVAILABLE');
         return result(res, body.id, toolResult(stored.quote));
       }
@@ -115,7 +136,7 @@ export function createSupplierProtocol({ id, name, payeeId, token, capacity = 60
       if (!cleanArgs(args.request, Object.keys(REQUEST_SCHEMA.properties))) throw new Error('INVALID_ARGUMENTS');
       const request = normalizeSupplierRequest(args.request, at());
       if (tool === 'request_quote') return result(res, body.id, toolResult(await issue(request, unitPriceCents)));
-      const stored = quotes.get(args.quoteId);
+      const stored = await storedQuote(args.quoteId);
       if (!stored || Date.parse(stored.quote.expiresAt) <= at() || stored.requestBinding !== hash(JSON.stringify(request))) throw new Error('QUOTE_UNAVAILABLE');
       const offer = args.counterOffer;
       if (offer !== undefined && (!cleanArgs(offer, ['unitPriceCents']) || !integer(offer.unitPriceCents, 1, stored.quote.unitPriceCents))) throw new Error('INVALID_ARGUMENTS');

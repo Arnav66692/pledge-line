@@ -1,0 +1,74 @@
+{
+  "at": "2026-11-05T09:41:38.504Z",
+  "paypalMode": "sandbox",
+  "cases": {
+    "pauseResume": {
+      "callId": "46219b0e-fad1-4894-a421-236a50b47e2e",
+      "actions": [
+        {
+          "kind": "suspend",
+          "state": "confirmed",
+          "providerId": "I-NU77VVYWD173",
+          "attemptCount": 1
+        },
+        {
+          "kind": "activate",
+          "state": "confirmed",
+          "providerId": "I-NU77VVYWD173",
+          "attemptCount": 1
+        }
+      ]
+    },
+    "cover": {
+      "callId": "905f074d-3744-447d-ae9f-8e6ee981153e",
+      "actions": [
+        {
+          "kind": "cover_capture",
+          "state": "confirmed",
+          "providerId": "4M697975D0202800W",
+          "attemptCount": 1
+        },
+        {
+          "kind": "cover_refund",
+          "state": "confirmed",
+          "providerId": "0NX75518WD4502222",
+          "attemptCount": 1
+        }
+      ]
+    },
+    "invoice": {
+      "callId": "6a60a61a-7b16-47ad-892f-2a3777891577",
+      "actions": [
+        {
+          "kind": "create_draft",
+          "state": "confirmed",
+          "providerId": "INV2-UWF7-EA8Y-UCFQ-CLW2",
+          "attemptCount": 1
+        },
+        {
+          "kind": "send_invoice",
+          "state": "confirmed",
+          "providerId": "INV2-UWF7-EA8Y-UCFQ-CLW2",
+          "attemptCount": 1
+        }
+      ],
+      "invoice": {
+        "id": "INV2-UWF7-EA8Y-UCFQ-CLW2",
+        "status": "SENT",
+        "amount": {
+          "value": "50.00",
+          "currency_code": "USD"
+        }
+      }
+    }
+  },
+  "subscriptionStatus": "ACTIVE",
+  "refundedCharge": {
+    "id": "6HC68505NY329261Y",
+    "status": "REFUNDED",
+    "amount": {
+      "currency_code": "USD",
+      "value": "25.00"
+    }
+  }
+}

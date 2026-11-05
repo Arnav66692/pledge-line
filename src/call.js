@@ -230,7 +230,7 @@ function projectEvent(event) {
   return rest;
 }
 
-export function createCallService({ config, ledger, paypal, router, gate, now = () => new Date(), sleep = defaultSleep, pinGuard = null, desk = null }) {
+export function createCallService({ config, ledger, paypal, router, gate, now = () => new Date(), sleep = defaultSleep, pinGuard = null, desk = null, durability = null }) {
   const calls = new Map();
   // With no desk, a refund request has no token store, so its write fails and the line says so. buildDeps always passes one.
   const refundDesk = desk ?? createRefundDesk({ ledger, tokens: null });
@@ -262,6 +262,8 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const p = call.pending;
     return {
       callId: call.id,
+      turn: call.turn,
+      restored: call.restored === true,
       script: call.script,
       verified: call.verified,
       locked: call.locked,
@@ -347,12 +349,17 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const started = performance.now();
     const base = { type: 'staging_write', turn: ctx.turn, kind: 'create_draft' };
     try {
-      const res = await timed(ctx, () => paypal.createDraftInvoice({ recipientEmail: email, amountValue: amount.toFixed(2), currency: config.currency, orgName: config.orgName }));
+      const input = { recipientEmail: email, amountValue: amount.toFixed(2), currency: config.currency, orgName: config.orgName };
+      const dispatch = (context = {}) => paypal.createDraftInvoice(input, context);
+      const res = await timed(ctx, () => durability
+        ? durability.runStaging(ctx.call, { kind: 'create_draft', targetId: ctx.call.id, turn: ctx.turn, fields: input }, dispatch)
+        : dispatch());
       log(ctx.call, { ...base, id: res.id, ok: true, debugId: res.debugId ?? null, ms: res.ms ?? 0 });
       ctx.call.openDraftId = res.id;
       ctx.call.lastDraftId = res.id;
       return res.id;
     } catch (error) {
+      if (error?.durableRefused === true) throw error;
       log(ctx.call, { ...base, id: null, ok: false, debugId: error?.debugId ?? null, ms: Math.round(performance.now() - started), error: describeError(error) });
       return null;
     }
@@ -364,13 +371,30 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const started = performance.now();
     const base = { type: 'staging_write', turn: ctx.turn, kind: 'delete_draft', id };
     try {
-      const res = await timed(ctx, () => paypal.deleteDraftInvoice(id));
+      if (durability) {
+        const current = await timed(ctx, () => readSnapshot(ctx, 'invoice', id));
+        if (!current) {
+          if (ctx.call.openDraftId === id) ctx.call.openDraftId = null;
+          if (ctx.call.lastDraftId === id) ctx.call.lastDraftId = null;
+          return true;
+        }
+        if (current.id !== id || current.status !== 'DRAFT') {
+          ctx.call.uncertainDraftId = id;
+          log(ctx.call, { type: 'draft_cleanup_deferred', turn: ctx.turn, id });
+          return false;
+        }
+      }
+      const dispatch = (context = {}) => paypal.deleteDraftInvoice(id, context);
+      const res = await timed(ctx, () => durability
+        ? durability.runStaging(ctx.call, { kind: 'delete_draft', targetId: id, turn: ctx.turn }, dispatch)
+        : dispatch());
       log(ctx.call, { ...base, ok: true, debugId: res.debugId ?? null, ms: res.ms ?? 0 });
       if (ctx.call.openDraftId === id) ctx.call.openDraftId = null;
       // The line already said PayPal no longer shows a draft it deleted, so "How do you know?" doesn't read it again.
       if (ctx.call.lastDraftId === id) ctx.call.lastDraftId = null;
       return true;
     } catch (error) {
+      if (error?.durableRefused === true) throw error;
       log(ctx.call, { ...base, ok: false, debugId: error?.debugId ?? null, ms: Math.round(performance.now() - started), error: describeError(error) });
       return false;
     }
@@ -383,8 +407,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     call.endedAt = now().getTime();
     gate.withdraw(call, call.turn);
     if (call.openDraftId && call.openDraftId !== call.uncertainDraftId) {
-      await deleteDraft(ctx, call.openDraftId);
-      call.openDraftId = null;
+      if (await deleteDraft(ctx, call.openDraftId)) call.openDraftId = null;
     }
     // A timed-out send may still finish later. Never delete an invoice while its send outcome is unknown.
     if (call.openDraftId && call.openDraftId === call.uncertainDraftId) {
@@ -526,7 +549,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const { pending } = approval;
     const asked = call.chargeAsked?.pendingId === pending.id ? call.chargeAsked.charge : null;
     call.chargeAsked = null;
-    const writer = (id, token) => refundDesk.request(id, token, { callId: call.id, turn: ctx.turn, charge: asked });
+    const writer = (id, token, context = {}) => refundDesk.request(id, token, { callId: call.id, turn: ctx.turn, charge: asked, ...context });
     const result = await gate.execute(call, approval, writer, ctx.turn);
     let fresh = null;
     try {
@@ -628,7 +651,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   /** Every leg's writer, so call.js never calls a write directly (I1). */
   function legWriter(ctx, method, amounts, extra = {}) {
-    return async (id, token) => checkedMove(await paypal[method](id, token, { callId: ctx.call.id, ...amounts, note: `Hardship cover for a monthly gift to ${config.orgName}`, ...extra }), amounts.amountValue);
+    return async (id, token, context = {}) => checkedMove(await paypal[method](id, token, { callId: ctx.call.id, ...amounts, note: `Hardship cover for a monthly gift to ${config.orgName}`, ...extra, ...context }), amounts.amountValue);
   }
 
   /**
@@ -636,9 +659,9 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
    * for this charge's request id, as after a refund that was refused and sent back, and then no new money came in.
    */
   function captureWriter(ctx, amounts, transactionId) {
-    return async (id, token) => {
+    return async (id, token, context = {}) => {
       const res = await paypal.captureSponsorHold(id, token, { callId: ctx.call.id, ...amounts,
-        note: `Hardship cover for a monthly gift to ${config.orgName}`, requestId: requestIds.capture(transactionId) });
+        note: `Hardship cover for a monthly gift to ${config.orgName}`, requestId: requestIds.capture(transactionId), ...context });
       // A later local read or ledger failure must not erase the identity of a capture PayPal already returned.
       const uncertain = coversUncertain.get(transactionId);
       if (uncertain && res?.id) uncertain.captureId = res.id;
@@ -982,7 +1005,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const approval = gate.approve(call, text, ctx.turn, ctx.answering, ctx.arrival);
     if (!approval) return call.pending ? askAgain(ctx) : say.nothingPending();
     if (pending.kind === 'refund_request') return refundYesTurn(ctx, approval);
-    const writer = (id, token) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id });
+    const writer = (id, token, context = {}) => paypal[WRITER_METHODS[pending.kind]](id, token, { callId: call.id, ...context });
     // Set this before the remote send. A later exception while recording the result must not trigger draft deletion.
     if (pending.kind === 'send_invoice') call.uncertainDraftId = pending.targetId;
     let result;
@@ -1173,6 +1196,34 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return call;
   }
 
+  // This projection is private server state. It contains a session hash, never the bearer or PIN.
+  // Consent tokens, queues, client addresses and process-local clocks are intentionally not serializable.
+  function snapshot(callId) {
+    const call = getCall(callId);
+    const fields = ['id', 'script', 'browser', 'verified', 'locked', 'pinTries', 'turn', 'pending', 'proposalBaseline',
+      'pauseOffered', 'openDraftId', 'uncertainDraftId', 'lastDraftId', 'lastSaid', 'lastSaidTurn', 'lastSaidPending',
+      'ended', 'endedAt', 'noticeExpired', 'lastActiveAt', 'plan', 'record', 'chargeAsked', 'coverAsked', 'drill',
+      'lastFinishedTurn', 'restored'];
+    const data = Object.fromEntries(fields.filter((field) => call[field] !== undefined).map((field) => [field, structuredClone(call[field])]));
+    data.gapTurns = [...call.gapTurns];
+    return { id: call.id, sessionSecretHash: call.sessionHash.toString('hex'), snapshot: data };
+  }
+
+  function restore(record) {
+    if (!record || !/^[0-9a-f-]{36}$/.test(record.id ?? '') || !/^[0-9a-f]{64}$/.test(record.sessionSecretHash ?? '') ||
+      !record.snapshot || record.snapshot.id !== record.id) throw new Error('DONOR_SNAPSHOT_INVALID');
+    const data = structuredClone(record.snapshot);
+    const previousPending = data.pending;
+    const call = { ...data, id: record.id, sessionHash: Buffer.from(record.sessionSecretHash, 'hex'), clientKey: null,
+      verified: false, pending: null, proposalBaseline: null, chargeAsked: null, coverAsked: null,
+      lastSaidPending: null, noticeExpired: false, restored: true, queue: Promise.resolve(),
+      gapTurns: new Set(Array.isArray(data.gapTurns) ? data.gapTurns : []), lastFinishedAt: performance.now() };
+    calls.set(call.id, call);
+    if (previousPending) ledger.append({ type: 'withdrawn', callId: call.id, turn: call.turn, pendingId: previousPending.id });
+    ledger.append({ type: 'session_restored', callId: call.id, turn: call.turn, requiresPin: !call.ended });
+    return stateFor(call);
+  }
+
   function start({ script = null, userAgent = '', dryRun = false, clientKey = null, client = null, drill = null } = {}) {
     // A drill is chosen only by name and never with a script, so no graded script can reach it (A12).
     const chosen = drillFor(drill, { script: script === null || script === undefined || script === '' ? null : script, paypalMode: config.paypal.mode, now: now() });
@@ -1230,8 +1281,49 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     return jobs.length;
   }
 
+  async function sweepOne(callId) {
+    const call = getCall(callId);
+    const at = now().getTime();
+    if (call.ended) return 0;
+    if (at - call.lastActiveAt >= limits.callIdleMs) { await enqueue(call, () => endCall(call, 'idle')); return 1; }
+    if (call.pending && at >= call.pending.expiresAt) { await enqueue(call, () => expirePending(call)); return 1; }
+    return 0;
+  }
+
+  function needsSweep(callId) {
+    const call = getCall(callId);
+    const at = now().getTime();
+    return !call.ended && (at - call.lastActiveAt >= limits.callIdleMs || Boolean(call.pending && at >= call.pending.expiresAt));
+  }
+
+  // Recovery may update displayed provider facts, never consent or a completed-money claim.
+  function applyDurableRead(callId, event) {
+    const call = getCall(callId);
+    if (!event || event.callId !== call.id || event.type !== 'read' || event.error || !event.durableRecovery) return;
+    if (event.what === 'subscription' && event.id === config.demoSubscriptionId) call.record.subscription = { id: event.id, snapshot: structuredClone(event.snapshot), debugId: event.debugId ?? null };
+    if (event.what === 'invoice' && [call.openDraftId, call.uncertainDraftId, call.lastDraftId].includes(event.id)) call.record.invoice = { id: event.id, snapshot: structuredClone(event.snapshot), debugId: event.debugId ?? null };
+    if (event.what === 'gift_charge' && call.record.charge?.snapshot?.transaction_id === event.id && event.snapshot) {
+      call.record.charge.snapshot.status = event.snapshot.status;
+    }
+  }
+
   return {
     start,
+    snapshot,
+    restore,
+    has: (id) => calls.has(id),
+    ids: () => [...calls.keys()],
+    forget: (id) => calls.delete(id),
+    pruneMemory: () => {
+      for (const call of calls.values()) {
+        if (call.ended && now().getTime() - call.endedAt > limits.callIdleMs) calls.delete(call.id);
+      }
+    },
+    sweepOne,
+    needsSweep,
+    sweepBefore: () => now().getTime() - limits.callIdleMs,
+    applyDurableRead,
+    markDurableReplyReady: (id) => { getCall(id).lastFinishedAt = performance.now(); },
     // Hash even a missing/invalid credential before comparing fixed-length buffers. Unknown calls use a dummy hash.
     authenticate: (callId, given) => {
       const actual = typeof given === 'string' ? given : '';
