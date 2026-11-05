@@ -9,3 +9,5 @@ node_modules
 .pilot/*.paid-webhook.json
 .pilot/claim-audit/
 .gstack/
+.database.env
+.database-*.env

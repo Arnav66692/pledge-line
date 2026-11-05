@@ -24,6 +24,8 @@ Simulated in mock mode.
 - `ROUTER_MODE=rules` swaps the AI router for offline keyword rules.
 - Any run with either switch on prints `MOCK RUN, does not count` and never writes a pass.
 
+The separate Supply desk at `/procurement` always uses simulated suppliers and mock settlement, regardless of the donor line's PayPal mode. It makes no PayPal payment or real goods order.
+
 The donor, Maria, and the nonprofit, Sunny Hollow Pantry, are fictional.
 
 ## Run it in mock mode
@@ -44,7 +46,32 @@ npm test
 npm run pilot:dry -- --mock
 ```
 
-The tests and the mock dry run need no network and no keys.
+The default tests and the mock dry run need no external services or keys. Hosted database tests run only when `DATABASE_TEST_URL` is explicitly configured.
+
+## The supply desk
+
+Open `/procurement`, also linked as **Supply desk** in the navigation. Give the agent a specification, quantity, total USD budget and delivery deadline. It asks three simulated suppliers for quotes, negotiates their staged discounts, and finds the cheapest complete allocation that meets every constraint. Setup, shipping and tax count toward the budget, including when suppliers split the order.
+
+Review the exact suppliers, payees, quantities, delivery terms and total before approving. Approval is bound to that plan and a separate random session key protects its API. Changed or expired quotes prevent a new settlement. An uncertain result blocks later supplier payments; **Recheck and continue the approved plan** checks the same payment identity before continuing any still-valid original legs. Partial settlement stays visible and never implies an automatic refund or replacement purchase.
+
+The recovery controls stage lost responses, pending payments, a supplier decline, a changed payee, expired quotes and missed delivery. These are demonstrations with synthetic suppliers and payments, not live supplier MCP connections or PayPal commerce.
+
+## PostgreSQL storage
+
+The integration checkout has a Neon PostgreSQL 17 database with migrations 1 and 2 applied and verified TLS. With `DATABASE_URL` configured, the server persists approved procurement operations, stable per-leg request IDs, attempts and outcomes, plus verified PayPal webhook deliveries. It checks the schema before listening and does not fall back to memory if the configured database fails.
+
+The donor-call JSONL ledger remains local. Procurement sessions, supplier state and browser session keys remain in memory; a refresh, session expiry or process restart cannot resume the demo through its current HTTP API. The persistent journal does not make donor actions or procurement ready for real money.
+
+The local `.database.env` holds the restricted runtime connection. Check it and start the integration server with:
+
+```sh
+node --env-file=.database.env scripts/database-check.js --require-tls
+node --env-file=.database.env src/server.js
+```
+
+The startup command expects the donor-line configuration in the environment. For an offline donor line, prefix it with `PAYPAL_MODE=mock ROUTER_MODE=rules`. To load existing sandbox/router settings from `.env` too, use `node --env-file=.env --env-file=.database.env src/server.js`. `npm start` loads `.env` only; it does not automatically load `.database.env`.
+
+`.database-admin.env` is reserved for explicit administrator migrations. Both local database files are ignored and should remain mode `600`; never commit or print them. See [the database guide](docs/DATABASE.md) for migration commands and permissions, and [production requirements](PRODUCTION.md) for the remaining live-payment gates. This setup does not deploy to Render or change the pilot checkout.
 
 ## The claim audit
 

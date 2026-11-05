@@ -1,6 +1,18 @@
-# Receipts and "How do you know?"
+# Pledge Line features
 
-Added Nov 2, 2026 on the `feat/receipts` branch. Other entries in this hackathon already turn a cancel into a PayPal suspend. What none does is prove each sentence the donor hears against PayPal's own record. These two features make that proof something the page can show, the donor can ask for out loud, and a grader can count.
+Receipts and "How do you know?" were added Nov 2, 2026 on the `feat/receipts` branch. They expose the PayPal evidence behind the line's sentences on the page, in a spoken recheck and in the grader. Later sections describe the additional donor features and integration work.
+
+## The supply desk
+
+Added November 4 in the integration checkout. `/procurement`, linked as **Supply desk**, demonstrates constrained procurement for nonprofit supplies. It always uses simulated suppliers and mock payments, makes no PayPal request, and places no real goods order.
+
+- The buyer supplies an exact specification, 1–500 units, a USD budget and a future delivery deadline. Three staged suppliers return and negotiate quotes. A bounded, deterministic allocator chooses the cheapest complete quantity, including each supplier's setup, shipping and tax. It can split an order when one supplier cannot meet it alone.
+- A quote must match the specification, registered supplier/payee, currency, stock and delivery deadline. The page shows rejected offers and the complete cost breakdown. Approval binds the exact allocation and terms fingerprint; fresh quote checks run before settlement. An edited brief needs a new plan and approval.
+- A separate random key authorizes the request's HTTP reads, approval and reconciliation. It stays in the starting page's memory. Concurrent or repeated approvals share the same execution, and uncertain payments retain the original request ID.
+- Every settlement is checked against the exact payee, quote, quantity, amount, currency and approved terms before being called confirmed or declined. An unknown result blocks later suppliers. Reconciliation rechecks that payment and may continue only the still-valid original allocation. A partial order stays visible; no automatic rollback, refund or replacement supplier is authorized.
+- Recovery scenarios stage a lost payment answer, a pending payment, supplier refusal, payee substitution, expired quotes and missed delivery. The activity timeline distinguishes attempts, verified outcomes and recovery. Suppliers are not connected through live MCP servers, and the negotiation is staged rather than a live language-model conversation.
+
+When `DATABASE_URL` is configured, the PostgreSQL journal is awaited before each simulated supplier attempt and before recording its confirmed outcome. Configured storage failures block progress. The database preserves the operation binding, stable leg identities and outcomes, but the HTTP session and mock supplier state remain in memory. There is no restart recovery worker or session restoration API. Without `DATABASE_URL`, this feature runs entirely in memory. The donor-call ledger is unchanged. [The database guide](docs/DATABASE.md) describes the contract and current boundary.
 
 ## Receipts
 

@@ -17,6 +17,9 @@ import { staffCalls, staffCall, staffKeyMatches } from './staff.js';
 import { DRILLS, DrillRefused, drillLines, drillOpen } from './drill.js';
 import { createReceiptSigner, secretMatches, verifyReceipt, RECEIPT_ALG, RECEIPT_MAX_BYTES } from './receipt-seal.js';
 import { receiptFile } from './receipt-file.js';
+import { createProcurementService } from './procurement.js';
+import { createProcurementHttp } from './procurement-http.js';
+import { connectDatabase } from './database.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -120,7 +123,7 @@ export function resourceIdOf(event) {
 const clip = (value, max) => (typeof value === 'string' ? value.slice(0, max) : null);
 
 /** Verifies and logs PayPal webhooks. PayPal delivers at least once, so copies dedupe by event id. */
-export function createWebhookHandler({ paypal, ledger, webhookId, log }) {
+export function createWebhookHandler({ paypal, ledger, webhookId, log, journal = null, organizationId = 'demo-organization' }) {
   // Reload accepted IDs from the ledger so a provider retry after a process restart stays idempotent.
   const verifiedIds = new Set(ledger.byType('webhook').filter((e) => e.verified && e.eventId).map((e) => e.eventId));
   const inflight = new Map();
@@ -132,6 +135,7 @@ export function createWebhookHandler({ paypal, ledger, webhookId, log }) {
 
   async function verifyOnce(entry, headers, rawBody) {
     const { verified, verifyStatus } = await paypal.verifyWebhookSignature({ headers, rawBody, webhookId });
+    if (verified && journal) await journal.acceptVerifiedWebhook({ organizationId, provider: 'paypal-sandbox', eventId: entry.eventId, rawBody, verified: true });
     // The id is untrusted until this delivery is verified. A forged body must not inherit a prior event's status.
     if (verified && verifiedIds.has(entry.eventId)) {
       log.info(`webhook ${entry.eventType} ${entry.resourceId} duplicate`);
@@ -195,7 +199,7 @@ export function buildDeps(config, overrides = {}) {
   const paypal = config.paypal.mode === 'mock'
     ? applyFaultDrill(createMockPayPal({ tokens, now, onWebhook: (delivery) => webhooks?.handle(delivery), ...(overrides.mockOptions ?? {}) }), config.faultDrill, tokens)
     : createPayPal({ baseUrl: config.paypal.baseUrl, clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, tokens, fetchImpl: overrides.fetchImpl ?? fetch });
-  webhooks = createWebhookHandler({ paypal, ledger, webhookId: config.paypal.webhookId, log });
+  webhooks = createWebhookHandler({ paypal, ledger, webhookId: config.paypal.webhookId, log, journal: overrides.journal ?? null });
   const router = overrides.router ?? createRouter({ mode: config.router.mode, apiKey: config.router.apiKey, model: config.router.model });
   const gate = createGate({ ledger, tokens, now, pendingTtlMs: config.limits.pendingTtlMs });
   // Only the public Render service needs it. Locally the line listens on this computer alone, and Script 8 uses three wrong PINs.
@@ -204,7 +208,7 @@ export function buildDeps(config, overrides = {}) {
   const calls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, desk, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
   // Off, with every receipt route a 404, unless RECEIPT_SIGNING_KEY is set.
   const receiptSigner = config.receiptSigningKey ? createReceiptSigner(config.receiptSigningKey) : null;
-  return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now, receiptSigner };
+  return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now, receiptSigner, journal: overrides.journal ?? null };
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8', headers = {}) {
@@ -341,6 +345,13 @@ function createApi(deps) {
   const staffRequests = createRateLimiter({ limit: config.limits.staffPerMinute, windowMs: MINUTE_MS });
   const receiptRequests = createRateLimiter({ limit: config.limits.receiptsPerMinute, windowMs: MINUTE_MS });
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
+  const procurementRoute = createProcurementHttp({
+    createService: (scenario) => {
+      const service = createProcurementService({ now: clock, journal: deps.journal ?? null });
+      return { ...service, request: (rfq) => service.request({ ...rfq, scenario }) };
+    },
+    send, readJson, limiter: createRateLimiter({ limit: 60, windowMs: MINUTE_MS }), now: () => clock().getTime(),
+  });
 
   // A drill asked for with a script, by an unknown name, or on the sandbox before the deadline is refused (A12).
   function startCall(input) {
@@ -446,6 +457,12 @@ function createApi(deps) {
   }
 
   return async function route(req, res, pathname, ip) {
+    if (pathname === '/procurement') {
+      if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+      return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'procurement.html'));
+    }
+    if (pathname === '/api/procurement' || pathname.startsWith('/api/procurement/')) return procurementRoute(req, res, pathname, ip);
+    if (pathname === '/api/storage-status' && req.method === 'GET') return send(res, 200, { procurementJournal: deps.journal ? 'postgres' : 'memory', donorLedger: 'local', livePayments: false });
     if (pathname === '/staff' || pathname === '/api/staff' || pathname.startsWith('/api/staff/')) return staffRoute(req, res, pathname, ip);
     if (Object.hasOwn(RECEIPT_PAGES, pathname) || pathname === '/receipt-key' || pathname === '/api/receipts' || pathname.startsWith('/api/receipts/')) {
       return receiptRoute(req, res, pathname, ip);
@@ -474,7 +491,7 @@ function createApi(deps) {
   };
 }
 
-const redactPath = (pathname) => pathname.replace(/\/api\/(calls|staff\/calls|receipts)\/[0-9a-f-]{36}/, '/api/$1/:id');
+const redactPath = (pathname) => pathname.replace(/\/api\/(calls|staff\/calls|receipts|procurement)\/[0-9a-f-]{36}/, '/api/$1/:id');
 
 export function createServer(deps) {
   const route = createApi(deps);
@@ -512,7 +529,7 @@ export function templateWarnings({ live = LIVE_TEMPLATE_HASH, checkedIn = TEMPLA
   return warnings;
 }
 
-function main() {
+async function main() {
   let config;
   try {
     config = loadConfig();
@@ -520,7 +537,8 @@ function main() {
     process.stderr.write(`${error.message}\n`);
     process.exit(1);
   }
-  const deps = buildDeps(config);
+  const database = process.env.DATABASE_URL ? await connectDatabase(process.env.DATABASE_URL) : null;
+  const deps = buildDeps(config, { journal: database?.store });
   const server = createServer(deps);
   for (const warning of templateWarnings()) deps.log.error(warning);
   server.listen(config.port, config.host, () => {
@@ -531,9 +549,11 @@ function main() {
   }
   const sweeper = setInterval(() => { deps.calls.sweep().catch((error) => deps.log.error(`sweep failed ${error?.name ?? 'Error'}`)); }, SWEEP_EVERY_MS);
   sweeper.unref();
-  const stop = () => server.close(() => process.exit(0));
+  const stop = () => server.close(() => { Promise.resolve(database?.pool.end()).finally(() => process.exit(0)); });
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main();
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main().catch(() => { process.stderr.write('Startup failed. Check the database connection and migration. No credentials are printed.\n'); process.exitCode = 1; });
+}
