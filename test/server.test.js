@@ -314,7 +314,14 @@ test('ROUTER_MODE gemini needs GEMINI_API_KEY, takes GEMINI_MODEL, and counts as
   const config = loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini', GEMINI_API_KEY: 'k' });
   assert.deepEqual({ ...config.router }, { mode: 'gemini', apiKey: 'k', model: 'gemini-3.5-flash-lite' });
   assert.equal(loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini', GEMINI_API_KEY: 'k', GEMINI_MODEL: 'gemini-2.5-flash-lite' }).router.model, 'gemini-2.5-flash-lite');
-  assert.throws(() => loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'openai' }), /ROUTER_MODE must be haiku, gemini or rules/);
+  assert.throws(() => loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'openai' }), /ROUTER_MODE must be anthropic, haiku, gemini or rules/);
   assert.equal(loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini', GEMINI_API_KEY: 'k', GEMINI_MODEL: 'models/gemini-3.1-flash-lite' }).router.model, 'gemini-3.1-flash-lite');
   assert.throws(() => loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'gemini', GEMINI_API_KEY: 'k', GEMINI_MODEL: 'Gemini 3.5 Flash Lite' }), /GEMINI_MODEL must be a model id/);
+});
+
+test('guarded Anthropic mode requires both explicit API keys and pins the priced main model', () => {
+  assert.throws(() => loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'anthropic' }), /ANTHROPIC_API_KEY is required/);
+  assert.throws(() => loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'anthropic', ANTHROPIC_API_KEY: 'synthetic-anthropic-key' }), /TYPESAFE_API_KEY is required/);
+  const config = loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'anthropic', ANTHROPIC_API_KEY: 'synthetic-anthropic-key', TYPESAFE_API_KEY: 'synthetic-jev-key', ANTHROPIC_AUTH_TOKEN: 'subscription-session-must-not-be-used', ANTHROPIC_BASE_URL: 'https://untrusted.example' });
+  assert.deepEqual({ ...config.router }, { mode: 'anthropic', apiKey: 'synthetic-anthropic-key', jevApiKey: 'synthetic-jev-key', model: 'claude-sonnet-5-5' });
 });

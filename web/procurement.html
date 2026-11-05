@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A Pledge Line supply desk demonstration. Compare simulated suppliers and approve an order within a fixed budget. No real money moves.">
+  <meta name="description" content="A Pledge Line supply desk demonstration. Compare supplier quotes and approve a sandbox plan within a fixed budget. No real money moves.">
   <meta name="theme-color" content="#f7f6f3">
   <title>The supply desk, Pledge Line</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/procurement.css">
   <script src="/procurement.js" defer></script>
 </head>
-<body>
+<body data-payments="mock">
   <a class="skip" href="#request">Skip to the order brief</a>
   <header class="site-head">
     <a class="brand" href="/" aria-label="Pledge Line home"><span>pledge</span><span>line</span></a>
@@ -21,8 +21,10 @@
   <main>
     <section class="intro" aria-labelledby="page-title">
       <div><p class="eyebrow">Pledge Line, for the work behind the cause</p><h1 id="page-title">The <em>supply desk.</em></h1></div>
-      <div class="intro-copy"><p>Ask suppliers for a better quote. Check the whole cost. Approve one exact plan.</p><p class="demo-note"><span class="demo-dot" aria-hidden="true"></span>Simulated suppliers and mock settlement. No real money moves, and this page makes no PayPal payment.</p></div>
+      <div class="intro-copy"><p>Ask suppliers for a better quote. Check the whole cost. Approve one exact plan.</p><p class="demo-note"><span class="demo-dot" aria-hidden="true"></span><span id="demo-disclosure">Simulated suppliers and mock settlement. No real money moves, and this page makes no PayPal payment.</span></p></div>
     </section>
+
+    <section id="commerce-panel" class="commerce-panel" aria-label="Sandbox checkout availability" hidden><div><strong>PayPal sandbox checkout</strong><p id="commerce-status" role="status" aria-live="polite">Checking server availability. Sandbox checkout uses test funds only.</p></div><button id="refresh-commerce" class="button secondary" type="button">Refresh availability</button></section>
 
     <div class="desk-layout">
       <aside class="brief panel" aria-labelledby="brief-title">
@@ -30,10 +32,10 @@
         <p class="hint">Set the limits the agent must keep, including delivery and every fee.</p>
         <form id="request">
           <label for="specification">What are you ordering?</label>
-          <textarea id="specification" name="specification" rows="3" maxlength="500" required>White cotton shirts, one navy screen print, identical artwork and print quality.</textarea>
+          <textarea id="specification" name="specification" rows="3" maxlength="500" required>White cotton volunteer shirts for the pantry, one navy screen print, identical artwork and print quality.</textarea>
           <div class="field-pair"><div><label for="quantity">Quantity</label><input id="quantity" name="quantity" type="number" min="1" max="500" step="1" value="100" inputmode="numeric" required></div><div><label for="budget">Total budget, USD</label><input id="budget" name="budget" type="number" min="1" max="100000" step="0.01" value="800" inputmode="decimal" required></div></div>
-          <label for="deadline">Deliver by</label><input id="deadline" name="deadline" type="datetime-local" required aria-describedby="deadline-hint"><p class="field-hint" id="deadline-hint">Your local time. Shipping, tax and setup must fit the budget.</p>
-          <details class="demo-controls"><summary>Try a recovery scenario</summary><label for="scenario">Mock supplier behavior</label><select id="scenario" name="scenario"><option value="normal">All selected suppliers accept</option><option value="timeout-after-payment">A payment answer is lost</option><option value="pending-payment">A payment remains pending</option><option value="supplier-declines">One supplier declines</option><option value="injected-payee">A quote tries to change the payee</option><option value="expired-quotes">The quotes have expired</option><option value="delivery-miss">No supplier can meet delivery</option></select><p class="field-hint">These faults are staged. They never affect a real supplier or payment.</p></details>
+          <label for="deadline">Deliver by</label><input id="deadline" name="deadline" type="datetime-local" required aria-describedby="deadline-hint"><p class="field-hint" id="deadline-hint">Your local time. Displayed timestamps include their timezone. Shipping, tax and setup must fit the budget.</p>
+          <details id="demo-controls" class="demo-controls"><summary>Try a recovery scenario</summary><label for="scenario">Mock supplier behavior</label><select id="scenario" name="scenario"><option value="normal">All selected suppliers accept</option><option value="timeout-after-payment">A payment answer is lost</option><option value="pending-payment">A payment remains pending</option><option value="supplier-declines">One supplier declines</option><option value="injected-payee">A quote tries to change the payee</option><option value="expired-quotes">The quotes have expired</option><option value="delivery-miss">No supplier can meet delivery</option></select><p class="field-hint">These faults are staged. They never affect a real supplier or payment.</p></details>
           <button id="find-plan" class="button primary" type="submit"><span>Find a plan</span><span aria-hidden="true">↗</span></button>
         </form>
         <p id="request-status" class="request-status" role="status" aria-live="polite">Start with the brief. The agent will ask three simulated suppliers.</p>
@@ -44,9 +46,10 @@
         <section class="quote-panel panel" aria-labelledby="quotes-title">
           <div class="section-head"><span class="step" aria-hidden="true">2</span><h2 id="quotes-title">The quote sheet</h2></div>
           <p id="quotes-summary" class="hint">All costs and delivery commitments stay visible. A cheaper unit price alone does not win.</p>
+          <div id="comparison" class="comparison" hidden><h3>This order, with and without negotiation</h3><dl><div><dt>No-negotiation baseline</dt><dd id="comparison-baseline"></dd></div><div><dt>Negotiated plan</dt><dd id="comparison-negotiated"></dd></div><div><dt>Baseline minus plan</dt><dd id="comparison-saving"></dd></div></dl><p id="comparison-scope" class="field-hint"></p></div>
           <div id="empty-quotes" class="empty-sheet"><span class="empty-line" aria-hidden="true"></span><p>Three suppliers.<br><span>One brief they must meet.</span></p><span class="empty-line" aria-hidden="true"></span></div>
           <div id="quote-results" hidden>
-            <div class="table-wrap" role="region" tabindex="0" aria-label="Supplier quotes, scroll horizontally on small screens"><table><caption class="visually-hidden">Simulated supplier quotes. Totals are for the quoted quantity, including all fees.</caption><thead><tr><th scope="col">Supplier and lot</th><th scope="col">Per shirt</th><th scope="col">Setup</th><th scope="col">Shipping</th><th scope="col">Tax</th><th scope="col">All-in lot</th><th scope="col">Delivery</th></tr></thead><tbody id="quotes"></tbody></table></div>
+            <div class="table-wrap" role="region" tabindex="0" aria-label="Supplier quotes, scroll horizontally on small screens"><table><caption id="quotes-caption" class="visually-hidden">Simulated supplier quotes. Totals are for the quoted quantity, including all fees.</caption><thead><tr><th scope="col">Supplier and lot</th><th scope="col">Per shirt</th><th scope="col">Setup</th><th scope="col">Shipping</th><th scope="col">Tax</th><th scope="col">All-in lot</th><th scope="col">Delivery</th></tr></thead><tbody id="quotes"></tbody></table></div>
             <div id="rejections" class="rejections" hidden><h3>Set aside</h3><ul id="rejection-list"></ul></div>
           </div>
         </section>
@@ -59,20 +62,21 @@
             <ul id="allocations" class="allocations" aria-label="Exact order allocation"></ul>
             <p class="split-note">A split order settles separately with each supplier. If one fails, the other may already be paid. This demo checks each result and shows a partial or uncertain outcome plainly.</p>
             <p id="plan-expiry" class="field-hint"></p>
-            <details class="terms-details"><summary>Terms bound to this approval</summary><dl><dt>Specification</dt><dd id="terms-specification"></dd><dt>Quantity and deadline</dt><dd id="terms-request"></dd><dt>Terms fingerprint</dt><dd id="terms-hash" class="mono"></dd></dl></details>
-            <form id="approval-form"><label class="check-label"><input id="approval-check" type="checkbox" required><span>I approve these suppliers, quantities, delivery terms and this exact total for the simulated purchase.</span></label><button id="approve" class="button primary" type="submit" disabled><span>Approve simulated purchase</span><span aria-hidden="true">↗</span></button></form>
+            <div id="review-panel" class="review-panel" hidden><h3>Plan review, advisory only</h3><p id="review-note"></p><p class="field-hint">The server's quote checks and your exact approval remain authoritative.</p></div>
+            <details class="terms-details"><summary>Terms bound to this approval</summary><dl><dt>Specification</dt><dd id="terms-specification"></dd><dt>Quantity and deadline</dt><dd id="terms-request"></dd><dt>Supplier disclosure</dt><dd id="terms-disclosure"></dd><dt>Terms fingerprint</dt><dd id="terms-hash" class="mono"></dd></dl></details>
+            <form id="approval-form"><label class="check-label"><input id="approval-check" type="checkbox" required><span id="approval-consent">I approve these suppliers, quantities, delivery terms and this exact total for the simulated purchase.</span></label><button id="approve" class="button primary" type="submit" disabled>Approve simulated purchase</button></form>
           </div>
-          <div id="settlement" class="settlement" hidden><h3>Settlement results</h3><ul id="settlement-list"></ul><p id="settlement-note" class="hint"></p><button id="reconcile" class="button secondary" type="button" hidden>Recheck and continue the approved plan</button></div>
+          <div id="settlement" class="settlement" hidden><h3 id="settlement-title">Settlement results</h3><ul id="settlement-list"></ul><ol id="checkout-legs" class="checkout-legs" aria-label="Supplier checkout steps" hidden></ol><p id="settlement-note" class="hint"></p><p id="checkout-blocked" class="field-hint" hidden></p><div class="checkout-actions"><button id="prepare-checkout" class="button primary" type="button" hidden>Create PayPal sandbox orders</button><button id="reconcile" class="button secondary" type="button" hidden>Recheck and continue the approved plan</button></div></div>
         </section>
 
         <section class="timeline-panel panel" aria-labelledby="timeline-title">
-          <div class="section-head"><h2 id="timeline-title">What the agent did</h2><span class="small-label">Mock records</span></div>
+          <div class="section-head"><h2 id="timeline-title">What the agent did</h2><span id="timeline-label" class="small-label">Mock records</span></div>
           <p id="timeline-empty" class="hint">The negotiation, checks and settlement attempts will appear here.</p><ol id="timeline" class="timeline" aria-label="Agent activity in order"></ol>
         </section>
       </div>
     </div>
     <noscript><p class="noscript">This demonstration needs JavaScript to request quotes and approve a simulated purchase.</p></noscript>
   </main>
-  <footer><a href="/">Back to the donor line</a><p>Pledge Line. A supply desk demonstration, with synthetic suppliers and payments.</p></footer>
+  <footer><a href="/">Back to the donor line</a><p>Pledge Line. A supply desk demonstration. No real money or goods fulfillment.</p></footer>
 </body>
 </html>

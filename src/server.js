@@ -20,6 +20,7 @@ import { receiptFile } from './receipt-file.js';
 import { createProcurementService } from './procurement.js';
 import { createProcurementHttp } from './procurement-http.js';
 import { connectDatabase } from './database.js';
+import { configureRuntimeServices } from './runtime-services.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -200,7 +201,9 @@ export function buildDeps(config, overrides = {}) {
     ? applyFaultDrill(createMockPayPal({ tokens, now, onWebhook: (delivery) => webhooks?.handle(delivery), ...(overrides.mockOptions ?? {}) }), config.faultDrill, tokens)
     : createPayPal({ baseUrl: config.paypal.baseUrl, clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, tokens, fetchImpl: overrides.fetchImpl ?? fetch });
   webhooks = createWebhookHandler({ paypal, ledger, webhookId: config.paypal.webhookId, log, journal: overrides.journal ?? null });
-  const router = overrides.router ?? createRouter({ mode: config.router.mode, apiKey: config.router.apiKey, model: config.router.model });
+  const router = overrides.router ?? overrides.agent ?? (['anthropic', 'haiku'].includes(config.router.mode)
+    ? { mode: config.router.mode, route: async () => ({ intent: 'unclear', amountDollars: 0, empathy: 'none', latencyMs: 0, model: config.router.model, error: 'AI_GATEWAY_REQUIRED' }) }
+    : createRouter({ mode: config.router.mode, apiKey: config.router.apiKey, model: config.router.model }));
   const gate = createGate({ ledger, tokens, now, pendingTtlMs: config.limits.pendingTtlMs });
   // Only the public Render service needs it. Locally the line listens on this computer alone, and Script 8 uses three wrong PINs.
   const pinGuard = config.trustProxy ? createPinGuard({ limit: config.limits.wrongPinsPerHour, windowMs: HOUR_MS, now: () => now().getTime() }) : null;
@@ -208,7 +211,9 @@ export function buildDeps(config, overrides = {}) {
   const calls = createCallService({ config, ledger, paypal, router, gate, now, pinGuard, desk, ...(overrides.sleep ? { sleep: overrides.sleep } : {}) });
   // Off, with every receipt route a 404, unless RECEIPT_SIGNING_KEY is set.
   const receiptSigner = config.receiptSigningKey ? createReceiptSigner(config.receiptSigningKey) : null;
-  return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now, receiptSigner, journal: overrides.journal ?? null };
+  return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now, receiptSigner, journal: overrides.journal ?? null,
+    agent: overrides.agent ?? null, aiGateway: overrides.aiGateway ?? null, suppliers: overrides.suppliers ?? null,
+    checkout: overrides.checkout ?? null, checkoutStore: overrides.checkoutStore ?? null, commerceStatus: overrides.commerceStatus ?? null };
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8', headers = {}) {
@@ -274,15 +279,16 @@ export function isReceiptFile(file, webDir = WEB_DIR) {
   return parts.length === 1 && RECEIPT_FILES.has(parts[0].toLowerCase());
 }
 
-function serveFile(res, file, { hideStaffLinks = false } = {}) {
+function serveFile(res, file, { hideStaffLinks = false, paymentMode = null } = {}) {
   fs.stat(file, (statError, stat) => {
     if (statError || !stat.isFile()) return send(res, 404, { error: 'Not found.' });
     fs.readFile(file, (readError, data) => {
       if (readError) return send(res, 500, { error: 'Something went wrong on our side.' });
       // Render the donor navigation on the server. It stays correct without JavaScript and never sends the key.
-      const body = hideStaffLinks
+      let body = hideStaffLinks
         ? data.toString('utf8').replace(/<!-- staff-only:start -->[\s\S]*?<!-- staff-only:end -->/g, '')
         : data;
+      if (paymentMode) body = body.toString('utf8').replace(/<body(?: data-payments="mock")?>/, `<body data-payments="${paymentMode === 'paypal-sandbox' ? 'paypal-sandbox' : 'mock'}">`);
       send(res, 200, body, STATIC_TYPES[path.extname(file)]);
     });
   });
@@ -347,10 +353,11 @@ function createApi(deps) {
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
   const procurementRoute = createProcurementHttp({
     createService: (scenario) => {
-      const service = createProcurementService({ now: clock, journal: deps.journal ?? null });
+      const service = createProcurementService({ now: clock, journal: deps.journal ?? null, agent: deps.agent ?? null, suppliers: deps.suppliers ?? null });
       return { ...service, request: (rfq) => service.request({ ...rfq, scenario }) };
     },
     send, readJson, limiter: createRateLimiter({ limit: 60, windowMs: MINUTE_MS }), now: () => clock().getTime(),
+    checkout: deps.checkout, checkoutStore: deps.checkoutStore, commerceStatus: deps.commerceStatus ?? (() => ({})),
   });
 
   // A drill asked for with a script, by an unknown name, or on the sandbox before the deadline is refused (A12).
@@ -459,10 +466,12 @@ function createApi(deps) {
   return async function route(req, res, pathname, ip) {
     if (pathname === '/procurement') {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
-      return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'procurement.html'));
+      return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'procurement.html'), { paymentMode: deps.commerceStatus?.().payments ?? 'mock' });
     }
     if (pathname === '/api/procurement' || pathname.startsWith('/api/procurement/')) return procurementRoute(req, res, pathname, ip);
     if (pathname === '/api/storage-status' && req.method === 'GET') return send(res, 200, { procurementJournal: deps.journal ? 'postgres' : 'memory', donorLedger: 'local', livePayments: false });
+    if (pathname === '/api/commerce-status' && req.method === 'GET') return send(res, 200, deps.commerceStatus?.() ?? { suppliers: 'mock', payments: 'mock', sandboxWritesEnabled: false, livePayments: false });
+    if (pathname === '/api/ai/status' && req.method === 'GET') return send(res, 200, deps.aiGateway ? { ...await deps.aiGateway.status(), enabled: true, mainAgent: 'claude-sonnet-5-5', reviewer: 'jev-1.14.0', jevPaymentAuthority: false } : { enabled: false, stopped: true, apiKeyOnly: true, providerBalanceVerified: false });
     if (pathname === '/staff' || pathname === '/api/staff' || pathname.startsWith('/api/staff/')) return staffRoute(req, res, pathname, ip);
     if (Object.hasOwn(RECEIPT_PAGES, pathname) || pathname === '/receipt-key' || pathname === '/api/receipts' || pathname.startsWith('/api/receipts/')) {
       return receiptRoute(req, res, pathname, ip);
@@ -538,7 +547,10 @@ async function main() {
     process.exit(1);
   }
   const database = process.env.DATABASE_URL ? await connectDatabase(process.env.DATABASE_URL) : null;
-  const deps = buildDeps(config, { journal: database?.store });
+  let runtime;
+  try { runtime = await configureRuntimeServices({ config, database }); }
+  catch (error) { await database?.pool.end(); throw error; }
+  const deps = buildDeps(config, { journal: database?.store, ...runtime });
   const server = createServer(deps);
   for (const warning of templateWarnings()) deps.log.error(warning);
   server.listen(config.port, config.host, () => {
@@ -555,5 +567,8 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  main().catch(() => { process.stderr.write('Startup failed. Check the database connection and migration. No credentials are printed.\n'); process.exitCode = 1; });
+  main().catch((error) => {
+    const safe = ['USE_GUARDED_ANTHROPIC_MODE', 'AI_DATABASE_REQUIRED', 'AI_PREPAID_CONFIRMATION_REQUIRED', 'AI_ALLOCATION_INVALID', 'SUPPLIER_MODE_INVALID', 'SUPPLIER_REGISTRY_REQUIRED', 'SUPPLIER_REGISTRY_INVALID', 'SUPPLIER_CREDENTIAL_REQUIRED', 'CHECKOUT_DATABASE_REQUIRED'].includes(error?.code) ? error.code : 'STARTUP_CONFIGURATION_FAILED';
+    process.stderr.write(`${safe}. Check private configuration and explicit migrations. No credentials are printed.\n`); process.exitCode = 1;
+  });
 }

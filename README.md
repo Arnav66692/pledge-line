@@ -12,10 +12,10 @@ This is a pilot for the PayPal AI Hackathon. It runs against the PayPal sandbox 
 
 ## What is live and what is simulated
 
-Live in the pilot, once the keys are in `.env`.
+The donor line supports the following capabilities with the required private configuration. The historical pilot uses `.env`; the new guarded agent has additional setup below.
 
 - PayPal sandbox REST calls for subscriptions, a subscription's transaction list, invoices, webhook checks, and Covered Month's capture, refund and reads. The code refuses any other PayPal address.
-- An AI router reads what the caller means. For the pilot it's Google's Gemini on the free tier, or Claude Haiku 5.5 with `ROUTER_MODE=haiku`. It never decides a yes or a no, and it never touches PayPal. Below, Haiku means whichever router model is set.
+- An AI router reads what the caller means. The integration's `ROUTER_MODE=anthropic` selects Claude Sonnet 5.5 with Jev 1.14 advisory routing/review through a PostgreSQL-backed spending gateway. Gemini remains an explicit historical pilot option; it is not an automatic fallback. Legacy `haiku` mode is refused by integration startup. Models never authorize a yes, an amount or a payment; code does.
 - Speech in and out uses the browser's own speech tools. Chrome and Safari can listen. Firefox uses the typed box.
 
 Simulated in mock mode.
@@ -24,7 +24,7 @@ Simulated in mock mode.
 - `ROUTER_MODE=rules` swaps the AI router for offline keyword rules.
 - Any run with either switch on prints `MOCK RUN, does not count` and never writes a pass.
 
-The separate Supply desk at `/procurement` always uses simulated suppliers and mock settlement, regardless of the donor line's PayPal mode. It makes no PayPal payment or real goods order.
+The separate Supply desk at `/procurement` defaults to simulated suppliers and mock settlement. An operator can configure authenticated MCP sandbox suppliers and a durable PayPal Orders sandbox checkout. The network path is implemented but has not created or captured an actual PayPal order yet. No mode enables real money or verifies goods fulfillment.
 
 The donor, Maria, and the nonprofit, Sunny Hollow Pantry, are fictional.
 
@@ -39,7 +39,7 @@ npm run dev
 
 Open http://localhost:3000, press Start call, and type the PIN 2468 on the keypad. Mock calls go to `.pilot/mock-ledger.jsonl`, apart from the pilot ledger. The line refuses to start in mock or rules mode if `LEDGER_PATH` points at the pilot ledger.
 
-The line allows 20 new calls an hour from one address. On your laptop every browser shares that, so if Start call says to try again later, wait or restart `npm start`, which clears it.
+The line allows 20 new calls an hour from one address. On your laptop every browser shares that, so if Start call says to try again later, wait or restart the mock server with `npm run dev`, which clears it.
 
 ```
 npm test
@@ -50,17 +50,36 @@ The default tests and the mock dry run need no external services or keys. Hosted
 
 ## The supply desk
 
-Open `/procurement`, also linked as **Supply desk** in the navigation. Give the agent a specification, quantity, total USD budget and delivery deadline. It asks three simulated suppliers for quotes, negotiates their staged discounts, and finds the cheapest complete allocation that meets every constraint. Setup, shipping and tax count toward the budget, including when suppliers split the order.
+Open `/procurement`, also linked as **Supply desk** in the navigation. Give the agent a specification, quantity, total USD budget and delivery deadline. By default it asks three simulated suppliers for quotes. With the guarded agent enabled, Sonnet suggests bounded counteroffers and Jev provides advisory review; code validates the replies and finds the cheapest complete allocation. Setup, shipping and tax count toward the budget, including when suppliers split the order. The page compares this plan with the same solver's allocation from initial quotes; those savings apply only to the supplied quote set.
 
-Review the exact suppliers, payees, quantities, delivery terms and total before approving. Approval is bound to that plan and a separate random session key protects its API. Changed or expired quotes prevent a new settlement. An uncertain result blocks later supplier payments; **Recheck and continue the approved plan** checks the same payment identity before continuing any still-valid original legs. Partial settlement stays visible and never implies an automatic refund or replacement purchase.
+Review the exact suppliers, payees, quantities, delivery terms and total before approving. Approval is bound to that plan and a separate random session key protects its API. Changed or expired quotes prevent a new settlement. An uncertain result blocks later supplier payments; reconciliation checks the same payment identity. Partial settlement stays visible and never implies an automatic refund or replacement purchase.
 
-The recovery controls stage lost responses, pending payments, a supplier decline, a changed payee, expired quotes and missed delivery. These are demonstrations with synthetic suppliers and payments, not live supplier MCP connections or PayPal commerce.
+Mock recovery controls stage lost responses, pending payments, a supplier decline, a changed payee, expired quotes and missed delivery. In `PROCUREMENT_SUPPLIER_MODE=mcp-sandbox`, an operator registry instead supplies authenticated MCP endpoints and exact sandbox merchant IDs. Each vendor has a separate PayPal order, buyer approval and capture. Unknown results retain their committed identities and block fresh attempts. The controlled reference supplier is not an independent business, and real supplier participation has not been established.
+
+Sandbox order creation and capture require both `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and a clock at or after November 4, 2026, 9:00 pm PT (`2026-11-05T05:00:00Z`). The switch alone does not bypass the time gate. [Commerce setup](docs/COMMERCE.md) covers the registry, checkout flow, missing credentials and acceptance work. The original pilot checkout and Render remain unchanged.
+
+## Guarded AI setup
+
+The new agent requires explicit `ANTHROPIC_API_KEY` and `TYPESAFE_API_KEY` values in a private `.ai.env`, the runtime database connection, and `AI_PREPAID_ONLY_CONFIRMED=true` after the operator verifies the intended provider organization, prepaid billing and disabled auto-reload. That setting is an operator attestation, not automatic account verification. An API key cannot select the provider's credit pool; some organizations can consume subscription credits before purchased credits. The Anthropic key and billing confirmation are still pending, so no actual composed-agent inference or winning-score claim has been made.
+
+The gateway uses fixed provider hosts and explicit API keys, without an SDK credential chain, subscription/OAuth login, automatic retry or alternate-provider fallback. PostgreSQL reserves a conservative request cost before dispatch. Defaults are $5 for Anthropic and $0.25 for Jev: development allocations, not verified provider balances. Exhaustion, authentication/billing failure or unverified usage latches a shared stop; ambiguous calls retain their full reservation and stop both providers. Restarting does not clear the durable stop.
+
+After configuration and explicit migrations, choose one local startup mode:
+
+```sh
+# Guarded AI with mock PayPal and mock suppliers; API inference still consumes the allocation.
+PAYPAL_MODE=mock ROUTER_MODE=anthropic node --env-file=.database.env --env-file=.ai.env src/server.js
+# Guarded AI with existing sandbox settings and operator-registered MCP suppliers; writes stay gated.
+PAYPAL_MODE=sandbox ROUTER_MODE=anthropic PROCUREMENT_SUPPLIER_MODE=mcp-sandbox node --env-file=.env --env-file=.database.env --env-file=.ai.env --env-file=.suppliers.env src/server.js
+```
+
+Keep keys in those ignored private files, never in command arguments or logs. Check `/api/ai/status` for local allocation/stop status and `/api/commerce-status` for sandbox availability. Neither endpoint proves provider credit balance or production readiness. The frozen [90-point evaluation](docs/AI-EVAL.md) defines the evidence needed; unit tests alone do not establish a score of 72 or 80.
 
 ## PostgreSQL storage
 
-The integration checkout has a Neon PostgreSQL 17 database with migrations 1 and 2 applied and verified TLS. With `DATABASE_URL` configured, the server persists approved procurement operations, stable per-leg request IDs, attempts and outcomes, plus verified PayPal webhook deliveries. It checks the schema before listening and does not fall back to memory if the configured database fails.
+The integration checkout has a Neon PostgreSQL 17 database with verified TLS. The original journal migrations 1 and 2, AI budget schema 1 and sandbox checkout schema 1 have been explicitly applied. With `DATABASE_URL` configured, the server persists mock procurement operations and verified PayPal webhook deliveries; the separate checkout store persists approved network plans, quote evidence, session-key hashes and per-vendor create/capture identities and outcomes. Guarded AI spending uses its own durable allocation records. Startup checks the required schemas and does not fall back to memory if configured storage fails.
 
-The donor-call JSONL ledger remains local. Procurement sessions, supplier state and browser session keys remain in memory; a refresh, session expiry or process restart cannot resume the demo through its current HTTP API. The persistent journal does not make donor actions or procurement ready for real money.
+The donor-call JSONL ledger remains local. Mock procurement sessions and unapproved quote sessions remain in memory. Approved sandbox checkouts can resume from PostgreSQL using the original tab's key retained in `sessionStorage`; return URLs do not grant authority. Losing that key is not permission to start a replacement purchase. There is no automatic restart reconciliation worker. The persistent stores do not make donor actions or procurement ready for real money.
 
 The local `.database.env` holds the restricted runtime connection. Check it and start the integration server with:
 
@@ -69,7 +88,7 @@ node --env-file=.database.env scripts/database-check.js --require-tls
 node --env-file=.database.env src/server.js
 ```
 
-The startup command expects the donor-line configuration in the environment. For an offline donor line, prefix it with `PAYPAL_MODE=mock ROUTER_MODE=rules`. To load existing sandbox/router settings from `.env` too, use `node --env-file=.env --env-file=.database.env src/server.js`. `npm start` loads `.env` only; it does not automatically load `.database.env`.
+The basic startup command expects the donor-line configuration in the environment. For an offline donor line, prefix it with `PAYPAL_MODE=mock ROUTER_MODE=rules`. For guarded AI and optional MCP checkout, use the complete startup commands above so `.ai.env` and any supplier settings are loaded. `npm start` loads `.env` only; it does not automatically load the other private files.
 
 `.database-admin.env` is reserved for explicit administrator migrations. Both local database files are ignored and should remain mode `600`; never commit or print them. See [the database guide](docs/DATABASE.md) for migration commands and permissions, and [production requirements](PRODUCTION.md) for the remaining live-payment gates. This setup does not deploy to Render or change the pilot checkout.
 
@@ -85,9 +104,9 @@ npm run audit -- --fake
 
 The report also has a view called the gate over the plain agent. For each reply the plain agent gave, it marks which sentences hold a claim the audit found unbacked, and says what a donor would have heard instead, from the record that claim was held to. It reads the same claims the tables count, so it is no new score. Pledge Line's own sentences are templates, so a gate on them blocks almost nothing, and the report says so. The scripted fake model follows its rules, so a `--fake` run marks nothing, and the tests script the mistakes.
 
-## Run it against the sandbox
+## Historical sandbox pilot setup
 
-Follow `SETUP.md` first. It covers the PayPal sandbox app, the free Gemini key, and Render.
+`SETUP.md` preserves the original PayPal/Gemini pilot bootstrap below. Do not reseed or redeploy that pilot to validate the integration. Use the guarded startup commands above for the new checkout; its template selects `anthropic`, while the historical pilot explicitly selects `gemini`.
 
 ```
 cp .env.example .env        then fill in the values
@@ -110,8 +129,8 @@ After Script 5 sends its invoice, the record card links to PayPal's payer page. 
 - After a change, the line reads PayPal again and says what PayPal shows. It never claims a status PayPal did not return.
 - Invoices only go to the email already on file with PayPal. A new email from the caller is refused, however it is said, as in "bob [at] gmail [dot] com", "bob @ gmail.com", "bob, at gmail, dot com", "gmail dotcom", "gmail point com", "gmail .com", "gmail. com" or "bob -at- gmail -dot- com". The looser forms, with commas or marks around the words, count only when the caller also says an email word or a mail domain such as gmail, so "pause it at the end of the period, me and my wife are away" is a pause, not an email.
 - A one-time gift needs one clear amount, and code decides that, not the model. A number the caller gave as an age, a correction, a relative word such as "double that", two different numbers, or an amount the router picked that isn't in her words all get "How much would you like to give?", and nothing is created. A question about the gift she has, as in "Is my gift still seventy five dollars a month?", reads that gift from PayPal.
-- The browser receives and sends the PIN for verification, including when it is spoken. The page hides typed input and interim speech, then shows the server-masked text; recognized PIN forms do not appear in the displayed transcript, log, reply or router. This masking covers digits, spoken number words and Unicode number forms the server recognizes. Keys stay in `.env` and are never logged.
-- The words said before an answer are one of four fixed phrases the line owns. Haiku only picks which one, so it can't put a number or a claim in the line's mouth.
+- The browser receives and sends the PIN for verification, including when it is spoken. The page hides typed input and interim speech, then shows the server-masked text; recognized PIN forms do not appear in the displayed transcript, log, reply or router. This masking covers digits, spoken number words and Unicode number forms the server recognizes. Keys stay in private environment files and are never logged.
+- The words said before an answer are one of four fixed phrases the line owns. The router only picks which one, so it can't put a number or a claim in the line's mouth.
 
 ## Is this charge real?
 

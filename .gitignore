@@ -11,3 +11,7 @@ node_modules
 .gstack/
 .database.env
 .database-*.env
+.ai.env
+.suppliers.env
+.suppliers.json
+.sandbox.env

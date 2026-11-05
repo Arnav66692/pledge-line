@@ -1,10 +1,43 @@
 # Setup
 
-These are the accounts and keys the pilot needs. Claude can't create accounts or handle keys, so you do these steps yourself. It takes about 45 minutes. Do sections 1 to 4 on Mon Nov 2, before the pilot clock starts.
+The integration checkout adds guarded Sonnet/Jev inference, authenticated supplier MCP quotes and durable PayPal sandbox checkout. Neon PostgreSQL 17 is connected; journal migrations 1/2, AI schema 1 and checkout schema 1 are applied. The Anthropic key and prepaid billing confirmation are pending. Real supplier participation and actual PayPal order/capture acceptance are also pending. No live money is enabled.
 
-**Keys go in one place only.** Claude already copied `.env.example` to a new file named `.env` in this folder, with every key empty. Paste every key into that file. Never paste a key into chat. `.env` is ignored by git, so it never gets pushed.
+The numbered pilot sections below preserve the original setup instructions. Do not use them to redeploy Render, reseed the pilot or change its checkout while validating this integration.
 
-A few button labels below come from guides, not from the live pages, and are marked "(check)". If a screen doesn't match, stop and tell Claude what it says.
+## Current integration setup
+
+Use Node 22.12 or later and `npm install`. Keep credentials in ignored private files with mode `600`: `.database.env` for the restricted runtime `DATABASE_URL`, `.database-admin.env` for administrator migrations, `.ai.env` for `ANTHROPIC_API_KEY`/`TYPESAFE_API_KEY` and AI settings, and `.suppliers.env` for dedicated supplier MCP tokens. Existing PayPal sandbox settings may remain in `.env`. Never put keys in command arguments, logs, tracked files or chat.
+
+Before enabling guarded inference, verify the intended organization and billing with each provider: purchased/prepaid funding and auto-reload disabled. Only then set `AI_PREPAID_ONLY_CONFIRMED=true` privately. This records your attestation; the application does not verify account billing or provider balance. An API key cannot choose the credit pool, and some organizations use subscription credits before purchased credits. Until that is resolved and the Anthropic key exists, keep paid inference pending. Never substitute a subscription/OAuth token.
+
+Check the existing schemas with the restricted runtime connection. These commands make no model inference or PayPal checkout request:
+
+```sh
+node --env-file=.database.env scripts/database-check.js --require-tls
+node --env-file=.database.env --env-file=.ai.env scripts/ai-check.js
+node --env-file=.database.env scripts/checkout-check.js
+```
+
+Schema changes require an explicit administrator action, not a server startup fallback. [The database guide](docs/DATABASE.md) lists the three migration commands and role grants. AI scope/allocation settings must match their initialized database values; defaults are a $5 Anthropic allocation and $0.25 Jev allocation, not provider balances. A stopped budget remains stopped across restarts.
+
+After keys, billing attestation and schema checks are ready, choose one startup mode:
+
+```sh
+# Guarded AI; mock donor PayPal and mock suppliers. Inference consumes the configured allocation.
+PAYPAL_MODE=mock ROUTER_MODE=anthropic node --env-file=.database.env --env-file=.ai.env src/server.js
+# Guarded AI; PayPal sandbox settings and registered MCP suppliers. No checkout write until both gates pass.
+PAYPAL_MODE=sandbox ROUTER_MODE=anthropic PROCUREMENT_SUPPLIER_MODE=mcp-sandbox node --env-file=.env --env-file=.database.env --env-file=.ai.env --env-file=.suppliers.env src/server.js
+```
+
+For offline development, `npm run dev` keeps rules and mock PayPal. Legacy `haiku` startup is refused; Gemini is available only as an explicit historical pilot configuration and is never a fallback from the new gateway. `npm start` reads `.env` alone, so use the explicit startup commands when loading the additional private files.
+
+Open `/procurement` for the Supply desk. `/api/ai/status` reports local allocation/stop state; `/api/commerce-status` reports sandbox availability. Neither certifies provider balances, merchant permissions or live readiness. Supplier registration, the controlled reference server and the per-vendor buyer approval/capture flow are documented in [COMMERCE.md](docs/COMMERCE.md).
+
+Order creation and capture require both `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and November 4, 2026, 9:00 pm PT or later (`2026-11-05T05:00:00Z`). Leave the switch false until an operator chooses the sandbox acceptance run. The time gate protects the pilot window; crossing it does not grant buyer approval or permission to use live money. The [frozen AI evaluation](docs/AI-EVAL.md) remains unrun with actual providers; do not infer a 72/90 or 80/90 result from unit tests.
+
+## Historical pilot instructions
+
+The following instructions describe the original Gemini/PayPal sandbox pilot. Some dashboard labels were taken from guides and marked "(check)". They are retained for that pilot, not as instructions to modify its current deployment.
 
 ## 1. PayPal sandbox app, about 15 minutes
 

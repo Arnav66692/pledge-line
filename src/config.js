@@ -160,7 +160,7 @@ function parseModes(env, errors) {
   const paypalMode = clean(env.PAYPAL_MODE) ?? 'sandbox';
   const routerMode = clean(env.ROUTER_MODE) ?? 'haiku';
   if (!['sandbox', 'mock'].includes(paypalMode)) errors.push('PAYPAL_MODE must be sandbox or mock');
-  if (!['haiku', 'gemini', 'rules'].includes(routerMode)) errors.push('ROUTER_MODE must be haiku, gemini or rules');
+  if (!['anthropic', 'haiku', 'gemini', 'rules'].includes(routerMode)) errors.push('ROUTER_MODE must be anthropic, haiku, gemini or rules');
   return { paypalMode, routerMode };
 }
 
@@ -189,6 +189,13 @@ function parsePayPal(env, mode, partial, errors) {
 }
 
 function parseRouter(env, mode, partial, errors) {
+  if (mode === 'anthropic') {
+    const apiKey = clean(env.ANTHROPIC_API_KEY);
+    const jevApiKey = clean(env.TYPESAFE_API_KEY);
+    if (!apiKey && !partial) errors.push('ANTHROPIC_API_KEY is required when ROUTER_MODE is anthropic');
+    if (!jevApiKey && !partial) errors.push('TYPESAFE_API_KEY is required for advisory routing when ROUTER_MODE is anthropic');
+    return Object.freeze({ mode, apiKey, jevApiKey, model: 'claude-sonnet-5-5' });
+  }
   if (mode === 'gemini') {
     const apiKey = clean(env.GEMINI_API_KEY);
     if (!apiKey && !partial) errors.push('GEMINI_API_KEY is required when ROUTER_MODE is gemini');
@@ -274,7 +281,7 @@ export function loadConfig(env = process.env, { partial = false } = {}) {
 const NEEDS = {
   paypal: (c) => (c.paypal.mode !== 'sandbox' ? 'PAYPAL_MODE must be sandbox'
     : !c.paypal.clientId || !c.paypal.clientSecret ? 'PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET are required' : null),
-  router: (c) => (!['haiku', 'gemini'].includes(c.router.mode) ? 'ROUTER_MODE must be haiku or gemini'
+  router: (c) => (!['anthropic', 'haiku', 'gemini'].includes(c.router.mode) ? 'ROUTER_MODE must be anthropic, haiku or gemini'
     : !c.router.apiKey ? `${c.router.mode === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY'} is required` : null),
   pin: (c) => (c.pin ? null : 'PILOT_PIN is required'),
   subscription: (c) => (c.demoSubscriptionId ? null : 'DEMO_SUBSCRIPTION_ID is not set and .pilot/state.json has no subscriptionId'),

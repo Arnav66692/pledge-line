@@ -4,15 +4,25 @@ Receipts and "How do you know?" were added Nov 2, 2026 on the `feat/receipts` br
 
 ## The supply desk
 
-Added November 4 in the integration checkout. `/procurement`, linked as **Supply desk**, demonstrates constrained procurement for nonprofit supplies. It always uses simulated suppliers and mock payments, makes no PayPal request, and places no real goods order.
+Added November 4 in the integration checkout. `/procurement`, linked as **Supply desk**, demonstrates constrained procurement for nonprofit supplies. Its default mode uses simulated suppliers and mock payments. The optional `mcp-sandbox` mode connects operator-registered quote endpoints to a separate durable PayPal sandbox checkout. No real money or goods fulfillment is enabled.
 
-- The buyer supplies an exact specification, 1–500 units, a USD budget and a future delivery deadline. Three staged suppliers return and negotiate quotes. A bounded, deterministic allocator chooses the cheapest complete quantity, including each supplier's setup, shipping and tax. It can split an order when one supplier cannot meet it alone.
+- The buyer supplies an exact specification, 1–500 units, a USD budget and a future delivery deadline. Three staged suppliers, or one to five registered MCP endpoints, return quotes. With the guarded agent configured, Sonnet proposes bounded unit-price counteroffers; the supplier decides its response. A deterministic allocator chooses the cheapest complete quantity, including each supplier's setup, shipping and tax. The page compares negotiated and initial-quote allocations using the same solver, without claiming open-market savings.
 - A quote must match the specification, registered supplier/payee, currency, stock and delivery deadline. The page shows rejected offers and the complete cost breakdown. Approval binds the exact allocation and terms fingerprint; fresh quote checks run before settlement. An edited brief needs a new plan and approval.
-- A separate random key authorizes the request's HTTP reads, approval and reconciliation. It stays in the starting page's memory. Concurrent or repeated approvals share the same execution, and uncertain payments retain the original request ID.
+- A separate random key authorizes the request's HTTP reads, approval and reconciliation. Mock sessions keep it in page memory. The sandbox UI retains it in the original tab's `sessionStorage`, while PostgreSQL stores only its hash with the approved checkout. Reloads and PayPal returns can resume that approved workflow; a return URL alone never grants access. Concurrent or repeated attempts retain the same identities.
 - Every settlement is checked against the exact payee, quote, quantity, amount, currency and approved terms before being called confirmed or declined. An unknown result blocks later suppliers. Reconciliation rechecks that payment and may continue only the still-valid original allocation. A partial order stays visible; no automatic rollback, refund or replacement supplier is authorized.
-- Recovery scenarios stage a lost payment answer, a pending payment, supplier refusal, payee substitution, expired quotes and missed delivery. The activity timeline distinguishes attempts, verified outcomes and recovery. Suppliers are not connected through live MCP servers, and the negotiation is staged rather than a live language-model conversation.
+- Mock recovery scenarios stage a lost payment answer, a pending payment, supplier refusal, payee substitution, expired quotes and missed delivery. The activity timeline distinguishes attempts, verified outcomes and recovery. The MCP client uses authenticated HTTP JSON-RPC, explicit tool allowlists, pinned DNS and endpoint checks. The included supplier server is a controlled reference with optional persisted quotes, not evidence of an independent business or goods contract.
 
-When `DATABASE_URL` is configured, the PostgreSQL journal is awaited before each simulated supplier attempt and before recording its confirmed outcome. Configured storage failures block progress. The database preserves the operation binding, stable leg identities and outcomes, but the HTTP session and mock supplier state remain in memory. There is no restart recovery worker or session restoration API. Without `DATABASE_URL`, this feature runs entirely in memory. The donor-call ledger is unchanged. [The database guide](docs/DATABASE.md) describes the contract and current boundary.
+When `DATABASE_URL` is configured, the original PostgreSQL journal is awaited before simulated settlement. Network checkout instead persists immutable approved terms and per-vendor create/capture state in the separate checkout store before each PayPal write. Each vendor requires its own PayPal buyer approval, an explicit capture request and authoritative order/capture reads. Unknown results block further fresh attempts. New writes require both the time gate at November 4, 9:00 pm PT and `PAYPAL_SANDBOX_CHECKOUT_WRITES=true`. No actual PayPal order or capture has been performed through this new path yet.
+
+Mock supplier state and unapproved quote sessions remain in memory. Durable sandbox checkout can be read and reconciled after process replacement with its original session key, but no automatic recovery worker or donor-ledger migration exists. [Commerce setup](docs/COMMERCE.md) and [the database guide](docs/DATABASE.md) describe the current boundary.
+
+## The guarded Sonnet and Jev agent
+
+`ROUTER_MODE=anthropic` selects Claude Sonnet 5.5 as the main agent and Jev 1.14 as an advisory classifier/reviewer. A Jev quick route is accepted only for a limited non-financial intent when its confidence and selected-choice probability are both at least 0.99 and deterministic rules agree. Other eligible requests go to Sonnet. A strong model disagreement involving a mutation becomes unclear. PIN, pending approval and consent-like turns stay in code; neither model grants consent or payment authority. Procurement counteroffers and Jev's displayed plan review remain advisory, with final constraints and payment permissions enforced independently.
+
+Both providers use a fixed-host API-key gateway and a durable PostgreSQL budget. Defaults are $5 Anthropic and $0.25 Jev project allocations, not provider account balances. Each request reserves a conservative maximum before dispatch. Exhaustion, invalid billing/authentication or unverified usage latches a stop for both providers; an uncertain request keeps its full reservation. No automatic retry, subscription/OAuth credential chain or alternate-provider fallback clears it.
+
+Startup requires the explicit keys and `AI_PREPAID_ONLY_CONFIRMED=true`. The operator must first verify the correct prepaid organization and disabled auto-reload. That assertion is not an account check, and a key cannot choose a provider's credit pool. The Anthropic key and billing confirmation are pending, so no real composed-agent inference has run. [AI-EVAL.md](docs/AI-EVAL.md) remains the frozen 90-point rubric; mocked tests do not demonstrate a 72- or 80-point result.
 
 ## Receipts
 
@@ -47,7 +57,7 @@ Added Nov 2 on the `feat/staff-view` branch. A small nonprofit's coordinator ope
 
 ## The "How do you know?" intent
 
-A donor can ask "How do you know?", "Are you sure?", "Says who?", "Prove it." or "How can I be sure that's right?". The router names this `how_do_you_know` in rules mode, in Gemini mode and in Haiku mode.
+A donor can ask "How do you know?", "Are you sure?", "Says who?", "Prove it." or "How can I be sure that's right?". The router names this `how_do_you_know` in rules mode, the guarded Anthropic mode and the historical Gemini mode.
 
 - Like every gift intent, it acts only after the PIN passes. Before that the line asks for the PIN, and a locked call reads nothing.
 - After the PIN, the line reads the call's own subscription again with a fresh GET. It says "I just checked PayPal's record again." and then the sentence that reads the gift's amount and status from that fresh read.
@@ -112,7 +122,7 @@ The other things a caller can be told no about, such as a new email or a wrong P
 
 Added Tue Nov 3 on the `feat/self-resolving` branch, to merge only after the pilot is graded. There is no AI planner, so the AI still only routes.
 
-`src/amount.js` holds the amount parser, moved from `router.js`, and `readGift(text)`, which gives the amount only when it is clearly the gift. `settleGiftRoute` holds every router's answer to the caller's own words, in `call.js`, so the rules router, Gemini and Haiku all pass through it.
+`src/amount.js` holds the amount parser, moved from `router.js`, and `readGift(text)`, which gives the amount only when it is clearly the gift. `settleGiftRoute` holds every router's answer to the caller's own words, in `call.js`, so the rules router, guarded agent and historical Gemini router all pass through it.
 
 - **It asks, and creates nothing,** on an age ("I'm 75"), a correction with or without a number after it ("I mean double that", "scratch that"), a relative word (double, twice, half, same, more), two different numbers, a hedge ("about fifty"), a negation ("I don't want to give fifty dollars"), an amount per month, or a bare number not said as money.
 - **A question or a statement about the gift she has goes to the gift's status.** "Is my gift still seventy five dollars a month?", "Did you take seventy five dollars?" and "I gave fifty dollars last month" read PayPal and offer nothing.

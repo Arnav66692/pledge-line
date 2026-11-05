@@ -1,5 +1,5 @@
-// A bounded procurement experiment with simulated suppliers and simulated payments.
-// It never calls PayPal. Production supplier authority, persistence and merchant onboarding are separate work.
+// Quote collection and exact all-in allocation. Network checkout is a separate durable PayPal sandbox workflow.
+// The approval methods in this module dispatch simulated settlement only.
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createMockSuppliers, PROCUREMENT_SCENARIOS } from './supplier-mock.js';
 
@@ -64,9 +64,12 @@ function readQuote(raw, supplier, request, at) {
   return { ...quote, ...costs(quote, quote.maxQuantity) };
 }
 
+export { readQuote as validateProcurementQuote };
+
 function allocation(quote, quantity) {
   return { supplierId: quote.supplierId, supplierName: quote.supplierName, payeeId: quote.payeeId,
-    quoteId: quote.quoteId, unitPriceCents: quote.unitPriceCents, currency: quote.currency,
+    quoteId: quote.quoteId, unitPriceCents: quote.unitPriceCents, currency: quote.currency, taxBps: quote.taxBps,
+    specificationHash: quote.specificationHash,
     ...costs(quote, quantity), deliveryAt: quote.deliveryAt, expiresAt: quote.expiresAt };
 }
 
@@ -103,7 +106,7 @@ const sameQuote = (a, b) => JSON.stringify(quoteBinding(a)) === JSON.stringify(q
  * A journal, when configured, is awaited before every simulated side effect. Sessions are still in memory.
  */
 export function createProcurementService({ suppliers = null, now = () => new Date(),
-  tokenFactory = () => randomBytes(32).toString('hex'), journal = null, organizationId = 'demo-organization', maxSessions = 200 } = {}) {
+  tokenFactory = () => randomBytes(32).toString('hex'), journal = null, agent = null, organizationId = 'demo-organization', maxSessions = 200 } = {}) {
   if (!integer(maxSessions, 1, 10000)) throw new ProcurementError('Procurement session limit is invalid.');
   const sessions = new Map();
   const time = () => new Date(now()).getTime();
@@ -210,30 +213,52 @@ export function createProcurementService({ suppliers = null, now = () => new Dat
       const request = readRequest(raw, time());
       if (sessions.size >= maxSessions) throw new ProcurementError('This simulated procurement service has reached its session limit.', 429);
       const adapters = suppliers ?? createMockSuppliers({ scenario: request.scenario, now });
-      if (!Array.isArray(adapters) || adapters.length < 1 || adapters.length > 5) throw new ProcurementError('Configure one to five simulated supplier adapters.');
+      if (!Array.isArray(adapters) || adapters.length < 1 || adapters.length > 5) throw new ProcurementError('Configure one to five supplier adapters.');
+      const network = adapters.every((supplier) => supplier?.mode === 'mcp-sandbox');
+      if (network && request.scenario !== 'normal') throw new ProcurementError('Mock fault scenarios cannot be applied to network suppliers.');
       const registry = new Map();
       for (const supplier of adapters) {
-        if (!supplier || supplier.mode !== 'simulated' || !/^[a-z0-9-]{1,48}$/.test(supplier.id) || registry.has(supplier.id) ||
+        if (!supplier || supplier.mode !== (network ? 'mcp-sandbox' : 'simulated') || !/^[a-z0-9-]{1,48}$/.test(supplier.id) || registry.has(supplier.id) ||
             typeof supplier.name !== 'string' || supplier.name.length > 100 || typeof supplier.payeeId !== 'string' ||
-            !['quote', 'negotiate', 'getQuote', 'settle', 'getSettlement'].every((name) => typeof supplier[name] === 'function')) {
-          throw new ProcurementError('A simulated supplier adapter is invalid.');
+            !(network ? ['quote', 'negotiate', 'getQuote'] : ['quote', 'negotiate', 'getQuote', 'settle', 'getSettlement']).every((name) => typeof supplier[name] === 'function')) {
+          throw new ProcurementError('A supplier adapter is invalid or mixes network and mock authority.');
         }
         registry.set(supplier.id, supplier);
       }
-      const state = { id: randomUUID(), status: 'collecting_quotes', mode: { suppliers: 'simulated', payments: 'mock' }, request,
+      const state = { id: randomUUID(), status: 'collecting_quotes', mode: { suppliers: network ? 'mcp' : 'simulated', payments: network ? 'paypal-sandbox' : 'mock' }, request,
         quotes: [], rejections: [], proposal: null, settlements: [], timeline: [] };
       const session = { state, registry, approved: false, operation: null };
       sessions.set(state.id, session);
-      event(session, 'request', 'Comparing simulated suppliers for the exact specification, complete quantity, all-in budget and deadline.');
-      const results = await Promise.all([...registry.values()].map(async (supplier) => {
+      event(session, 'request', network ? 'Contacting registered MCP supplier endpoints and checking the exact specification, complete quantity, all-in budget and deadline.' : 'Comparing simulated suppliers for the exact specification, complete quantity, all-in budget and deadline.');
+      const initialResults = await Promise.all([...registry.values()].map(async (supplier) => {
         try {
           const initial = readQuote(await supplier.quote(copy(request)), supplier, request, time());
-          const negotiated = readQuote(await supplier.negotiate({ request: copy(request), quote: copy(initial) }), supplier, request, time());
+          return { supplier, initial };
+        } catch (error) {
+          return { rejection: { supplierId: supplier.id, reason: error instanceof ProcurementError ? error.message : 'Supplier quote was unavailable.' } };
+        }
+      }));
+      const initialQuotes = initialResults.filter((item) => item.initial).map((item) => item.initial);
+      let offers = [];
+      if (agent && initialQuotes.length) {
+        try { offers = await agent.planNegotiation({ request: copy(request), quotes: copy(initialQuotes) }); }
+        catch { throw new ProcurementError('The main agent could not verify a negotiation plan. No purchase was approved.', 503); }
+        event(session, 'agent_counteroffers', 'Anthropic proposed bounded counteroffers. Supplier prices and every order constraint are checked by code.');
+      }
+      const results = await Promise.all(initialResults.map(async (item) => {
+        if (item.rejection) return item;
+        const { supplier, initial } = item;
+        try {
+          const offer = offers.find((candidate) => candidate.supplierId === supplier.id);
+          // The registered display name belongs to our UI, not to the supplier's strict commercial quote schema.
+          const { supplierName, ...supplierQuote } = copy(initial);
+          const negotiated = readQuote(await supplier.negotiate({ request: copy(request), quote: supplierQuote, ...(offer ? { counterOffer: { unitPriceCents: offer.unitPriceCents } } : {}) }), supplier, request, time());
           const cheaper = negotiated.maxQuantity === initial.maxQuantity && negotiated.minQuantity === initial.minQuantity &&
             negotiated.unitPriceCents <= initial.unitPriceCents && negotiated.setupCents <= initial.setupCents &&
             negotiated.shippingCents <= initial.shippingCents && negotiated.taxBps <= initial.taxBps;
           return { quote: { ...(cheaper ? negotiated : initial), negotiated: cheaper && negotiated.totalCents < initial.totalCents,
-            initialTotalCents: initial.totalCents } };
+            initialTotalCents: initial.totalCents, initialUnitPriceCents: initial.unitPriceCents,
+            counterOfferCents: offer?.unitPriceCents ?? null, counterOfferReason: offer?.rationale ?? null } };
         } catch (error) {
           return { rejection: { supplierId: supplier.id, reason: error instanceof ProcurementError ? error.message : 'Supplier quote was unavailable.' } };
         }
@@ -243,6 +268,10 @@ export function createProcurementService({ suppliers = null, now = () => new Dat
         else state.rejections.push(result.rejection);
       }
       const plan = selectPlan(state.quotes, request);
+      const baseline = selectPlan(initialQuotes, { ...request, budgetCents: MAX_CENTS });
+      state.comparison = { method: 'Same complete-quantity solver using initial quotes, without negotiation.', baselineTotalCents: baseline?.totalCents ?? null,
+        baselineWithinBudget: Boolean(baseline && baseline.totalCents <= request.budgetCents), negotiatedTotalCents: plan?.totalCents ?? null,
+        savingsCents: baseline && plan ? baseline.totalCents - plan.totalCents : null, scope: network ? 'Registered sandbox supplier quotes only.' : 'Simulated supplier quotes only.' };
       if (!plan) {
         state.status = 'no_feasible_quote';
         event(session, 'no_feasible_quote', 'No complete order satisfies every constraint. Nothing was purchased.');
@@ -250,13 +279,19 @@ export function createProcurementService({ suppliers = null, now = () => new Dat
       }
       const expiresAt = new Date(Math.min(...plan.allocations.map((a) => Date.parse(a.expiresAt)))).toISOString();
       const terms = { request, allocations: plan.allocations, totalCents: plan.totalCents, expiresAt,
-        disclosure: 'Simulated payments. Supplier payments are not atomic. No automatic refunds or replacement purchases are authorized.' };
+        disclosure: network ? 'PayPal sandbox checkout requires buyer approval. Supplier payments are not atomic. No live money, automatic refunds or replacement purchases are authorized. A supplier connection does not verify fulfillment.' : 'Simulated payments. Supplier payments are not atomic. No automatic refunds or replacement purchases are authorized.' };
       const confirmationToken = tokenFactory();
       if (typeof confirmationToken !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(confirmationToken)) throw new ProcurementError('Approval token generator is misconfigured.', 500);
       state.proposal = { id: randomUUID(), termsHash: hash(terms), confirmationToken, expiresAt,
         totalCents: plan.totalCents, currency: request.currency, quantity: request.quantity, allocations: plan.allocations,
         disclosure: terms.disclosure };
       session.terms = terms;
+      if (agent) {
+        const reviewed = copy(state.proposal); delete reviewed.confirmationToken;
+        try { state.review = await agent.reviewProposal({ request: copy(request), proposal: reviewed, quotes: copy(state.quotes) }); }
+        catch { throw new ProcurementError('The reviewer is unavailable. No purchase was approved.', 503); }
+        event(session, 'advisory_review', state.review.decision === 'within_limits' ? 'Jev returned an advisory constraint review. It grants no payment permission.' : 'Jev flagged the plan for closer review. Exact terms and payment permissions remain enforced by code.');
+      }
       state.status = 'awaiting_approval';
       event(session, 'proposal', 'A complete allocation is ready. Review every supplier, amount, specification and deadline before approving.');
       return stateOf(session);
@@ -265,6 +300,7 @@ export function createProcurementService({ suppliers = null, now = () => new Dat
     async approve(id, approval) {
       const session = find(id);
       const { state } = session;
+      if (state.mode.payments !== 'mock') throw new ProcurementError('Network suppliers require the durable PayPal sandbox checkout flow.', 409);
       if (!state.proposal) throw new ProcurementError('There is no feasible proposal to approve.');
       if (!has(approval) || !equal(approval.confirmationToken, state.proposal.confirmationToken) || !equal(approval.termsHash, state.proposal.termsHash)) {
         throw new ProcurementError('Approval does not match this exact proposal.', 409);

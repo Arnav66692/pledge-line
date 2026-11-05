@@ -248,7 +248,9 @@ export function createRouter({ mode, apiKey, model, timeoutMs = 6000, client = n
     };
   }
   if (mode !== 'haiku') throw new Error(`unknown router mode ${mode}`);
-  const anthropic = client ?? new Anthropic({ apiKey });
+  // Legacy injected clients remain usable in contract tests. Application traffic must use the durable gateway.
+  if (!client) throw new Error('GUARDED_AI_GATEWAY_REQUIRED');
+  const anthropic = client;
 
   async function route({ text, state }) {
     const started = performance.now();
