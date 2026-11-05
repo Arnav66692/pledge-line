@@ -3,13 +3,22 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { configureRuntimeServices, dollarsToNanos, readSupplierRegistry, SANDBOX_WRITE_UNLOCK_AT } from '../src/runtime-services.js';
+import { configureRuntimeServices, dollarsToNanos, readSupplierRegistry, sandboxWritePolicy, SANDBOX_WRITE_UNLOCK_AT } from '../src/runtime-services.js';
 import { createRouter } from '../src/router.js';
 import { createProcurementService } from '../src/procurement.js';
 import { createMockSuppliers } from '../src/supplier-mock.js';
 
 test('legacy unguarded Anthropic construction is disabled and subscription credentials cannot be a fallback', () => {
   assert.throws(() => createRouter({ mode: 'haiku', apiKey: 'synthetic-key' }), /GUARDED_AI_GATEWAY_REQUIRED/);
+});
+
+test('placeholder lab merchants cannot enable payment writes even after the time gate with a true switch', () => {
+  const after = new Date('2026-11-05T06:00:00Z');
+  assert.deepEqual(sandboxWritePolicy({ LAB_MERCHANT_MODE: 'placeholder', PAYPAL_SANDBOX_CHECKOUT_WRITES: 'true' }, after), { enabled: false, blockedReason: 'placeholder_merchants' });
+  assert.deepEqual(sandboxWritePolicy({ PAYPAL_SANDBOX_CHECKOUT_WRITES: 'true' }, '2026-11-05T04:00:00Z'), { enabled: false, blockedReason: 'time_gate' });
+  assert.equal(sandboxWritePolicy({ PAYPAL_SANDBOX_CHECKOUT_WRITES: 'true' }, 'invalid date').enabled, false);
+  assert.deepEqual(sandboxWritePolicy({ PAYPAL_SANDBOX_CHECKOUT_WRITES: 'false' }, after), { enabled: false, blockedReason: 'operator_disabled' });
+  assert.deepEqual(sandboxWritePolicy({ LAB_MERCHANT_MODE: 'configured', PAYPAL_SANDBOX_CHECKOUT_WRITES: 'true' }, after), { enabled: true, blockedReason: null });
 });
 
 test('paid runtime requires durable storage and operator prepaid confirmation before schema or API access', async () => {

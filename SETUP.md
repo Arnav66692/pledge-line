@@ -1,6 +1,6 @@
 # Setup
 
-The integration checkout adds guarded Sonnet/Jev inference, authenticated supplier MCP quotes and durable PayPal sandbox checkout. Neon PostgreSQL 17 is connected; journal migrations 1/2, AI schema 1 and checkout schema 1 are applied. The Anthropic key and prepaid billing confirmation are pending. Real supplier participation and actual PayPal order/capture acceptance are also pending. No live money is enabled.
+The integration checkout adds guarded Sonnet/Jev inference, authenticated supplier MCP quotes and durable PayPal sandbox checkout. Neon PostgreSQL 17 is connected; journal migrations 1/2, AI schema 1 and checkout schema 1 are applied. Both API keys authenticate. One tiny Anthropic Haiku probe passed; prepaid billing confirmation and the composed-agent evaluation are pending. The controlled supplier lab is available; independent supplier participation and actual PayPal order/capture acceptance remain pending. No live money is enabled.
 
 The numbered pilot sections below preserve the original setup instructions. Do not use them to redeploy Render, reseed the pilot or change its checkout while validating this integration.
 
@@ -8,7 +8,7 @@ The numbered pilot sections below preserve the original setup instructions. Do n
 
 Use Node 22.12 or later and `npm install`. Keep credentials in ignored private files with mode `600`: `.database.env` for the restricted runtime `DATABASE_URL`, `.database-admin.env` for administrator migrations, `.ai.env` for `ANTHROPIC_API_KEY`/`TYPESAFE_API_KEY` and AI settings, and `.suppliers.env` for dedicated supplier MCP tokens. Existing PayPal sandbox settings may remain in `.env`. Never put keys in command arguments, logs, tracked files or chat.
 
-Before enabling guarded inference, verify the intended organization and billing with each provider: purchased/prepaid funding and auto-reload disabled. Only then set `AI_PREPAID_ONLY_CONFIRMED=true` privately. This records your attestation; the application does not verify account billing or provider balance. An API key cannot choose the credit pool, and some organizations use subscription credits before purchased credits. Until that is resolved and the Anthropic key exists, keep paid inference pending. Never substitute a subscription/OAuth token.
+Before enabling guarded inference, verify the intended organization and billing with each provider: purchased/prepaid funding and auto-reload disabled. Only then set `AI_PREPAID_ONLY_CONFIRMED=true` privately. This records your attestation; the application does not verify account billing or provider balance. An API key cannot choose the credit pool, and some organizations use subscription credits before purchased credits. Until funding is verified, keep general paid inference disabled. Never substitute a subscription/OAuth token. [AI-STATUS.md](docs/AI-STATUS.md) records the separately authorized sub-cent key probe and its limits.
 
 Check the existing schemas with the restricted runtime connection. These commands make no model inference or PayPal checkout request:
 
@@ -33,7 +33,7 @@ For offline development, `npm run dev` keeps rules and mock PayPal. Legacy `haik
 
 Open `/procurement` for the Supply desk. `/api/ai/status` reports local allocation/stop state; `/api/commerce-status` reports sandbox availability. Neither certifies provider balances, merchant permissions or live readiness. Supplier registration, the controlled reference server and the per-vendor buyer approval/capture flow are documented in [COMMERCE.md](docs/COMMERCE.md).
 
-Order creation and capture require both `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and November 4, 2026, 9:00 pm PT or later (`2026-11-05T05:00:00Z`). Leave the switch false until an operator chooses the sandbox acceptance run. The time gate protects the pilot window; crossing it does not grant buyer approval or permission to use live money. The [frozen AI evaluation](docs/AI-EVAL.md) remains unrun with actual providers; do not infer a 72/90 or 80/90 result from unit tests.
+Order creation and capture require both `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and November 4, 2026, 9:00 pm PT or later (`2026-11-05T05:00:00Z`). The controlled lab's `LAB_MERCHANT_MODE=placeholder` blocks writes even when those conditions pass. Leave the switch false until authorized sandbox merchants are configured and an operator chooses the acceptance run. Crossing the time gate does not grant buyer approval or permission to use live money. Start and check the three controlled HTTP suppliers using [SUPPLIER-LAB.md](docs/SUPPLIER-LAB.md). The [frozen AI evaluation](docs/AI-EVAL.md) remains unrun with actual providers; do not infer a 72/90 or 80/90 result from unit tests.
 
 ## Historical pilot instructions
 

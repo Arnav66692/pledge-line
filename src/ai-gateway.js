@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 
 const BODY_LIMIT = 64 * 1024;
 const MODELS = Object.freeze({ anthropic: { model: 'claude-sonnet-5-5', input: 2_000, output: 10_000 }, jev: { model: 'jev-1.14.0', input: 42, output: 0 } });
+// Published Haiku 5.5 short-prompt price is $0.10/$0.50 per million input/output tokens.
+// Reserve at the higher $0.50/$2.50 tier even though this fixed smoke cannot approach 100k input tokens.
+// https://platform.claude.com/docs/en/models/haiku-5-5/overview, checked November 4, 2026.
+const HAIKU_SMOKE = Object.freeze({ model: 'claude-haiku-5-5', input: 100, output: 500, reserveInput: 500, reserveOutput: 2500, inputCeiling: 100000 });
+const SMOKE_CAP_NANOS = 10_000_000;
 const ENDPOINTS = Object.freeze({ anthropic: 'https://api.anthropic.com/v1/messages', jev: 'https://api.typesafe.ai/v1/systemone' });
 export class AiGatewayError extends Error {
   constructor(code, provider = null) { super(code); this.name = 'AiGatewayError'; this.code = code; this.provider = provider; }
@@ -59,8 +64,7 @@ async function boundedText(response) {
   } finally { reader.releaseLock(); }
   return Buffer.concat(chunks).toString('utf8');
 }
-function usageCost(provider, payload, inputBound, outputBound) {
-  const rate = MODELS[provider];
+function usageCost(provider, payload, inputBound, outputBound, rate = MODELS[provider]) {
   const usage = payload?.usage;
   if (payload?.model !== rate.model) fail('AI_PRICING_MISMATCH', provider);
   if (!usage || !Number.isSafeInteger(usage.input_tokens) || usage.input_tokens < 0 || usage.input_tokens > inputBound ||
@@ -69,6 +73,14 @@ function usageCost(provider, payload, inputBound, outputBound) {
   const cost = usage.input_tokens * rate.input + usage.output_tokens * rate.output;
   if (!Number.isSafeInteger(cost)) fail('AI_USAGE_UNVERIFIED', provider);
   return cost;
+}
+
+function reservation(provider, body, rate) {
+  const inputBound = Buffer.byteLength(encode(body)) * 4 + 8192;
+  const outputBound = provider === 'anthropic' ? body.max_tokens : 0;
+  if (rate.inputCeiling && inputBound > rate.inputCeiling) fail('AI_SMOKE_CAP_EXCEEDED', provider);
+  const maxCostNanos = inputBound * (rate.reserveInput ?? rate.input) + outputBound * (rate.reserveOutput ?? rate.output);
+  return { inputBound, outputBound, maxCostNanos };
 }
 
 /** Only explicit API keys and fixed API hosts are accepted. No SDK credential chain, OAuth, cookies or retry exists. */
@@ -87,15 +99,15 @@ export function createAiGateway({ budget, anthropicApiKey, jevApiKey, fetchImpl 
     haltLocal();
     try { await budget.trip({ reason, provider }); } catch { /* Local stop stays latched; the unresolved durable reservation also blocks dispatch. */ }
   }
-  async function dispatch(provider, body) {
+  async function dispatch(provider, body, rate = MODELS[provider], capNanos = null) {
     if (locallyStopped) fail('AI_STOPPED', provider);
     const key = keys[provider];
     if (typeof key !== 'string' || !key.trim() || /\s/.test(key) || (provider === 'anthropic' && key.startsWith('sk-ant-oat'))) fail('AI_API_KEY_REQUIRED', provider);
-    if (models[provider] !== MODELS[provider].model) fail('AI_UNPRICED_MODEL', provider);
+    if (rate === MODELS[provider] ? models[provider] !== rate.model : provider !== 'anthropic' || rate !== HAIKU_SMOKE) fail('AI_UNPRICED_MODEL', provider);
+    if (body.model !== rate.model) fail('AI_UNPRICED_MODEL', provider);
     const encoded = encode(body);
-    const inputBound = Buffer.byteLength(encoded) * 4 + 8192;
-    const outputBound = provider === 'anthropic' ? body.max_tokens : 0;
-    const maxCostNanos = inputBound * MODELS[provider].input + outputBound * MODELS[provider].output;
+    const { inputBound, outputBound, maxCostNanos } = reservation(provider, body, rate);
+    if (capNanos !== null && maxCostNanos > capNanos) fail('AI_SMOKE_CAP_EXCEEDED', provider);
     const requestId = randomUUID();
     let permission;
     try { permission = await budget.reserve({ provider, requestId, maxCostNanos }); }
@@ -130,7 +142,7 @@ export function createAiGateway({ budget, anthropicApiKey, jevApiKey, fetchImpl 
       let payload;
       try { payload = JSON.parse(text); } catch { await trip('usage_unverified', provider); fail('AI_RESPONSE_INVALID', provider); }
       let costNanos;
-      try { costNanos = usageCost(provider, payload, inputBound, outputBound); }
+      try { costNanos = usageCost(provider, payload, inputBound, outputBound, rate); }
       catch (error) { await trip(error.code === 'AI_PRICING_MISMATCH' ? 'pricing_mismatch' : 'usage_unverified', provider); throw error; }
       let settlement;
       try { settlement = await budget.settle({ requestId, costNanos }); }
@@ -148,15 +160,28 @@ export function createAiGateway({ budget, anthropicApiKey, jevApiKey, fetchImpl 
       fail(interrupted ? 'AI_REQUEST_INTERRUPTED' : 'AI_PROVIDER_UNAVAILABLE', provider);
     } finally { clearTimeout(timer); controllers.delete(controller); }
   }
-  function enqueue(provider, body) {
+  function enqueue(provider, body, rate = MODELS[provider], capNanos = null) {
     if (locallyStopped) return Promise.reject(new AiGatewayError('AI_STOPPED', provider));
     if (queued >= 16) return Promise.reject(new AiGatewayError('AI_BUSY', provider));
     queued += 1;
-    const task = queue.then(() => dispatch(provider, body));
+    const task = queue.then(() => dispatch(provider, body, rate, capNanos));
     queue = task.catch(() => {});
     return task.finally(() => { queued -= 1; });
   }
   return {
+    async anthropicSmoke() {
+      // The narrow probe is intentionally not a general Haiku model selector or prepaid-billing attestation.
+      const body = { model: HAIKU_SMOKE.model, system: 'Return exactly OK.', messages: [{ role: 'user', content: 'Reply OK.' }],
+        max_tokens: 8, thinking: { type: 'disabled' }, output_config: { effort: 'low' } };
+      validateAnthropic(body);
+      const estimate = reservation('anthropic', body, HAIKU_SMOKE);
+      if (estimate.maxCostNanos > SMOKE_CAP_NANOS) fail('AI_SMOKE_CAP_EXCEEDED', 'anthropic');
+      const response = await enqueue('anthropic', body, HAIKU_SMOKE, SMOKE_CAP_NANOS);
+      return { response, accounting: { reservedMaxNanos: estimate.maxCostNanos,
+        estimatedChargeNanos: usageCost('anthropic', response, estimate.inputBound, estimate.outputBound, HAIKU_SMOKE),
+        authorizedCapNanos: SMOKE_CAP_NANOS, providerBalanceVerified: false,
+        pricingSource: 'https://platform.claude.com/docs/en/models/haiku-5-5/overview' } };
+    },
     anthropic({ system, messages, tools, tool_choice, max_tokens = 1024 } = {}) {
       const body = JSON.parse(encode({ model: anthropicModel, system, messages, max_tokens, thinking: { type: 'between_tools' }, output_config: { effort: 'low' },
         ...(tools !== undefined ? { tools } : {}), ...(tool_choice !== undefined ? { tool_choice } : {}) }));

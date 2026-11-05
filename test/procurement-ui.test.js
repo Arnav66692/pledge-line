@@ -305,7 +305,8 @@ test('the default deadline is a local Friday at 17:00 with at least three full d
 });
 
 const commerce = (sandboxWritesEnabled = true) => ({ payments: 'paypal-sandbox', suppliers: 'mcp',
-  supplierProvenance: 'MCP sandbox endpoints', sandboxWritesEnabled, sandboxWriteUnlockAt: '2026-11-05T05:00:00Z' });
+  supplierProvenance: 'MCP sandbox endpoints', sandboxWritesEnabled,
+  sandboxWriteBlockedReason: sandboxWritesEnabled ? null : 'time_gate', sandboxWriteUnlockAt: '2026-11-05T05:00:00Z' });
 
 function networkState(overrides = {}) {
   return state({ mode: { suppliers: 'mcp', payments: 'paypal-sandbox' }, ...overrides });
@@ -324,6 +325,73 @@ const savedCheckout = () => new Map([[storageKey, JSON.stringify({ id: sessionId
 const descendants = (element) => [element, ...element.children.flatMap(descendants)];
 const checkoutButtons = (ui) => descendants(ui.byId('checkout-legs')).filter((element) => element.tagName === 'BUTTON');
 const checkoutLinks = (ui) => descendants(ui.byId('checkout-legs')).filter((element) => element.tagName === 'A');
+
+test('placeholder merchants stay clearly unpaid after the time gate while a lab plan can be saved', async () => {
+  const blockedCommerce = { ...commerce(false), sandboxWriteBlockedReason: 'placeholder_merchants',
+    supplierProvenance: 'Controlled sandbox supplier lab. Merchant IDs are placeholders and checkout writes are disabled.' };
+  const ui = browser({ now: Date.parse('2026-11-06T12:00:00Z'), mode: 'paypal-sandbox', initialResponses: [blockedCommerce] });
+  await ui.ready();
+  assert.match(ui.byId('commerce-status').textContent, /placeholder merchant IDs/);
+  assert.match(ui.byId('commerce-status').textContent, /authorized PayPal sandbox merchants/);
+  assert.match(ui.byId('commerce-status').textContent, /Passing the time gate alone will not enable checkout/);
+  assert.doesNotMatch(ui.byId('commerce-status').textContent, /Earliest unlock|Refresh availability after the gate opens/);
+  assert.match(ui.byId('demo-disclosure').textContent, /Controlled sandbox supplier lab/);
+  assert.equal(ui.byId('approve').textContent, 'Save lab plan');
+  assert.match(ui.byId('approval-consent').textContent, /placeholder merchant IDs/);
+
+  const plan = networkState();
+  plan.proposal.expiresAt = '2026-11-06T13:00:00Z';
+  await ui.create(plan);
+  assert.match(ui.byId('allocations').textContent, /Placeholder sandbox payee/);
+  assert.doesNotMatch(ui.byId('allocations').textContent, /Registered sandbox payee/);
+  assert.match(ui.byId('terms-disclosure').textContent, /placeholder merchant IDs/);
+  ui.respond({ state: networkState({ proposal: plan.proposal, status: 'awaiting_checkout', checkout: { legs: checkoutLegs() } }), commerce: blockedCommerce });
+  await ui.approve();
+  assert.equal(ui.requests[2].path, `${sessionPath}/approve`, 'Saving a lab plan still binds the exact approved terms.');
+  assert.equal(ui.byId('state-label').textContent, 'Lab plan saved');
+  assert.equal(ui.byId('prepare-checkout').disabled, true);
+  await ui.byId('prepare-checkout').fire('click');
+  assert.equal(ui.requests.length, 3, 'A past unlock time does not create a sandbox order.');
+
+  const legs = checkoutLegs('ready_to_capture');
+  legs[1].status = 'awaiting_paypal_approval';
+  ui.respond({ state: networkState({ proposal: plan.proposal, status: 'partial', checkout: { legs } }), commerce: blockedCommerce });
+  await ui.byId('reconcile').fire('click');
+  assert.ok(checkoutButtons(ui).every((button) => button.disabled));
+  assert.ok(checkoutLinks(ui).every((link) => !link.attributes.href && link.attributes['aria-disabled'] === 'true'));
+  await checkoutButtons(ui)[0].fire('click');
+  assert.equal((await checkoutLinks(ui)[0].fire('click')).defaultPrevented, true);
+  assert.equal(ui.requests.length, 4, 'Status checks cannot enable a capture or PayPal navigation with placeholder merchants.');
+});
+
+test('sandbox availability explains operator and time restrictions separately', async () => {
+  const operator = browser({ mode: 'paypal-sandbox', initialResponses: [{ ...commerce(false), sandboxWriteBlockedReason: 'operator_disabled' }] });
+  await operator.ready();
+  assert.match(operator.byId('commerce-status').textContent, /disabled by the operator/);
+  assert.doesNotMatch(operator.byId('commerce-status').textContent, /Earliest|gate opens/);
+
+  const timed = browser({ mode: 'paypal-sandbox', initialResponses: [commerce(false)] });
+  await timed.ready();
+  const status = timed.byId('commerce-status').textContent;
+  assert.match(status, /time gate/);
+  assert.match(status, /Nov 4/);
+  assert.match(status, /9:00.*(?:PST|GMT-8)/);
+  assert.match(status, /Pacific time/);
+});
+
+test('retrying a saved plan restore updates the checkout label to the server availability', async () => {
+  const ui = browser({ mode: 'paypal-sandbox', storage: savedCheckout(),
+    initialResponses: [commerce(), new TypeError('Checkout temporarily unavailable')] });
+  await ui.ready();
+  assert.equal(ui.byId('refresh-commerce').textContent, 'Retry checkout restore');
+  ui.respond(commerce());
+  ui.respond({ state: networkState({ status: 'awaiting_checkout', checkout: { legs: checkoutLegs() } }) });
+  await ui.byId('refresh-commerce').fire('click');
+  assert.equal(ui.byId('state-label').textContent, 'Sandbox checkout ready');
+  assert.equal(ui.byId('prepare-checkout').disabled, false);
+  assert.equal(ui.requests.length, 4);
+  assert.ok(ui.requests.every((request) => request.method === 'GET'), 'Restoring availability only reads the saved checkout.');
+});
 
 test('sandbox approval saves its tab key and order creation stays behind the server write gate', async () => {
   const ui = browser({ mode: 'paypal-sandbox', initialResponses: [commerce(false)] });

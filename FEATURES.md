@@ -22,7 +22,7 @@ Mock supplier state and unapproved quote sessions remain in memory. Durable sand
 
 Both providers use a fixed-host API-key gateway and a durable PostgreSQL budget. Defaults are $5 Anthropic and $0.25 Jev project allocations, not provider account balances. Each request reserves a conservative maximum before dispatch. Exhaustion, invalid billing/authentication or unverified usage latches a stop for both providers; an uncertain request keeps its full reservation. No automatic retry, subscription/OAuth credential chain or alternate-provider fallback clears it.
 
-Startup requires the explicit keys and `AI_PREPAID_ONLY_CONFIRMED=true`. The operator must first verify the correct prepaid organization and disabled auto-reload. That assertion is not an account check, and a key cannot choose a provider's credit pool. The Anthropic key and billing confirmation are pending, so no real composed-agent inference has run. [AI-EVAL.md](docs/AI-EVAL.md) remains the frozen 90-point rubric; mocked tests do not demonstrate a 72- or 80-point result.
+Startup requires the explicit keys and `AI_PREPAID_ONLY_CONFIRMED=true`. The operator must first verify the correct prepaid organization and disabled auto-reload. That assertion is not an account check, and a key cannot choose a provider's credit pool. Both keys authenticate and one fixed Haiku probe passed. Billing confirmation and the composed-agent evaluation remain pending. [AI-STATUS.md](docs/AI-STATUS.md) records the narrow probe. [AI-EVAL.md](docs/AI-EVAL.md) remains the frozen 90-point rubric; mocked tests do not demonstrate a 72- or 80-point result.
 
 ## Receipts
 

@@ -2,7 +2,7 @@
 
 The Supply desk at `/procurement` compares complete, all-in supplier allocations under an exact specification, quantity, USD budget and delivery deadline. Code enforces those constraints and the buyer's exact approval. When enabled, Sonnet proposes bounded counteroffers and Jev reviews the proposal; neither model can change a payee, grant consent or authorize a payment.
 
-The network protocol and PayPal checkout path are implemented. The Anthropic key and prepaid billing confirmation are pending, and no actual composed-agent inference, PayPal order or capture has run through this new path. The included supplier endpoint is controlled reference software. Independent supplier participation, real stock, goods fulfillment and production merchant permissions are unverified. No live payments are enabled, and the original pilot checkout and Render deployment are unchanged.
+The network protocol and PayPal checkout path are implemented. Both API keys authenticate, and one tiny Anthropic Haiku probe passed. Prepaid billing confirmation and actual composed-agent evaluation are pending; no actual PayPal order or capture has run through this new path. The [three-process supplier lab](SUPPLIER-LAB.md) uses controlled reference software with authenticated HTTP and persistent quotes. Independent supplier participation, real stock, goods fulfillment and production merchant permissions are unverified. No live payments are enabled, and the original pilot checkout and Render deployment are unchanged.
 
 ## Modes
 
@@ -95,7 +95,7 @@ HTTP reads and writes require `x-procurement-secret`, independent of the quote c
 
 ## Write gate and acceptance evidence
 
-PayPal order creation and capture require **both** `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and a clock at or after `2026-11-05T05:00:00Z` (November 4, 2026, 9:00 pm PT). Until then, the approved plan can be retained and read without a checkout write. The time gate does not enable writes by itself, provide buyer approval or authorize production money. Keep the switch false until an operator chooses the sandbox acceptance run.
+PayPal order creation and capture require **both** `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and a clock at or after `2026-11-05T05:00:00Z` (November 4, 2026, 9:00 pm PT). The lab's `LAB_MERCHANT_MODE=placeholder` independently prohibits writes, including after that time. The approved plan can be retained and read without a checkout write. The time gate does not enable writes by itself, provide buyer approval or authorize production money. Keep the switch false until authorized sandbox merchant IDs are configured and an operator chooses the acceptance run.
 
 After the keys and billing attestation are ready, an operator can explicitly run the composed-agent evaluation. This makes model requests and consumes the guarded allocation; it uses synthetic cases and disables PayPal/supplier calls. It writes an evaluation report without changing the frozen rubric:
 

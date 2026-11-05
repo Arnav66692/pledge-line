@@ -234,3 +234,38 @@ test('a 429 rate limit is classified separately from credit exhaustion and never
   assert.equal(f.trips[0].reason, 'usage_unverified');
   assert.notEqual(f.trips[0].reason, 'credit_exhausted');
 });
+
+test('the fixed Haiku smoke is separately capped below one cent and does not change the main agent model', async () => {
+  const f = fixture();
+  const calls = [];
+  const client = gateway(f.budget, async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    return response(payload('anthropic', { model: calls.length === 1 ? 'claude-haiku-5-5' : 'claude-sonnet-5-5', usage: { input_tokens: 20, output_tokens: 2 }, content: [{ type: 'text', text: 'OK' }] }));
+  });
+  const smoke = await client.anthropicSmoke();
+  assert.equal(calls[0].body.model, 'claude-haiku-5-5');
+  assert.equal(calls[0].body.max_tokens, 8);
+  assert.deepEqual(calls[0].body.thinking, { type: 'disabled' });
+  assert.deepEqual(calls[0].body.output_config, { effort: 'low' });
+  assert.equal(f.reservations[0].maxCostNanos, smoke.accounting.reservedMaxNanos);
+  assert.ok(f.reservations[0].maxCostNanos <= 10_000_000);
+  assert.equal(f.settlements[0].costNanos, 20 * 100 + 2 * 500);
+  assert.equal(smoke.accounting.estimatedChargeNanos, f.settlements[0].costNanos);
+  assert.equal(smoke.accounting.providerBalanceVerified, false);
+  await client.anthropic(anthropicInput());
+  assert.equal(calls[1].body.model, 'claude-sonnet-5-5');
+  assert.deepEqual(calls[1].body.thinking, { type: 'between_tools' });
+});
+
+test('a stopped or uncertain Haiku smoke cannot bypass the shared stop or retry through Sonnet or Jev', async () => {
+  for (const stopped of [true, false]) {
+    const f = fixture({ stopped });
+    let calls = 0;
+    const client = gateway(f.budget, async () => { calls += 1; throw Error('private failure'); });
+    await assert.rejects(client.anthropicSmoke(), (error) => error.code === (stopped ? 'AI_STOPPED' : 'AI_PROVIDER_UNAVAILABLE'));
+    await assert.rejects(client.anthropic(anthropicInput()), (error) => error.code === 'AI_STOPPED');
+    await assert.rejects(client.jev(jevInput()), (error) => error.code === 'AI_STOPPED');
+    assert.equal(calls, stopped ? 0 : 1);
+    assert.equal(f.settlements.length, 0);
+  }
+});

@@ -11,6 +11,13 @@ import { validateProcurementQuote } from './procurement.js';
 export const SANDBOX_WRITE_UNLOCK_AT = '2026-11-05T05:00:00.000Z';
 const fail = (code) => { const error = new Error(code); error.code = code; throw error; };
 
+export function sandboxWritePolicy(env, at) {
+  if (env.LAB_MERCHANT_MODE === 'placeholder') return { enabled: false, blockedReason: 'placeholder_merchants' };
+  if (env.PAYPAL_SANDBOX_CHECKOUT_WRITES !== 'true') return { enabled: false, blockedReason: 'operator_disabled' };
+  if (!(new Date(at).getTime() >= Date.parse(SANDBOX_WRITE_UNLOCK_AT))) return { enabled: false, blockedReason: 'time_gate' };
+  return { enabled: true, blockedReason: null };
+}
+
 export function dollarsToNanos(raw, fallback, maximum) {
   if (raw === undefined || raw === '') return fallback;
   if (typeof raw !== 'string' || !/^\d{1,6}(?:\.\d{1,9})?$/.test(raw)) fail('AI_ALLOCATION_INVALID');
@@ -59,7 +66,8 @@ export async function configureRuntimeServices({ config, database, env = process
   }
   const supplierMode = env.PROCUREMENT_SUPPLIER_MODE || 'mock';
   if (!['mock', 'mcp-sandbox'].includes(supplierMode)) fail('SUPPLIER_MODE_INVALID');
-  const writesAllowed = () => env.PAYPAL_SANDBOX_CHECKOUT_WRITES === 'true' && new Date(now()).getTime() >= Date.parse(SANDBOX_WRITE_UNLOCK_AT);
+  const writePolicy = () => sandboxWritePolicy(env, now());
+  const writesAllowed = () => writePolicy().enabled;
   if (supplierMode === 'mcp-sandbox') {
     if (!database?.pool) fail('CHECKOUT_DATABASE_REQUIRED');
     suppliers = createMcpSuppliers({ registry: readSupplierRegistry(env.SUPPLIER_REGISTRY_PATH || '.suppliers.json', env), now });
@@ -82,7 +90,8 @@ export async function configureRuntimeServices({ config, database, env = process
   return { agent, aiGateway: gateway, suppliers, checkout, checkoutStore, commerceStatus: () => ({
     suppliers: supplierMode, payments: supplierMode === 'mcp-sandbox' ? 'paypal-sandbox' : 'mock',
     sandboxWritesEnabled: supplierMode === 'mcp-sandbox' && writesAllowed(), sandboxWriteUnlockAt: SANDBOX_WRITE_UNLOCK_AT,
-    supplierProvenance: suppliers ? 'Operator-registered endpoints. Independent business participation and fulfillment are not verified.' : 'Simulated suppliers.',
+    sandboxWriteBlockedReason: supplierMode === 'mcp-sandbox' ? writePolicy().blockedReason : 'mock_mode',
+    supplierProvenance: suppliers ? env.LAB_MERCHANT_MODE === 'placeholder' ? 'Controlled sandbox supplier lab. Merchant IDs are placeholders and checkout writes are disabled. No independent business participation or fulfillment.' : 'Operator-registered endpoints. Independent business participation and fulfillment are not verified.' : 'Simulated suppliers.',
     livePayments: false,
   }) };
 }

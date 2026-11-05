@@ -54,6 +54,9 @@
   const newPlanBlocked = () => session.busy || session.approvalUnknown || session.restoreBlocked || unfinishedPurchase();
   const nextLeg = () => list(session.state?.checkout?.legs).find((leg) => leg.status !== 'confirmed');
   const sandboxWritesAllowed = () => networkMode() && session.commerce?.sandboxWritesEnabled === true && !session.restoreBlocked;
+  const placeholderMerchants = () => networkMode() && session.commerce?.sandboxWriteBlockedReason === 'placeholder_merchants';
+  const statusName = (status) => status === 'awaiting_checkout' && session.commerce?.sandboxWritesEnabled !== true && networkMode()
+    ? placeholderMerchants() ? 'Lab plan saved' : 'Plan saved; checkout unavailable' : statusNames[status];
 
   function approvalHref(leg) {
     if (typeof leg.orderId !== 'string' || !leg.orderId || typeof leg.approvalUrl !== 'string') return null;
@@ -102,21 +105,38 @@
     }
     session.commerce = commerce || session.commerce;
     renderCommerce();
+    if (session.state) render(session.state);
   }
 
   function renderCommerce() {
     els.commercePanel.hidden = !networkMode();
     els.demoControls.hidden = networkMode();
     if (!networkMode()) return;
-    els.demoDisclosure.textContent = 'MCP sandbox suppliers and PayPal sandbox checkout. Test funds only: no real money moves. These endpoints are not independent businesses or promises of goods fulfillment.';
+    const placeholders = placeholderMerchants();
+    els.demoDisclosure.textContent = placeholders
+      ? 'Controlled sandbox supplier lab with placeholder merchant IDs. Checkout is unavailable until authorized PayPal sandbox merchants are configured. No independent businesses participate and no goods fulfillment is promised. Test funds only: no real money moves.'
+      : 'MCP sandbox suppliers and PayPal sandbox checkout. Test funds only: no real money moves. These endpoints are not independent businesses or promises of goods fulfillment.';
     els.timelineLabel.textContent = 'Sandbox records';
-    els.quotesCaption.textContent = 'MCP sandbox supplier quotes. Totals are for the quoted quantity, including all fees. These are sandbox endpoints, not independent businesses.';
-    els.approvalConsent.textContent = 'I approve these registered sandbox payees, quantities, delivery terms and this exact total. Approval saves these terms and creates PayPal sandbox checkout orders when server writes are enabled. Each supplier still needs buyer approval in PayPal sandbox before a separate capture.';
-    els.approve.textContent = 'Approve plan and prepare PayPal checkout';
+    els.quotesCaption.textContent = placeholders
+      ? 'Controlled supplier lab quotes with placeholder merchant IDs. Totals include all fees for the quoted quantity. No independent business participation or fulfillment.'
+      : 'MCP sandbox supplier quotes. Totals are for the quoted quantity, including all fees. These are sandbox endpoints, not independent businesses.';
+    els.approvalConsent.textContent = placeholders
+      ? 'I approve and save these exact lab suppliers, quantities, delivery terms and total. Their payees use placeholder merchant IDs. Saving this plan cannot create PayPal orders or move test funds while checkout is unavailable. PayPal buyer approval and a separate capture would still be required for each authorized sandbox merchant.'
+      : 'I approve these registered sandbox payees, quantities, delivery terms and this exact total. Approval saves these terms and creates PayPal sandbox checkout orders when server writes are enabled. Each supplier still needs buyer approval in PayPal sandbox before a separate capture.';
+    els.approve.textContent = placeholders ? 'Save lab plan' : 'Approve plan and prepare PayPal checkout';
     const unlockAt = session.commerce?.sandboxWriteUnlockAt;
-    els.commerceStatus.textContent = sandboxWritesAllowed()
-      ? 'The server allows sandbox order creation and capture. Buyer approval is required for each supplier. Test funds only.'
-      : `Sandbox order creation and capture are disabled by the server.${unlockAt ? ` Earliest unlock: ${date(unlockAt, 'America/Los_Angeles')} (Pacific time).` : ''} Refresh availability after the gate opens. Quotes and status checks do not authorize a payment.`;
+    const blockedReason = session.commerce?.sandboxWriteBlockedReason;
+    if (sandboxWritesAllowed()) {
+      els.commerceStatus.textContent = 'The server allows sandbox order creation and capture. Buyer approval is required for each supplier. Test funds only.';
+    } else if (placeholders) {
+      els.commerceStatus.textContent = 'Sandbox order creation and capture are disabled because this lab uses placeholder merchant IDs. The operator must configure authorized PayPal sandbox merchants before checkout can be enabled. Passing the time gate alone will not enable checkout. You can save a lab plan and recheck status; neither action moves funds.';
+    } else if (blockedReason === 'operator_disabled') {
+      els.commerceStatus.textContent = 'Sandbox order creation and capture are disabled by the operator. Refresh availability after the operator enables checkout. Quotes and status checks do not authorize a payment.';
+    } else if (blockedReason === 'time_gate') {
+      els.commerceStatus.textContent = `Sandbox order creation and capture are disabled by the server's time gate.${unlockAt ? ` Earliest permitted time: ${date(unlockAt, 'America/Los_Angeles')} (Pacific time).` : ''} Refresh availability to check the server status. Other checkout requirements still apply. Quotes and status checks do not authorize a payment.`;
+    } else {
+      els.commerceStatus.textContent = 'Sandbox order creation and capture are disabled by the server. Refresh availability to check the server status. Quotes and status checks do not authorize a payment.';
+    }
   }
 
   function updateControls() {
@@ -180,7 +200,7 @@
       const row = node('tr', null, included.has(quote.supplierId) ? 'chosen' : '');
       const supplier = node('td');
       supplier.append(node('strong', quote.supplierName || (networkMode() ? 'MCP sandbox supplier' : 'Simulated supplier')));
-      if (networkMode()) supplier.append(node('small', 'MCP sandbox supplier'));
+      if (networkMode()) supplier.append(node('small', placeholderMerchants() ? 'Controlled supplier lab; placeholder merchant ID' : 'MCP sandbox supplier'));
       supplier.append(node('small', `${quote.quantity ?? quote.maxQuantity ?? '—'} shirts in this quote`));
       if (quote.negotiated) supplier.append(node('small', 'Negotiated quote'));
       if (Number.isSafeInteger(quote.counterOfferCents)) supplier.append(node('small', `Agent offered ${money(quote.counterOfferCents, quote.currency)} per shirt. Chosen quote is ${money(quote.unitPriceCents, quote.currency)} per shirt.`));
@@ -220,7 +240,7 @@
   function renderPlan(state) {
     const proposal = state?.proposal;
     const request = state?.request;
-    els.stateLabel.textContent = statusNames[state?.status] || 'No plan yet';
+    els.stateLabel.textContent = statusName(state?.status) || 'No plan yet';
     els.stateLabel.dataset.state = state?.status || '';
     els.planEmpty.hidden = Boolean(proposal);
     els.planDetails.hidden = !proposal;
@@ -241,13 +261,14 @@
       item.append(node('strong', `${allocation.quantity} shirts from ${allocation.supplierName || allocation.supplierId}`),
         node('span', money(allocation.totalCents, proposal.currency)),
         node('span', `Goods ${money(allocation.goodsCents, proposal.currency)}, setup ${money(allocation.setupCents, proposal.currency)}, shipping ${money(allocation.shippingCents, proposal.currency)}, tax ${money(allocation.taxCents, proposal.currency)}. Delivery ${date(allocation.deliveryAt)}.`, 'allocation-detail'),
-        node('span', `${networkMode() ? 'Registered sandbox payee' : 'Simulated payee'} ${allocation.payeeId}. Quote ${allocation.quoteId}.`, 'allocation-payee'));
+        node('span', `${networkMode() ? placeholderMerchants() ? 'Placeholder sandbox payee' : 'Registered sandbox payee' : 'Simulated payee'} ${allocation.payeeId}. Quote ${allocation.quoteId}.`, 'allocation-payee'));
       els.allocations.append(item);
     }
     els.planExpiry.textContent = `Terms expire ${date(proposal.expiresAt)}. The server checks the terms again before settlement. Status rechecks remain available after expiry.`;
     els.termsSpecification.textContent = request?.specification || '';
     els.termsRequest.textContent = `${proposal.quantity} shirts, delivered by ${date(request?.deadline)}.`;
     els.termsDisclosure.textContent = typeof proposal.disclosure === 'string' ? proposal.disclosure : networkMode() ? 'MCP sandbox supplier and PayPal sandbox demonstration. Test funds only.' : 'Simulated supplier and payment demonstration.';
+    if (placeholderMerchants()) els.termsDisclosure.textContent += ' Controlled supplier lab: payees use placeholder merchant IDs. Checkout is unavailable until authorized PayPal sandbox merchants are configured.';
     els.termsHash.textContent = proposal.termsHash || '';
     const review = state?.review;
     const reviewText = typeof review === 'string' ? review : review?.summary || review?.message || review?.recommendation ||
@@ -272,7 +293,7 @@
       const item = node('li', null, 'checkout-leg');
       item.append(node('strong', `${leg.supplierName || leg.supplierId}, ${leg.quantity} shirts`),
         node('span', `${money(leg.amountCents, leg.currency || 'USD')}. ${legNames[leg.status] || 'Status must be rechecked'}.`, 'checkout-leg-status'),
-        node('span', 'MCP sandbox supplier. Test funds; no goods fulfillment.', 'field-hint'));
+        node('span', placeholderMerchants() ? 'Controlled supplier lab; placeholder merchant ID. Checkout unavailable. No goods fulfillment.' : 'MCP sandbox supplier. Test funds; no goods fulfillment.', 'field-hint'));
       if (leg.orderId) item.append(node('span', `PayPal sandbox order ${leg.orderId}${leg.captureId ? `. Capture ${leg.captureId}` : ''}.`, 'allocation-payee'));
       const control = { leg };
       if (leg.status === 'awaiting_paypal_approval') {
@@ -325,8 +346,8 @@
       ? 'The purchase request did not return clearly. It may have reached the server. Check its result before taking another action.' : notes[state?.status] || '';
     if (networkMode() && !session.approvalUnknown) {
       const networkNotes = {
-        awaiting_approval: 'Approval saves the exact terms and, when server writes are enabled, creates sandbox checkout orders. No payment occurs until PayPal buyer approval and a separate capture.',
-        awaiting_checkout: 'Create the sandbox orders explicitly, then approve each supplier in PayPal sandbox. Each capture is a separate action with a fresh provider status check.',
+        awaiting_approval: placeholderMerchants() ? 'Save the exact lab plan for review. Placeholder merchants cannot receive PayPal sandbox orders or captures. Authorized sandbox merchants must be configured before checkout can be enabled.' : 'Approval saves the exact terms and, when server writes are enabled, creates sandbox checkout orders. No payment occurs until PayPal buyer approval and a separate capture.',
+        awaiting_checkout: placeholderMerchants() ? 'The exact lab plan is saved. Checkout remains unavailable until authorized PayPal sandbox merchants are configured. Passing the time gate alone will not enable checkout.' : 'Create the sandbox orders explicitly, then approve each supplier in PayPal sandbox. Each capture is a separate action with a fresh provider status check.',
         awaiting_paypal_approval: 'PayPal buyer approval is required per supplier. After returning, recheck status before capture. A return URL or checkbox is not evidence of payment.',
         ready_to_capture: 'PayPal buyer approval has been verified. Capture the next supplier explicitly; later suppliers remain separate.',
         completed: 'Every supplier sandbox capture is confirmed by the server. Test funds only. No real money moved and no goods fulfillment was promised.',
@@ -422,7 +443,7 @@
     error('');
     updateControls();
     els.requestStatus.textContent = networkMode()
-      ? 'Saving the exact approved terms and preparing PayPal sandbox checkout orders when server writes are enabled. No capture is authorized by this action.'
+      ? placeholderMerchants() ? 'Saving the exact lab plan. Placeholder merchant IDs cannot receive PayPal sandbox orders or captures.' : 'Saving the exact approved terms and preparing PayPal sandbox checkout orders when server writes are enabled. No capture is authorized by this action.'
       : 'Checking the approved terms and attempting mock supplier settlement.';
     try {
       const result = await api(`/api/procurement/${encodeURIComponent(session.id)}/approve`, {
@@ -430,7 +451,7 @@
       });
       els.approvalCheck.checked = false;
       applyResult(result);
-      els.requestStatus.textContent = statusNames[result.state.status] || 'The simulated purchase result is shown below.';
+      els.requestStatus.textContent = statusName(result.state.status) || 'The simulated purchase result is shown below.';
     } catch (problem) {
       session.approvalUnknown = true;
       error(problem.message);
@@ -455,7 +476,7 @@
       applyResult(result);
       session.approvalUnknown = false;
       renderSettlement(result.state);
-      els.requestStatus.textContent = statusNames[result.state.status] || 'The current result is shown below.';
+      els.requestStatus.textContent = statusName(result.state.status) || 'The current result is shown below.';
     } catch (problem) {
       error(problem.message);
       els.requestStatus.textContent = 'The result is still unclear. Leave this order open and check again later.';
@@ -477,7 +498,7 @@
     try {
       const result = await api(`/api/procurement/${encodeURIComponent(session.id)}/${action}`, { method: 'POST', body });
       applyResult(result);
-      els.requestStatus.textContent = statusNames[result.state.status] || 'The server result is shown below.';
+      els.requestStatus.textContent = statusName(result.state.status) || 'The server result is shown below.';
     } catch (problem) {
       // A lost response can follow a successful provider write. Recheck the same order instead of
       // automatically retrying order creation or capture as a fresh payment.
