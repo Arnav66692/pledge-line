@@ -8,6 +8,7 @@ node_modules
 .claude/
 .pilot/*.paid-webhook.json
 .pilot/claim-audit/
+.pilot/ai-evaluation/
 .gstack/
 .database.env
 .database-*.env

@@ -6,7 +6,7 @@
     'quotes-summary', 'quotes-caption', 'empty-quotes', 'quote-results', 'quotes', 'rejections', 'rejection-list', 'plan-panel', 'state-label', 'plan-empty',
     'plan-details', 'plan-total', 'plan-budget', 'allocations', 'plan-expiry', 'terms-specification', 'terms-request', 'terms-disclosure', 'terms-hash',
     'approval-form', 'approval-check', 'approval-consent', 'approve', 'settlement', 'settlement-title', 'settlement-list', 'settlement-note',
-    'checkout-legs', 'checkout-blocked', 'prepare-checkout', 'reconcile', 'timeline-empty', 'timeline', 'timeline-label', 'demo-disclosure',
+    'checkout-legs', 'checkout-blocked', 'prepare-checkout', 'reconcile', 'close-unpaid', 'timeline-empty', 'timeline', 'timeline-label', 'demo-disclosure',
     'demo-controls', 'commerce-panel', 'commerce-status', 'refresh-commerce', 'comparison', 'comparison-baseline', 'comparison-negotiated',
     'comparison-saving', 'comparison-scope', 'review-panel', 'review-note']
     .map((id) => [id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), byId(id)]));
@@ -22,8 +22,8 @@
     const parsed = new Date(value);
     return Number.isFinite(parsed.getTime()) ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short', ...(timeZone ? { timeZone } : {}) }).format(parsed) : 'Not provided';
   };
-  const statusNames = Object.freeze({ awaiting_approval: 'Review the plan', no_feasible_quote: 'No plan fits', awaiting_checkout: 'Sandbox checkout ready', awaiting_paypal_approval: 'PayPal buyer approval needed', ready_to_capture: 'Ready for sandbox capture', completed: networkMode() ? 'Sandbox captures confirmed' : 'Mock order completed', partial: 'Partially settled', uncertain: 'Result uncertain', failed: 'Settlement failed', expired: 'Plan expired' });
-  const legNames = Object.freeze({ awaiting_checkout: 'Order not created', awaiting_paypal_approval: 'Buyer approval needed in PayPal sandbox', ready_to_capture: 'PayPal approval verified; capture needed', confirmed: 'Sandbox capture confirmed', uncertain: 'Result uncertain; recheck before continuing' });
+  const statusNames = Object.freeze({ awaiting_approval: 'Review the plan', no_feasible_quote: 'No plan fits', awaiting_checkout: 'Sandbox checkout ready', awaiting_paypal_approval: 'PayPal buyer approval needed', ready_to_capture: 'Ready for sandbox capture', completed: networkMode() ? 'Sandbox captures confirmed' : 'Mock order completed', partial: 'Partially settled', uncertain: 'Result uncertain', failed: 'Settlement failed', expired: 'Plan expired', closed_unpaid: 'Expired plan closed in this app' });
+  const legNames = Object.freeze({ awaiting_checkout: 'Order not created', awaiting_paypal_approval: 'Buyer approval needed in PayPal sandbox', ready_to_capture: 'PayPal approval verified; capture needed', confirmed: 'Sandbox capture confirmed', uncertain: 'Result uncertain; recheck before continuing', closed_unpaid: 'Closed in this app. No capture attempted' });
   const settlementNames = Object.freeze({ pending: 'Not attempted', not_started: 'Not attempted', reserved: 'Not attempted', in_flight: 'Attempt in progress', confirmed: 'Mock payment confirmed', completed: 'Mock payment confirmed', captured: 'Mock payment confirmed', succeeded: 'Mock payment confirmed', paid: 'Mock payment confirmed', declined: 'Supplier declined', failed: 'Mock payment failed', unknown: 'Result uncertain', uncertain: 'Result uncertain', skipped: 'Not attempted' });
   const node = (tag, text, className) => {
     const item = document.createElement(tag);
@@ -44,6 +44,8 @@
 
   function unfinishedPurchase() {
     const state = session.state;
+    if (state?.status === 'closed_unpaid' && state.checkout?.blockedReason === 'closed_unpaid' &&
+      list(state.checkout.legs).length > 0 && state.checkout.legs.every((leg) => leg.status === 'closed_unpaid')) return false;
     if (['partial', 'uncertain'].includes(state?.status)) return true;
     if (!networkMode()) return false;
     const legs = list(state?.checkout?.legs);
@@ -156,10 +158,13 @@
     const recoverable = (networkMode() && session.id) || ['uncertain', 'partial'].includes(session.state?.status) || session.approvalUnknown;
     els.reconcile.hidden = !recoverable;
     const unprepared = list(session.state?.checkout?.legs).some((leg) => leg.status === 'awaiting_checkout' && !leg.orderId);
-    els.prepareCheckout.hidden = !networkMode() || !unprepared || session.state?.status === 'awaiting_approval';
+    els.prepareCheckout.hidden = !networkMode() || !unprepared || ['awaiting_approval', 'closed_unpaid'].includes(session.state?.status);
     els.prepareCheckout.disabled = !sandboxWritesAllowed() || session.busy || session.approvalUnknown || approvalExpired() || session.restoreBlocked || Boolean(session.state?.checkout?.blockedReason) || session.state?.status === 'uncertain';
+    const canCloseUnpaid = networkMode() && session.id && session.state?.status === 'expired' && session.state?.checkout?.canCloseUnpaid === true && approvalExpired();
+    els.closeUnpaid.hidden = !canCloseUnpaid;
+    els.closeUnpaid.disabled = !canCloseUnpaid || session.busy || session.restoreBlocked || session.approvalUnknown;
     for (const control of session.legControls) {
-      const active = nextLeg()?.id === control.leg.id && sandboxWritesAllowed() && !session.busy && !session.approvalUnknown && !session.state?.checkout?.blockedReason && session.state?.status !== 'uncertain' && !approvalExpired();
+      const active = nextLeg()?.id === control.leg.id && sandboxWritesAllowed() && !session.busy && !session.approvalUnknown && !session.state?.checkout?.blockedReason && !['uncertain', 'closed_unpaid'].includes(session.state?.status) && !approvalExpired();
       if (control.link) {
         if (active && control.href) control.link.setAttribute('href', control.href);
         else control.link.removeAttribute('href');
@@ -288,7 +293,7 @@
     els.reconcile.textContent = 'Recheck PayPal sandbox status';
     const blockedReason = state?.checkout?.blockedReason;
     els.checkoutBlocked.hidden = !blockedReason;
-    els.checkoutBlocked.textContent = typeof blockedReason === 'string' ? blockedReason : '';
+    els.checkoutBlocked.textContent = blockedReason === 'closed_unpaid' ? 'Closed in this app. PayPal orders were not canceled.' : typeof blockedReason === 'string' ? blockedReason : '';
     for (const leg of legs) {
       const item = node('li', null, 'checkout-leg');
       item.append(node('strong', `${leg.supplierName || leg.supplierId}, ${leg.quantity} shirts`),
@@ -318,7 +323,7 @@
         control.capture = capture;
         item.append(capture);
       }
-      if (leg !== nextLeg() && leg.status !== 'confirmed') item.append(node('p', 'Finish or reconcile the previous supplier before continuing this leg.', 'field-hint'));
+      if (state?.status !== 'closed_unpaid' && leg !== nextLeg() && leg.status !== 'confirmed') item.append(node('p', 'Finish or reconcile the previous supplier before continuing this leg.', 'field-hint'));
       session.legControls.push(control);
       els.checkoutLegs.append(item);
     }
@@ -353,7 +358,8 @@
         completed: 'Every supplier sandbox capture is confirmed by the server. Test funds only. No real money moved and no goods fulfillment was promised.',
         partial: 'Only part of the sandbox order is confirmed. These captures are not atomic: one supplier may already be paid in test funds. Recheck before continuing the original plan.',
         uncertain: 'A sandbox order or capture has an uncertain result. Recheck existing provider records. This recheck never creates an order or captures funds.',
-        expired: 'The quote terms expired. Recheck existing PayPal orders and captures before taking another action; expiry does not reverse a capture.',
+        expired: 'The quote terms expired. Recheck the existing PayPal records. If no capture was attempted and the server verifies the orders are unpaid, close this plan in the app before requesting fresh quotes. Expiry does not reverse a capture.',
+        closed_unpaid: 'This expired plan is closed in this app. No capture was attempted by this app. PayPal orders were not canceled. Find a new plan for fresh quotes and a separate exact approval.',
         failed: 'The sandbox checkout did not complete. Recheck existing provider records before attempting another purchase.',
       };
       els.settlementNote.textContent = networkNotes[state?.status] || 'Sandbox status rechecks read existing PayPal records only. They never create an order or capture funds.';
@@ -486,8 +492,29 @@
     }
   });
 
+  els.closeUnpaid.addEventListener('click', async () => {
+    if (els.closeUnpaid.hidden || els.closeUnpaid.disabled || !session.id || session.busy || session.restoreBlocked || session.approvalUnknown ||
+      session.state?.status !== 'expired' || session.state?.checkout?.canCloseUnpaid !== true || !approvalExpired()) return;
+    session.busy = true;
+    error('');
+    updateControls();
+    els.requestStatus.textContent = 'Checking the existing PayPal orders before closing this expired plan in the app. This step never creates, captures or cancels a PayPal order.';
+    try {
+      const result = await api(`/api/procurement/${encodeURIComponent(session.id)}/close-unpaid`, { method: 'POST', body: {} });
+      applyResult(result);
+      if (result.state.status !== 'closed_unpaid') throw new Error('The server did not confirm that this expired plan could be closed. Keep the existing checkout open and recheck its status.');
+      els.requestStatus.textContent = 'This expired plan is closed in the app. Its records are retained and PayPal orders were not canceled. Your brief is ready for fresh quotes and a new exact approval.';
+    } catch (problem) {
+      error(problem.message);
+      els.requestStatus.textContent = 'The plan remains open until its unpaid state is verified. Keep this checkout and recheck the existing records before taking another action.';
+    } finally {
+      session.busy = false;
+      updateControls();
+    }
+  });
+
   async function checkoutWrite(action, body = {}) {
-    if (!sandboxWritesAllowed() || session.busy || session.approvalUnknown || !session.id || approvalExpired() || session.state?.checkout?.blockedReason || session.state?.status === 'uncertain') return;
+    if (!sandboxWritesAllowed() || session.busy || session.approvalUnknown || !session.id || approvalExpired() || session.state?.checkout?.blockedReason || ['uncertain', 'closed_unpaid'].includes(session.state?.status)) return;
     try { saveSession(); } catch (problem) { error(problem.message); return; }
     session.busy = true;
     error('');

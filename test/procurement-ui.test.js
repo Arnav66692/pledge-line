@@ -634,3 +634,79 @@ test('an authenticated completed return clears old callback ids before a new pla
   assert.equal(reloaded.requests[1].headers['x-procurement-secret'], 'new-secret');
   assert.ok(reloaded.requests.every((request) => request.method === 'GET'), 'Reloading a new plan still performs no provider writes.');
 });
+
+function expiredUnpaidState(overrides = {}) {
+  const plan = networkState({ status: 'expired', checkout: { nonAtomic: true, blockedReason: null,
+    canCloseUnpaid: true, legs: checkoutLegs('awaiting_paypal_approval') }, ...overrides });
+  plan.proposal.expiresAt = new Date(Date.now() - 60000).toISOString();
+  return plan;
+}
+
+function closedUnpaidState(plan) {
+  return { ...plan, status: 'closed_unpaid', checkout: { ...plan.checkout, blockedReason: 'closed_unpaid', canCloseUnpaid: false,
+    legs: plan.checkout.legs.map((leg) => ({ ...leg, status: 'closed_unpaid', approvalUrl: null })) } };
+}
+
+test('an expired unpaid plan can close without financial permission and requires a new explicit plan request', async () => {
+  const expired = expiredUnpaidState();
+  const ui = browser({ mode: 'paypal-sandbox', storage: savedCheckout(), initialResponses: [commerce(false), { state: expired }] });
+  await ui.ready();
+  const specification = ui.byId('specification').value;
+  assert.equal(ui.byId('find-plan').disabled, true);
+  assert.equal(ui.byId('close-unpaid').hidden, false);
+  assert.equal(ui.byId('close-unpaid').disabled, false, 'Read-only closure is available while financial writes are disabled.');
+  assert.ok(checkoutLinks(ui).every((link) => link.attributes.href === undefined));
+  const count = ui.requests.length;
+  ui.respond({ state: closedUnpaidState(expired), commerce: commerce(false) });
+  await ui.byId('close-unpaid').fire('click');
+  assert.deepEqual(ui.requests.slice(count).map(({ path, method }) => ({ path, method })), [
+    { path: `${sessionPath}/close-unpaid`, method: 'POST' },
+  ]);
+  assert.equal(ui.requests.at(-1).headers['x-procurement-secret'], sessionSecret);
+  assert.deepEqual(ui.requests.at(-1).body, {});
+  assert.equal(ui.byId('find-plan').disabled, false);
+  assert.equal(ui.byId('specification').disabled, false);
+  assert.equal(ui.byId('specification').value, specification, 'The brief stays available for fresh quotes.');
+  assert.equal(ui.byId('close-unpaid').hidden, true);
+  assert.equal(ui.byId('prepare-checkout').hidden, true);
+  assert.equal(checkoutLinks(ui).length, 0);
+  assert.equal(checkoutButtons(ui).length, 0);
+  assert.match(ui.byId('settlement-note').textContent, /PayPal orders were not canceled/);
+  assert.match(ui.byId('settlement-note').textContent, /new plan.*separate exact approval/);
+  assert.equal(ui.requests.length, count + 1, 'Closing does not request quotes or prepare another purchase automatically.');
+});
+
+test('unknown, partially settled and blocked plans do not offer unpaid closure or a replacement', async () => {
+  for (const [status, blockedReason] of [['uncertain', null], ['partial', null], ['expired', 'provider_binding_changed']]) {
+    const plan = expiredUnpaidState({ status, checkout: { nonAtomic: true, blockedReason, canCloseUnpaid: false,
+      legs: checkoutLegs(status === 'partial' ? 'confirmed' : 'uncertain') } });
+    const ui = browser({ mode: 'paypal-sandbox', storage: savedCheckout(), initialResponses: [commerce(), { state: plan }] });
+    await ui.ready();
+    assert.equal(ui.byId('close-unpaid').hidden, true, status);
+    assert.equal(ui.byId('close-unpaid').disabled, true, status);
+    const count = ui.requests.length;
+    await ui.byId('close-unpaid').fire('click');
+    assert.equal(ui.requests.length, count, 'A hidden closure control has no effect.');
+    assert.equal(ui.byId('find-plan').disabled, true, 'Unresolved or blocked checkout stays retained.');
+  }
+});
+
+test('a lost closure answer keeps the old checkout until a read confirms closure, including restart', async () => {
+  const plan = expiredUnpaidState(), closed = closedUnpaidState(plan), storage = savedCheckout();
+  const ui = browser({ mode: 'paypal-sandbox', storage, initialResponses: [commerce(), { state: plan }] });
+  await ui.ready();
+  ui.fail();
+  await ui.byId('close-unpaid').fire('click');
+  assert.equal(ui.byId('find-plan').disabled, true);
+  assert.match(ui.byId('request-status').textContent, /remains open until its unpaid state is verified/);
+  assert.equal(storage.get(storageKey), savedCheckout().get(storageKey));
+  ui.respond({ state: closed });
+  await ui.byId('reconcile').fire('click');
+  assert.equal(ui.byId('find-plan').disabled, false);
+  const restored = browser({ mode: 'paypal-sandbox', storage, initialResponses: [commerce(), { state: closed }] });
+  await restored.ready();
+  assert.equal(restored.byId('find-plan').disabled, false);
+  assert.equal(restored.byId('close-unpaid').hidden, true);
+  assert.equal(checkoutLinks(restored).length, 0);
+  assert.ok(restored.requests.every((request) => request.method === 'GET'));
+});

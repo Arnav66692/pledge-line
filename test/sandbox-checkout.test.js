@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { createSandboxCheckout } from '../src/sandbox-checkout.js';
+import { canCloseUnpaidCheckout } from '../src/checkout-store.js';
 
 const copy = (value) => structuredClone(value);
 const hash = (value) => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
@@ -29,6 +30,14 @@ function memoryStore() {
     },
     async get({ organizationId, id }) { const row = rows.get(id); return row?.organizationId === organizationId ? copy(row) : null; },
     async block({ id, reason }) { const row = rows.get(id); row.blockedReason ??= reason; return copy(row); },
+    async closeExpiredUnpaid({ id, at, orderChecks }) {
+      const row = rows.get(id);
+      if (row.blockedReason === 'closed_unpaid') return copy(row);
+      if (!canCloseUnpaidCheckout(row, at)) throw Object.assign(new Error('CHECKOUT_CLOSE_UNPAID_BLOCKED'), { code: 'CHECKOUT_CLOSE_UNPAID_BLOCKED' });
+      row.blockedReason = 'closed_unpaid';
+      for (const leg of row.legs) leg.closedUnpaidEvidence = { ...copy(orderChecks.find((check) => check.legId === leg.id)), closedAt: new Date(at).toISOString() };
+      return copy(row);
+    },
     async claimCreate({ id, legId }) {
       const row = rows.get(id), leg = row.legs.find((item) => item.id === legId), position = row.legs.indexOf(leg);
       if (row.blockedReason || leg.createState !== 'reserved' || row.legs.some((item) => ['claimed', 'unknown'].includes(item.createState) || ['claimed', 'unknown'].includes(item.captureState)) ||
@@ -323,4 +332,92 @@ test('pending capture status is unknown until a same-identity authoritative read
   capture.status = 'COMPLETED'; order.status = 'COMPLETED'; order.purchase_units[0].payments.captures[0].status = 'COMPLETED';
   assert.equal((await f.service.reconcile({ id: f.id })).status, 'partial');
   assert.equal(f.calls.filter((call) => call.method === 'capture').length, 1);
+});
+
+test('an expired unpaid checkout closes in the app after exact provider reads and never reopens', async () => {
+  const f = await fixture(), prepared = await f.service.prepare({ id: f.id });
+  const original = await f.store.get({ organizationId: 'org', id: f.id });
+  f.orders.get(prepared.checkout.legs[0].orderId).status = 'PAYER_ACTION_REQUIRED';
+  f.orders.get(prepared.checkout.legs[1].orderId).status = 'APPROVED';
+  f.advance(20 * 60 * 1000);
+  const callsBefore = f.calls.length;
+  const closed = await f.service.closeUnpaid({ id: f.id });
+  assert.equal(closed.status, 'closed_unpaid');
+  assert.equal(closed.checkout.blockedReason, 'closed_unpaid');
+  assert.equal(closed.checkout.canCloseUnpaid, false);
+  assert.ok(closed.checkout.legs.every((leg) => leg.status === 'closed_unpaid' && leg.approvalUrl === null));
+  assert.deepEqual(f.calls.slice(callsBefore).map((call) => call.method), ['readOrder', 'readOrder']);
+  const saved = await f.store.get({ organizationId: 'org', id: f.id });
+  for (let index = 0; index < saved.legs.length; index += 1) {
+    for (const key of ['allocation', 'referenceId', 'createRequestId', 'captureRequestId', 'createState', 'captureState', 'createAttempts', 'captureAttempts', 'createEvidence', 'captureEvidence']) {
+      assert.deepEqual(saved.legs[index][key], original.legs[index][key], `${key} remains unchanged`);
+    }
+    assert.equal(saved.legs[index].closedUnpaidEvidence.orderId, saved.legs[index].orderId);
+  }
+  const restored = createSandboxCheckout(f.options);
+  assert.equal((await restored.get({ id: f.id })).status, 'closed_unpaid');
+  await restored.prepare({ id: f.id });
+  await restored.capture({ id: f.id, legId: prepared.checkout.legs[0].id });
+  await restored.reconcile({ id: f.id });
+  await restored.closeUnpaid({ id: f.id });
+  assert.equal(f.calls.length, callsBefore + 2, 'A closed plan has no further provider or financial dispatch.');
+});
+
+test('unexpired, uncertain and capture-attempted checkout plans cannot close as unpaid', async (t) => {
+  await t.test('unexpired terms', async () => {
+    const f = await fixture();
+    await f.service.prepare({ id: f.id });
+    const before = f.calls.length;
+    await assert.rejects(f.service.closeUnpaid({ id: f.id }), /CHECKOUT_CLOSE_UNPAID_BLOCKED/);
+    assert.equal(f.calls.length, before);
+  });
+  await t.test('lost creation result', async () => {
+    const f = await fixture(); f.flags({ lostCreate: true });
+    await f.service.prepare({ id: f.id }); f.advance(20 * 60 * 1000);
+    await assert.rejects(f.service.closeUnpaid({ id: f.id }), /CHECKOUT_CLOSE_UNPAID_BLOCKED/);
+    assert.equal((await f.service.get({ id: f.id })).status, 'uncertain');
+  });
+  await t.test('any local capture claim, even with no provider capture yet', async () => {
+    const f = await fixture(), prepared = await f.service.prepare({ id: f.id });
+    await f.store.claimCapture({ id: f.id, legId: prepared.checkout.legs[0].id });
+    f.advance(20 * 60 * 1000);
+    await assert.rejects(f.service.closeUnpaid({ id: f.id }), /CHECKOUT_CLOSE_UNPAID_BLOCKED/);
+    assert.equal(f.calls.filter((call) => call.method === 'capture').length, 0);
+  });
+});
+
+test('expired unpaid closure refuses mismatched provider records, payment evidence and concurrent claims', async (t) => {
+  await t.test('a changed payee', async () => {
+    const f = await fixture(), prepared = await f.service.prepare({ id: f.id });
+    f.orders.get(prepared.checkout.legs[0].orderId).purchase_units[0].payee.merchant_id = 'ATTACKER0001';
+    f.advance(20 * 60 * 1000);
+    await assert.rejects(f.service.closeUnpaid({ id: f.id }));
+    assert.notEqual((await f.service.get({ id: f.id })).status, 'closed_unpaid');
+  });
+  await t.test('pending external capture evidence', async () => {
+    const f = await fixture(), prepared = await f.service.prepare({ id: f.id });
+    f.orders.get(prepared.checkout.legs[0].orderId).purchase_units[0].payments = { captures: [{ id: 'CAPTURE000001', status: 'PENDING' }] };
+    f.advance(20 * 60 * 1000);
+    await assert.rejects(f.service.closeUnpaid({ id: f.id }));
+    assert.notEqual((await f.service.get({ id: f.id })).status, 'closed_unpaid');
+  });
+  await t.test('malformed payment collections are not evidence of an unpaid order', async () => {
+    const f = await fixture(), prepared = await f.service.prepare({ id: f.id });
+    f.orders.get(prepared.checkout.legs[0].orderId).purchase_units[0].payments = false;
+    f.advance(20 * 60 * 1000);
+    await assert.rejects(f.service.closeUnpaid({ id: f.id }));
+    assert.notEqual((await f.service.get({ id: f.id })).status, 'closed_unpaid');
+  });
+  await t.test('capture claim arriving while the last order is read', async () => {
+    const f = await fixture(), prepared = await f.service.prepare({ id: f.id });
+    const getOrder = f.paypal.getOrder;
+    f.paypal.getOrder = async (id) => {
+      if (id === prepared.checkout.legs[1].orderId) await f.store.claimCapture({ id: f.id, legId: prepared.checkout.legs[0].id });
+      return getOrder(id);
+    };
+    f.advance(20 * 60 * 1000);
+    await assert.rejects(f.service.closeUnpaid({ id: f.id }), /CHECKOUT_CLOSE_UNPAID_BLOCKED/);
+    assert.equal((await f.service.get({ id: f.id })).status, 'uncertain');
+    assert.equal(f.calls.filter((call) => call.method === 'capture').length, 0);
+  });
 });

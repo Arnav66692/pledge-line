@@ -34,6 +34,11 @@ function database() {
         if (control.failQuery?.(sql)) throw Error('private database failure');
         const [scope, second, third, fourth] = values;
         const rows = (items) => ({ rows: structuredClone(items) });
+        if (/SELECT s\.stopped,s\.stop_reason,s\.stop_provider/.test(sql)) {
+          const current = data.scopes.get(scope);
+          const request = data.requests.get(`${scope}/${second}`);
+          return rows(current ? [{ ...current, ...(request ?? {}), stopped: current.stopped, stop_reason: current.stop_reason, stop_provider: current.stop_provider }] : []);
+        }
         if (/SELECT version,checksum/.test(sql)) return rows(data.migrations);
         if (/INSERT INTO pledge_ai_migrations/.test(sql)) { data.migrations.push({ version: scope, checksum: second }); return rows([]); }
         if (/INSERT INTO pledge_ai_scopes/.test(sql)) { if (!data.scopes.has(scope)) data.scopes.set(scope, { scope, stopped: false, stop_reason: null, stop_provider: null }); return rows([]); }
@@ -66,6 +71,7 @@ test('AI budget requires PostgreSQL and rejects invalid bindings before connecti
   const budget = createAiBudget({ pool });
   await assert.rejects(budget.reserve({ provider: 'oauth', requestId: 'request', maxCostNanos: 1 }), (error) => error.code === 'AI_INVALID_INPUT');
   await assert.rejects(budget.reserve({ provider: 'jev', requestId: 'request', maxCostNanos: 0.1 }), (error) => error.code === 'AI_INVALID_INPUT');
+  await assert.rejects(budget.checkDispatch({ provider: 'jev', requestId: 'bad\nrequest', maxCostNanos: 1 }), (error) => error.code === 'AI_INVALID_INPUT');
   await assert.rejects(budget.settle({ requestId: 'request', costNanos: -1 }), (error) => error.code === 'AI_INVALID_INPUT');
   assert.equal(connected, 0);
 });
@@ -135,6 +141,42 @@ test('unknown requests retain the full reservation and block the other provider 
   await assert.rejects(second.reserve({ provider: 'jev', requestId: 'lost-answer', maxCostNanos: 70 }), (error) => error.code === 'AI_REQUEST_CONFLICT');
 });
 
+test('dispatch check reads the exact durable reservation in one round trip and never permits a stale or changed claim', async () => {
+  const fixture = database();
+  const budget = createAiBudget({ pool: fixture.pool, limits: { anthropic: 100, jev: 100 } });
+  await budget.migrate();
+  let before = fixture.calls.length;
+  await budget.reserve({ provider: 'anthropic', requestId: 'dispatch', maxCostNanos: 70 });
+  assert.ok(fixture.calls.length - before <= 8, 'reservation preserves its commit with at most eight SQL round trips');
+  before = fixture.calls.length;
+  assert.deepEqual(await budget.checkDispatch({ provider: 'anthropic', requestId: 'dispatch', maxCostNanos: 70 }), { allowed: true, stopped: false, requestId: 'dispatch', provider: 'anthropic', maxCostNanos: 70 });
+  assert.equal(fixture.calls.length - before, 1);
+  await assert.rejects(budget.checkDispatch({ provider: 'jev', requestId: 'dispatch', maxCostNanos: 70 }), (error) => error.code === 'AI_REQUEST_CONFLICT');
+  await assert.rejects(budget.checkDispatch({ provider: 'anthropic', requestId: 'dispatch', maxCostNanos: 69 }), (error) => error.code === 'AI_REQUEST_CONFLICT');
+  await assert.rejects(budget.checkDispatch({ provider: 'anthropic', requestId: 'missing', maxCostNanos: 70 }), (error) => error.code === 'AI_REQUEST_NOT_FOUND');
+  before = fixture.calls.length;
+  await budget.settle({ requestId: 'dispatch', costNanos: 20 });
+  assert.ok(fixture.calls.length - before <= 7, 'settlement preserves its commit with at most seven SQL round trips');
+  assert.deepEqual(await budget.checkDispatch({ provider: 'anthropic', requestId: 'dispatch', maxCostNanos: 70 }), { allowed: false, stopped: false, reason: 'request_not_reserved' });
+  assert.equal((await budget.status()).accounts.anthropic.usedNanos, 20);
+});
+
+test('dispatch check observes a peer stop and fails closed on storage failure without releasing the claim', async () => {
+  const fixture = database();
+  const budget = createAiBudget({ pool: fixture.pool });
+  await budget.migrate();
+  const claim = { provider: 'jev', requestId: 'peer-stop', maxCostNanos: 70 };
+  await budget.reserve(claim);
+  await budget.trip({ reason: 'credit_exhausted', provider: 'anthropic' });
+  assert.deepEqual(await budget.checkDispatch(claim), { allowed: false, stopped: true, reason: 'credit_exhausted' });
+  fixture.control.failQuery = (sql) => sql.includes('SELECT s.stopped,s.stop_reason,s.stop_provider');
+  await assert.rejects(budget.checkDispatch(claim), (error) => error.code === 'AI_STORAGE_UNAVAILABLE' && !error.message.includes('private'));
+  fixture.control.failQuery = null;
+  const status = await budget.status();
+  assert.equal(status.accounts.jev.usedNanos, 70);
+  assert.equal(status.pendingRequests.length, 1);
+});
+
 test('settlements are idempotent, validate before refunding, and overrun truthfully stops both', async () => {
   const fixture = database();
   const budget = createAiBudget({ pool: fixture.pool, limits: { anthropic: 100, jev: 100 } });
@@ -196,11 +238,14 @@ test('hosted PostgreSQL enforces atomic AI claims and latched stops across indep
     const attempts = await Promise.all(Array.from({ length: 32 }, (_, index) => budget.reserve({ provider: index % 2 ? 'anthropic' : 'jev', requestId: `attempt-${index}`, maxCostNanos: 100 })));
     assert.equal(attempts.filter((attempt) => attempt.allowed).length, 1);
     const winner = attempts.find((attempt) => attempt.allowed);
+    assert.equal((await budget.checkDispatch({ provider: winner.provider, requestId: winner.requestId, maxCostNanos: 100 })).allowed, true);
     assert.equal((await createAiBudget({ pool, scope, limits }).reserve({ provider: 'jev', requestId: 'restart', maxCostNanos: 1 })).reason, 'request_in_progress');
     await budget.settle({ requestId: winner.requestId, costNanos: 50 });
+    assert.equal((await budget.checkDispatch({ provider: winner.provider, requestId: winner.requestId, maxCostNanos: 100 })).reason, 'request_not_reserved');
     await assert.rejects(pool.query('UPDATE pledge_ai_accounts SET allocation_nanos=10000 WHERE scope=$1', [scope]), (error) => error.code === '23000');
     await assert.rejects(pool.query("UPDATE pledge_ai_requests SET cost_nanos=0 WHERE scope=$1 AND request_id=$2", [scope, winner.requestId]), (error) => error.code === '23000');
     await budget.trip({ reason: 'credit_exhausted', provider: 'anthropic' });
+    assert.equal((await budget.checkDispatch({ provider: winner.provider, requestId: winner.requestId, maxCostNanos: 100 })).stopped, true);
     await assert.rejects(pool.query('UPDATE pledge_ai_scopes SET stopped=false,stop_reason=NULL,stop_provider=NULL,stopped_at=NULL WHERE scope=$1', [scope]), (error) => error.code === '23000');
     await assert.rejects(pool.query('DELETE FROM pledge_ai_requests WHERE scope=$1', [scope]), (error) => error.code === '23000');
     assert.equal((await createAiBudget({ pool, scope, limits }).reserve({ provider: 'jev', requestId: 'after-stop', maxCostNanos: 1 })).allowed, false);

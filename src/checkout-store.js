@@ -14,6 +14,21 @@ export class CheckoutStoreError extends Error {
   constructor(code = 'CHECKOUT_STORE_UNAVAILABLE') { super(code); this.name = 'CheckoutStoreError'; this.code = code; }
 }
 const fail = (code) => { throw new CheckoutStoreError(code); };
+const recoveryAbort = (signal) => { if (signal?.aborted) fail('CHECKOUT_RECOVERY_ABORTED'); };
+const recoverySignalValid = (signal) => { if (signal !== undefined && !(signal instanceof AbortSignal)) fail('CHECKOUT_INPUT_INVALID'); };
+const RECOVERY_TIMEOUTS = "SET LOCAL statement_timeout='2s'; SET LOCAL lock_timeout='1s'; SET LOCAL idle_in_transaction_session_timeout='15s'";
+const recoveryQuery = (client, text, values) => client.query({ text, values, query_timeout: 2500 });
+
+/** Closing revokes this app's authority only. It cannot erase an uncertain or attempted payment. */
+export function canCloseUnpaidCheckout(workflow, at) {
+  if (!workflow || workflow.blockedReason || !Number.isSafeInteger(at) || at < 0 ||
+    !Number.isFinite(Date.parse(workflow.proposal?.expiresAt)) || Date.parse(workflow.proposal.expiresAt) > at ||
+    !Array.isArray(workflow.legs) || workflow.legs.length < 1 || workflow.legs.length > 5) return false;
+  return workflow.legs.every((leg) => leg.captureState === 'reserved' && leg.captureAttempts === 0 &&
+    leg.captureId == null && leg.captureEvidence == null &&
+    ((leg.createState === 'reserved' && leg.createAttempts === 0 && leg.orderId == null && leg.approvalUrl == null && leg.createEvidence == null) ||
+      (leg.createState === 'ready' && leg.createAttempts === 1 && PAYPAL_ID.test(leg.orderId ?? ''))));
+}
 
 const SCHEMA = `
 CREATE TABLE pledge_checkout_workflows (
@@ -126,22 +141,37 @@ function evidence(value) {
 }
 
 /** Only explicit migrate() performs DDL. Every claim returns after its transaction commits. */
-export function createCheckoutStore({ pool } = {}) {
+export function createCheckoutStore({ pool, recoverySignal } = {}) {
   if (!pool || typeof pool.connect !== 'function') fail('CHECKOUT_DATABASE_REQUIRED');
-  async function transaction(fn, readonly = false) {
-    let client;
+  recoverySignalValid(recoverySignal);
+  let leaseActive = false;
+  async function transaction(fn, readonly = false, signal = recoverySignal) {
+    let client, connectionFailed = false;
+    const connectionError = () => { connectionFailed = true; };
     try {
+      recoveryAbort(signal);
       client = await pool.connect();
-      await client.query(readonly ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
-      if (!readonly) await client.query("SET LOCAL lock_timeout='5s'");
-      const value = await fn(client);
-      await client.query('COMMIT');
+      if (signal) client.on?.('error', connectionError);
+      const scoped = { query: async (sql, values) => {
+        recoveryAbort(signal);
+        if (connectionFailed) fail('CHECKOUT_STORE_UNAVAILABLE');
+        const result = signal ? await recoveryQuery(client, sql, values) : await client.query(sql, values);
+        recoveryAbort(signal);
+        if (connectionFailed) fail('CHECKOUT_STORE_UNAVAILABLE');
+        return result;
+      } };
+      await scoped.query(readonly ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
+      if (signal) await scoped.query(RECOVERY_TIMEOUTS);
+      else if (!readonly) await scoped.query("SET LOCAL lock_timeout='5s'");
+      const value = await fn(scoped);
+      await scoped.query('COMMIT');
       return value;
     } catch (error) {
-      try { await client?.query('ROLLBACK'); } catch { /* A successful claim is never returned after ambiguity. */ }
+      try { if (client) await (signal ? recoveryQuery(client, 'ROLLBACK') : client.query('ROLLBACK')); }
+      catch { if (signal) connectionFailed = true; /* A successful claim is never returned after ambiguity. */ }
       if (error instanceof CheckoutStoreError) throw error;
       throw new CheckoutStoreError();
-    } finally { client?.release(); }
+    } finally { if (signal) client?.off?.('error', connectionError); client?.release(connectionFailed || undefined); }
   }
   async function getIn(client, input, locked = false) {
     const result = await client.query(`SELECT * FROM pledge_checkout_workflows WHERE organization_id=$1 AND id=$2${locked ? ' FOR UPDATE' : ''}`, [input.organizationId, input.id]);
@@ -168,6 +198,68 @@ export function createCheckoutStore({ pool } = {}) {
     return leg;
   }
   return {
+    async listRecoveryCandidates({ organizationId, after = null, limit = 30, signal } = {}) {
+      context({ organizationId, id: after ?? '00000000-0000-0000-0000-000000000000' });
+      recoverySignalValid(signal);
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) fail('CHECKOUT_INPUT_INVALID');
+      const boundedSignal = signal ?? new AbortController().signal;
+      return transaction(async (client) => {
+        // ID-only discovery cannot return browser authority or binding/provider data.
+        const result = await client.query(`SELECT id FROM pledge_checkout_workflows
+          WHERE organization_id=$1 AND ($2::uuid IS NULL OR id>$2::uuid) AND blocked_reason IS NULL
+          AND EXISTS (SELECT 1 FROM jsonb_array_elements(legs) AS leg
+            WHERE leg->>'orderId' ~ '^[A-Z0-9]{8,40}$'
+            AND (leg->>'createState' IN ('claimed','unknown') OR leg->>'captureState' IN ('claimed','unknown')))
+          ORDER BY id ASC LIMIT $3`, [organizationId, after, limit + 1]);
+        const ids = result.rows.slice(0, limit).map((row) => row.id);
+        return { ids, nextCursor: result.rows.length > limit ? ids.at(-1) : null };
+      }, true, boundedSignal);
+    },
+    async withRecoveryLease({ organizationId, signal } = {}, work) {
+      context({ organizationId, id: '00000000-0000-0000-0000-000000000000' });
+      recoverySignalValid(signal);
+      if (typeof work !== 'function') fail('CHECKOUT_INPUT_INVALID');
+      recoveryAbort(signal);
+      if (leaseActive) return { acquired: false };
+      leaseActive = true;
+      let client, connectionFailed = false;
+      const leaseAbort = new AbortController();
+      const leaseSignal = signal ? AbortSignal.any([signal, leaseAbort.signal]) : leaseAbort.signal;
+      const connectionError = () => { connectionFailed = true; leaseAbort.abort(new CheckoutStoreError('CHECKOUT_RECOVERY_LEASE_LOST')); };
+      const query = async (sql, values) => {
+        recoveryAbort(leaseSignal);
+        const result = await recoveryQuery(client, sql, values);
+        recoveryAbort(leaseSignal);
+        return result;
+      };
+      try {
+        client = await pool.connect();
+        client.on?.('error', connectionError);
+        await query('BEGIN');
+        await query(RECOVERY_TIMEOUTS);
+        const key = createHash('sha256').update(`pledge-checkout-recovery:${organizationId}`).digest().readBigInt64BE().toString();
+        const result = await query('SELECT pg_try_advisory_xact_lock($1::bigint) AS acquired', [key]);
+        if (result.rows[0]?.acquired !== true) {
+          await query('ROLLBACK');
+          return { acquired: false };
+        }
+        // Keep the dedicated transaction/lease until all work drains, even following cancellation.
+        // It holds no workflow row locks; evidence writes use short, separate transactions.
+        await work(leaseSignal);
+        recoveryAbort(leaseSignal);
+        await query('COMMIT');
+        return { acquired: true };
+      } catch (error) {
+        try { if (client) await recoveryQuery(client, 'ROLLBACK'); } catch { connectionFailed = true; }
+        if (leaseSignal.aborted) fail('CHECKOUT_RECOVERY_ABORTED');
+        if (error instanceof CheckoutStoreError) throw error;
+        fail('CHECKOUT_STORE_UNAVAILABLE');
+      } finally {
+        client?.off?.('error', connectionError);
+        client?.release(connectionFailed || undefined);
+        leaseActive = false;
+      }
+    },
     async migrate() {
       return transaction(async (client) => {
         await client.query('SELECT pg_advisory_xact_lock(1618033988::bigint)');
@@ -216,6 +308,31 @@ export function createCheckoutStore({ pool } = {}) {
     async block({ organizationId, id, reason }) {
       if (!['quote_changed', 'provider_binding_changed', 'configuration_changed', 'unexpected_capture', 'order_voided'].includes(reason)) fail('CHECKOUT_INPUT_INVALID');
       return change({ organizationId, id }, (row) => { row.blocked_reason ??= reason; });
+    },
+    async closeExpiredUnpaid({ organizationId, id, at, orderChecks }) {
+      if (!Number.isSafeInteger(at) || at < 0 || !Array.isArray(orderChecks) || orderChecks.length > 5) fail('CHECKOUT_INPUT_INVALID');
+      return change({ organizationId, id }, (row) => {
+        if (row.blocked_reason === 'closed_unpaid') return { write: false };
+        if (!canCloseUnpaidCheckout({ proposal: row.binding.proposal, legs: row.legs, blockedReason: row.blocked_reason }, at) ||
+          orderChecks.length !== row.legs.length) fail('CHECKOUT_CLOSE_UNPAID_BLOCKED');
+        const checks = new Map();
+        const fields = new Set(['legId', 'orderId', 'status', 'payeeId', 'amountCents', 'currency', 'referenceId', 'checkedAt', 'noPaymentEvidence']);
+        for (const check of orderChecks) {
+          if (!object(check) || Object.keys(check).some((key) => !fields.has(key)) || !UUID.test(check.legId ?? '') || checks.has(check.legId)) fail('CHECKOUT_CLOSE_UNPAID_BLOCKED');
+          checks.set(check.legId, check);
+        }
+        for (const leg of row.legs) {
+          const check = checks.get(leg.id), checkedAt = Date.parse(check?.checkedAt);
+          if (!check || check.orderId !== leg.orderId || check.payeeId !== leg.allocation.payeeId || check.amountCents !== leg.allocation.totalCents ||
+            check.currency !== leg.allocation.currency || check.referenceId !== leg.referenceId || check.noPaymentEvidence !== true ||
+            !Number.isFinite(checkedAt) || checkedAt > at || at - checkedAt > 90_000 ||
+            (leg.createState === 'reserved' ? check.status !== 'NOT_CREATED' : !['CREATED', 'PAYER_ACTION_REQUIRED', 'APPROVED'].includes(check.status))) fail('CHECKOUT_CLOSE_UNPAID_BLOCKED');
+        }
+        // The lock rechecks every claim after provider reads. A concurrent capture claim wins or closure wins,
+        // never both. The existing SQL latch prevents any later claim or reopening without changing its schema.
+        for (const leg of row.legs) leg.closedUnpaidEvidence = evidence({ ...checks.get(leg.id), closedAt: new Date(at).toISOString() });
+        row.blocked_reason = 'closed_unpaid';
+      });
     },
     async claimCreate(input) {
       return change(input, (row) => {

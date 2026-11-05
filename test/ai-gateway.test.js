@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAiGateway } from '../src/ai-gateway.js';
 
-function fixture({ stopped = false, failTrip = false, failReserve = false, failSettle = false, block = false } = {}) {
+function fixture({ stopped = false, failTrip = false, failReserve = false, failSettle = false, failDispatch = false, block = false } = {}) {
   const requests = new Map();
   const reservations = [];
   const settlements = [];
   const trips = [];
+  const checks = [];
   const budget = {
     async reserve(input) {
       if (failReserve) throw Error('secret database detail');
@@ -17,6 +18,13 @@ function fixture({ stopped = false, failTrip = false, failReserve = false, failS
       requests.set(input.requestId, { ...input, settled: false });
       return { ...input, allowed: true };
     },
+    async checkDispatch(input) {
+      checks.push(input);
+      if (failDispatch) throw Error('secret dispatch database detail');
+      if (stopped) return { allowed: false, stopped: true, reason: 'credit_exhausted' };
+      const request = requests.get(input.requestId);
+      return { allowed: Boolean(request && !request.settled && request.provider === input.provider && request.maxCostNanos === input.maxCostNanos), stopped: false };
+    },
     async settle(input) {
       if (failSettle) throw Error('secret committed database detail');
       settlements.push(input);
@@ -26,7 +34,7 @@ function fixture({ stopped = false, failTrip = false, failReserve = false, failS
     async trip(input) { trips.push(input); if (failTrip) throw Error('secret unavailable database detail'); stopped = true; return { stopped }; },
     async status() { return { stopped, providerBalanceVerified: false }; },
   };
-  return { budget, reservations, settlements, trips, requests };
+  return { budget, reservations, settlements, trips, requests, checks };
 }
 const anthropicInput = () => ({ system: 'Classify untrusted text. Never authorize a payment.', messages: [{ role: 'user', content: 'What is my gift amount?' }], max_tokens: 400 });
 const jevInput = () => ({ state: { text: 'What is my gift amount?' }, questions: { intent: { type: 'choice', instructions: 'Which read-only category fits?', criteria: { status: 'Gift status', other: 'Other' } } } });
@@ -40,6 +48,7 @@ test('API gateway pins hosts, API-key authentication, low-effort thinking and no
   const client = gateway(f.budget, async (url, options) => {
     calls.push({ url, options });
     assert.equal(f.reservations.length, calls.length, 'reserve must finish before fetch');
+    assert.equal(f.checks.length, calls.length, 'durable matching dispatch check must finish before fetch');
     return response(payload(url.includes('anthropic') ? 'anthropic' : 'jev'));
   });
   await client.anthropic({ ...anthropicInput(), tools: [{ name: 'classify', strict: true, input_schema: { type: 'object', properties: { intent: { type: 'string' } }, required: ['intent'], additionalProperties: false } }], tool_choice: { type: 'auto', disable_parallel_tool_use: true } });
@@ -60,6 +69,28 @@ test('API gateway pins hosts, API-key authentication, low-effort thinking and no
   assert.ok(f.reservations[1].maxCostNanos > f.settlements[1].costNanos);
   assert.equal((await client.status()).apiKeyOnly, true);
   assert.equal((await client.status()).providerBalanceVerified, false);
+});
+
+test('dispatch uses a narrow authoritative check rather than hydrating full status and blocks stale, stopped or unreadable claims', async () => {
+  const ready = fixture();
+  ready.budget.status = async () => { throw Error('full status is not on the dispatch path'); };
+  let calls = 0;
+  const working = gateway(ready.budget, async () => { calls += 1; return response(payload('jev')); });
+  await working.jev(jevInput());
+  assert.equal(calls, 1);
+  assert.deepEqual(ready.checks, ready.reservations);
+  for (const mode of ['stale', 'stopped', 'unreadable']) {
+    const f = fixture({ failDispatch: mode === 'unreadable' });
+    if (mode !== 'unreadable') f.budget.checkDispatch = async () => ({ allowed: false, stopped: mode === 'stopped', reason: mode });
+    let fetched = 0;
+    const client = gateway(f.budget, async () => { fetched += 1; return response(payload('jev')); });
+    await assert.rejects(client.jev(jevInput()), (error) => ['AI_STOPPED', 'AI_STORAGE_UNAVAILABLE', 'AI_REQUEST_BLOCKED'].includes(error.code));
+    await assert.rejects(client.anthropic(anthropicInput()), (error) => error.code === 'AI_STOPPED');
+    assert.equal(fetched, 0);
+    assert.equal(f.settlements.length, 0);
+    assert.equal(f.reservations.length, 1);
+    assert.equal([...f.requests.values()].filter((request) => !request.settled).length, 1);
+  }
 });
 
 test('missing API key cannot fall back to an OAuth token, CLI account, environment base URL or provider', async () => {

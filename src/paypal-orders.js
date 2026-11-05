@@ -42,14 +42,27 @@ function callbackUrl(value) {
   return url.toString();
 }
 
-async function jsonResponse(response) {
+function checkAbort(signal) {
+  if (signal?.aborted) throw new SandboxOrdersError('PAYPAL_SANDBOX_ABORTED');
+}
+function checkResponseAbort(response, signal) {
+  if (signal?.aborted) void response.body?.cancel().catch(() => {});
+  checkAbort(signal);
+}
+
+async function jsonResponse(response, signal) {
+  checkResponseAbort(response, signal);
   if (!response.body) throw new SandboxOrdersError('PAYPAL_RESPONSE_INVALID', response.status);
   const reader = response.body.getReader();
   const chunks = [];
   let bytes = 0;
+  const cancel = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener('abort', cancel, { once: true });
   try {
     while (true) {
+      checkAbort(signal);
       const { done, value } = await reader.read();
+      checkAbort(signal);
       if (done) break;
       bytes += value.byteLength;
       if (bytes > MAX_RESPONSE_BYTES) {
@@ -62,35 +75,46 @@ async function jsonResponse(response) {
     if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error();
     return result;
   } catch (error) {
+    checkAbort(signal);
     if (error instanceof SandboxOrdersError) throw error;
     throw new SandboxOrdersError('PAYPAL_RESPONSE_INVALID', response.status);
-  }
+  } finally { signal?.removeEventListener('abort', cancel); reader.releaseLock(); }
 }
 
-export function createSandboxOrders({ clientId, clientSecret, fetchImpl = globalThis.fetch, now = () => Date.now(), timeoutMs = 15000 } = {}) {
+export function createSandboxOrders({ clientId, clientSecret, fetchImpl = globalThis.fetch, now = () => Date.now(),
+  readOnly = false, timeoutMs = readOnly ? 3000 : 15000 } = {}) {
   if (![clientId, clientSecret].every((v) => typeof v === 'string' && v.trim() && v.length <= 512 && !/[\r\n]/.test(v))) {
     throw new SandboxOrdersError('PAYPAL_SANDBOX_CREDENTIALS_REQUIRED');
   }
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60000) throw new SandboxOrdersError('PAYPAL_TIMEOUT_INVALID');
+  if (typeof readOnly !== 'boolean') throw new SandboxOrdersError('PAYPAL_READ_ONLY_INVALID');
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > (readOnly ? 3000 : 60000)) throw new SandboxOrdersError('PAYPAL_TIMEOUT_INVALID');
+  function requestSignal(signal) {
+    if (signal !== undefined && !(signal instanceof AbortSignal)) throw new SandboxOrdersError('PAYPAL_SIGNAL_INVALID');
+    checkAbort(signal);
+    return signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
+  }
   let token = null;
   let pendingToken = null;
-  async function accessToken() {
+  async function accessToken(signal) {
+    checkAbort(signal);
     if (token && token.until > now()) return token.value;
     if (pendingToken) return pendingToken;
     pendingToken = (async () => {
       let response;
+      const authSignal = requestSignal(signal);
       try {
         response = await fetchImpl(`${BASE}/v1/oauth2/token`, {
-          method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
+          method: 'POST', redirect: 'error', signal: authSignal,
           headers: { Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`, 'content-type': 'application/x-www-form-urlencoded' },
           body: 'grant_type=client_credentials',
         });
-      } catch { throw new SandboxOrdersError(); }
+      } catch { checkAbort(authSignal); throw new SandboxOrdersError(); }
+      checkResponseAbort(response, authSignal);
       if (!response.ok) {
         await response.body?.cancel().catch(() => {});
         throw new SandboxOrdersError('PAYPAL_SANDBOX_AUTH_FAILED', response.status);
       }
-      const data = await jsonResponse(response);
+      const data = await jsonResponse(response, authSignal);
       if (typeof data.access_token !== 'string' || !data.access_token || data.access_token.length > 4096 ||
         !Number.isFinite(data.expires_in) || data.expires_in <= 0) throw new SandboxOrdersError('PAYPAL_RESPONSE_INVALID');
       token = { value: data.access_token, until: now() + Math.max(0, data.expires_in * 1000 - 60000) };
@@ -98,22 +122,25 @@ export function createSandboxOrders({ clientId, clientSecret, fetchImpl = global
     })();
     try { return await pendingToken; } finally { pendingToken = null; }
   }
-  async function request(path, method = 'GET', body, requestId) {
-    const bearer = await accessToken();
+  async function request(path, method = 'GET', body, requestId, signal) {
+    checkAbort(signal);
+    const bearer = await accessToken(signal);
+    const readSignal = requestSignal(signal);
     let response;
     try {
       response = await fetchImpl(`${BASE}${path}`, {
-        method, redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
+        method, redirect: 'error', signal: readSignal,
         headers: { Authorization: `Bearer ${bearer}`, 'content-type': 'application/json', Prefer: 'return=representation',
           ...(requestId ? { 'PayPal-Request-Id': requestId } : {}) },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
-    } catch { throw new SandboxOrdersError(); }
+    } catch { checkAbort(readSignal); throw new SandboxOrdersError(); }
+    checkResponseAbort(response, readSignal);
     if (!response.ok) {
       await response.body?.cancel().catch(() => {});
       throw new SandboxOrdersError('PAYPAL_SANDBOX_REQUEST_FAILED', response.status);
     }
-    return jsonResponse(response);
+    return jsonResponse(response, readSignal);
   }
   function id(value) {
     if (typeof value !== 'string' || !ID.test(value)) throw new SandboxOrdersError('PAYPAL_ID_INVALID');
@@ -123,8 +150,14 @@ export function createSandboxOrders({ clientId, clientSecret, fetchImpl = global
     if (typeof value !== 'string' || !REQUEST_ID.test(value)) throw new SandboxOrdersError('PAYPAL_REQUEST_ID_REQUIRED');
     return value;
   }
-  return {
+  const reads = {
     mode: 'paypal-sandbox',
+    getOrder: (orderId, { signal } = {}) => request(`/v2/checkout/orders/${id(orderId)}`, 'GET', undefined, undefined, signal),
+    getCapture: (captureId, { signal } = {}) => request(`/v2/payments/captures/${id(captureId)}`, 'GET', undefined, undefined, signal),
+  };
+  if (readOnly) return Object.freeze(reads);
+  return {
+    ...reads,
     async createOrder({ requestId, payeeId, amountCents, currency, referenceId, returnUrl, cancelUrl }) {
       requestIdentity(requestId);
       id(payeeId);
@@ -139,8 +172,6 @@ export function createSandboxOrders({ clientId, clientSecret, fetchImpl = global
           user_action: 'PAY_NOW', shipping_preference: 'NO_SHIPPING' } } },
       }, requestId);
     },
-    getOrder: (orderId) => request(`/v2/checkout/orders/${id(orderId)}`),
     captureOrder: ({ id: orderId, requestId }) => request(`/v2/checkout/orders/${id(orderId)}/capture`, 'POST', {}, requestIdentity(requestId)),
-    getCapture: (captureId) => request(`/v2/payments/captures/${id(captureId)}`),
   };
 }

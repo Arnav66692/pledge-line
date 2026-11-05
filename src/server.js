@@ -538,6 +538,39 @@ export function templateWarnings({ live = LIVE_TEMPLATE_HASH, checkedIn = TEMPLA
   return warnings;
 }
 
+/** Construction is inert; recovery begins only after the HTTP socket is listening. */
+export function listenWithRecovery({ server, host, port, recovery = null }) {
+  return new Promise((resolve, reject) => {
+    const failed = (error) => { server.off('error', failed); reject(error); };
+    server.once('error', failed);
+    try {
+      server.listen(port, host, () => {
+        server.off('error', failed);
+        try { recovery?.start(); resolve(server); }
+        catch (error) { reject(error); }
+      });
+    } catch (error) { failed(error); }
+  });
+}
+
+/** All shutdown signals share one drain, retaining storage until recovery has stopped. */
+export function createServerShutdown({ server, recovery = null, pool = null, beforeClose = () => {}, onComplete = () => {} }) {
+  let stopping = null;
+  return function stop() {
+    if (stopping) return stopping;
+    stopping = (async () => {
+      beforeClose();
+      const closed = new Promise((resolve) => server.close((error) => resolve(error)));
+      await recovery?.stop();
+      const error = await closed;
+      if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') throw error;
+      await pool?.end();
+      await onComplete();
+    })();
+    return stopping;
+  };
+}
+
 async function main() {
   let config;
   try {
@@ -553,17 +586,24 @@ async function main() {
   const deps = buildDeps(config, { journal: database?.store, ...runtime });
   const server = createServer(deps);
   for (const warning of templateWarnings()) deps.log.error(warning);
-  server.listen(config.port, config.host, () => {
-    deps.log.info(`Pledge Line listening on http://${config.host}:${server.address().port}, PayPal ${config.paypal.mode}, router ${config.router.mode}`);
-  });
+  try { await listenWithRecovery({ server, host: config.host, port: config.port, recovery: runtime.checkoutRecovery }); }
+  catch (error) {
+    await runtime.checkoutRecovery?.stop();
+    await new Promise((resolve) => server.close(resolve));
+    await database?.pool.end();
+    throw error;
+  }
+  deps.log.info(`Pledge Line listening on http://${config.host}:${server.address().port}, PayPal ${config.paypal.mode}, router ${config.router.mode}`);
   if (config.paypal.mode === 'sandbox') {
     deps.paypal.warmUp().then(() => deps.log.info('PayPal token ready')).catch((error) => deps.log.error(`PayPal token warm-up failed ${error?.name ?? 'Error'}`));
   }
   const sweeper = setInterval(() => { deps.calls.sweep().catch((error) => deps.log.error(`sweep failed ${error?.name ?? 'Error'}`)); }, SWEEP_EVERY_MS);
   sweeper.unref();
-  const stop = () => server.close(() => { Promise.resolve(database?.pool.end()).finally(() => process.exit(0)); });
-  process.on('SIGTERM', stop);
-  process.on('SIGINT', stop);
+  const stop = createServerShutdown({ server, recovery: runtime.checkoutRecovery, pool: database?.pool,
+    beforeClose: () => clearInterval(sweeper), onComplete: () => process.exit(0) });
+  const stopOnSignal = () => { void stop().catch(() => { deps.log.error('shutdown failed'); process.exitCode = 1; }); };
+  process.on('SIGTERM', stopOnSignal);
+  process.on('SIGINT', stopOnSignal);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

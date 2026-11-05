@@ -9,6 +9,7 @@ function fixture({ stopped = false } = {}) {
   const budget = {
     async status() { return { stopped, accounts: {}, providerBalanceVerified: false }; },
     async reserve(input) { records.push(input); return { ...input, allowed: !stopped, stopped }; },
+    async checkDispatch() { return { allowed: !stopped, stopped }; },
     async settle(input) { records.push(input); return { settled: true, stopped }; },
     async trip() { stopped = true; },
   };

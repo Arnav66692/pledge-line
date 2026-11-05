@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { sandboxApprovalUrl, usdCents } from './paypal-orders.js';
+import { canCloseUnpaidCheckout } from './checkout-store.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PAYPAL_ID = /^[A-Z0-9]{8,40}$/;
@@ -38,23 +39,27 @@ function approvedTerms(rfq, proposal, at, { allowExpired = false, verifyHash = t
   if (!allowExpired && (Date.parse(proposal.expiresAt) <= at || Date.parse(rfq.deadline) <= at)) fail('CHECKOUT_TERMS_EXPIRED');
 }
 
-function publicState(workflow) {
+function publicState(workflow, at) {
   const confirmed = workflow.legs.filter((leg) => leg.captureState === 'confirmed').length;
   const uncertain = workflow.legs.some((leg) => ['claimed', 'unknown'].includes(leg.createState) || ['claimed', 'unknown'].includes(leg.captureState));
   let status = confirmed === workflow.legs.length ? 'completed' : uncertain ? 'uncertain' : confirmed ? 'partial'
     : workflow.legs.every((leg) => leg.createState === 'ready') ? 'awaiting_paypal_approval' : 'awaiting_checkout';
   if (workflow.blockedReason) status = uncertain || workflow.blockedReason === 'unexpected_capture' ? 'uncertain'
     : confirmed ? 'partial' : workflow.blockedReason === 'order_voided' ? 'failed' : 'expired';
+  if (workflow.blockedReason === 'closed_unpaid') status = 'closed_unpaid';
+  else if (!workflow.blockedReason && !confirmed && !uncertain && Date.parse(workflow.proposal.expiresAt) <= at) status = 'expired';
   return {
     id: workflow.id, request: copy(workflow.request), proposal: copy(workflow.proposal), status,
     mode: { suppliers: 'mcp', payments: 'paypal-sandbox' },
-    checkout: { nonAtomic: true, blockedReason: workflow.blockedReason ?? null, legs: workflow.legs.map((leg) => ({
+    checkout: { nonAtomic: true, blockedReason: workflow.blockedReason ?? null, canCloseUnpaid: canCloseUnpaidCheckout(workflow, at),
+      closedUnpaidAt: workflow.blockedReason === 'closed_unpaid' ? workflow.legs[0]?.closedUnpaidEvidence?.closedAt ?? workflow.updatedAt : null,
+      legs: workflow.legs.map((leg) => ({
       id: leg.id, supplierId: leg.allocation.supplierId, supplierName: leg.allocation.supplierName,
       orderId: leg.orderId, captureId: leg.captureId, amountCents: leg.allocation.totalCents,
       currency: leg.allocation.currency, quantity: leg.allocation.quantity,
-      status: leg.captureState === 'confirmed' ? 'confirmed' : ['claimed', 'unknown'].includes(leg.captureState) || ['claimed', 'unknown'].includes(leg.createState) ? 'uncertain'
+      status: workflow.blockedReason === 'closed_unpaid' ? 'closed_unpaid' : leg.captureState === 'confirmed' ? 'confirmed' : ['claimed', 'unknown'].includes(leg.captureState) || ['claimed', 'unknown'].includes(leg.createState) ? 'uncertain'
         : leg.createState === 'ready' ? leg.orderStatus === 'APPROVED' ? 'ready_to_capture' : 'awaiting_paypal_approval' : 'awaiting_checkout',
-      approvalUrl: leg.createState === 'ready' && leg.captureState === 'reserved' ? leg.approvalUrl : null,
+      approvalUrl: workflow.blockedReason !== 'closed_unpaid' && leg.createState === 'ready' && leg.captureState === 'reserved' ? leg.approvalUrl : null,
     })) },
     settlements: workflow.legs.filter((leg) => leg.captureState !== 'reserved').map((leg) => ({ supplierId: leg.allocation.supplierId,
       quantity: leg.allocation.quantity, amountCents: leg.allocation.totalCents, currency: leg.allocation.currency,
@@ -86,6 +91,7 @@ export function createSandboxCheckout({ store, paypal, getQuote, now = () => new
     return at;
   };
   const scope = (id, extra = {}) => ({ organizationId, id, ...extra });
+  const view = (workflow) => publicState(workflow, time());
   async function load(id) {
     if (!UUID.test(id ?? '')) fail('CHECKOUT_ID_INVALID', 400);
     const workflow = await store.get(scope(id));
@@ -167,12 +173,44 @@ export function createSandboxCheckout({ store, paypal, getQuote, now = () => new
   }
   async function reconcile({ id }) {
     const workflow = await load(id);
+    if (workflow.blockedReason === 'closed_unpaid') return view(workflow);
     for (const leg of workflow.legs) {
       if (!leg.orderId || leg.captureState === 'confirmed') continue;
       try { await inspect(workflow, leg); }
       catch { /* A read failure never clears an attempt or authorizes another payment. */ }
     }
-    return publicState(await load(id));
+    return view(await load(id));
+  }
+  async function closeUnpaid({ id }) {
+    const workflow = await load(id);
+    if (workflow.blockedReason === 'closed_unpaid') return view(workflow);
+    if (!canCloseUnpaidCheckout(workflow, time())) fail('CHECKOUT_CLOSE_UNPAID_BLOCKED');
+    if (typeof store.closeExpiredUnpaid !== 'function') fail('SANDBOX_CHECKOUT_CONFIGURATION_REQUIRED', 503);
+    const orderChecks = [];
+    for (const leg of workflow.legs) {
+      let status = 'NOT_CREATED';
+      if (leg.orderId) {
+        const order = await paypal.getOrder(leg.orderId);
+        let unit;
+        try { unit = boundOrder(order, workflow, leg); }
+        catch (error) { await store.block(scope(id, { reason: 'provider_binding_changed' })); throw error; }
+        if (unit.payments !== undefined && (unit.payments === null || typeof unit.payments !== 'object' || Array.isArray(unit.payments) ||
+          Object.values(unit.payments).some((payments) => !Array.isArray(payments) || payments.length !== 0))) {
+          await store.block(scope(id, { reason: 'unexpected_capture' }));
+          fail('CHECKOUT_CLOSE_UNPAID_BLOCKED');
+        }
+        if (!['CREATED', 'PAYER_ACTION_REQUIRED', 'APPROVED'].includes(order.status)) fail('CHECKOUT_CLOSE_UNPAID_BLOCKED');
+        status = order.status;
+      }
+      orderChecks.push({ legId: leg.id, orderId: leg.orderId, status, payeeId: leg.allocation.payeeId,
+        amountCents: leg.allocation.totalCents, currency: leg.allocation.currency, referenceId: leg.referenceId,
+        checkedAt: new Date(time()).toISOString(), noPaymentEvidence: true });
+    }
+    try { return view(await store.closeExpiredUnpaid(scope(id, { at: time(), orderChecks }))); }
+    catch (error) {
+      if (error?.code === 'CHECKOUT_CLOSE_UNPAID_BLOCKED') fail('CHECKOUT_CLOSE_UNPAID_BLOCKED');
+      throw error;
+    }
   }
   return {
     async start({ id = randomUUID(), rfq, proposal, sessionSecretHash }) {
@@ -180,18 +218,19 @@ export function createSandboxCheckout({ store, paypal, getQuote, now = () => new
       // Only the credential hash is retained. The quote confirmation token is no longer needed after approval.
       const persistedProposal = copy(proposal); delete persistedProposal.confirmationToken;
       const workflow = await store.reserve({ organizationId, id, rfq: copy(rfq), proposal: persistedProposal, sessionSecretHash });
-      return publicState(workflow);
+      return view(workflow);
     },
-    async get({ id }) { return publicState(await load(id)); },
+    async get({ id }) { return view(await load(id)); },
     async prepare({ id }) {
       if (allowSandboxWrites !== true) fail('SANDBOX_WRITES_DISABLED', 503);
       let workflow = await load(id);
+      if (workflow.blockedReason === 'closed_unpaid') return view(workflow);
       // start() checked the original ordered fingerprint before reservation. PostgreSQL JSONB preserves values,
       // not object-key order, and the database trigger freezes that complete binding after reservation.
       approvedTerms(workflow.request, workflow.proposal, time(), { verifyHash: false });
-      if (workflow.blockedReason) return publicState(workflow);
+      if (workflow.blockedReason) return view(workflow);
       for (const leg of workflow.legs) {
-        if (!await freshQuote(workflow, leg.allocation)) return publicState(await load(id));
+        if (!await freshQuote(workflow, leg.allocation)) return view(await load(id));
         callbacks(workflow, leg);
       }
       for (const leg of workflow.legs) {
@@ -224,43 +263,44 @@ export function createSandboxCheckout({ store, paypal, getQuote, now = () => new
         }
         workflow = await load(id);
       }
-      return publicState(await load(id));
+      return view(await load(id));
     },
     async capture({ id, legId }) {
       if (allowSandboxWrites !== true) fail('SANDBOX_WRITES_DISABLED', 503);
       const workflow = await load(id), leg = workflow.legs.find((item) => item.id === legId);
       if (!leg) fail('CHECKOUT_LEG_NOT_FOUND', 404);
-      if (workflow.blockedReason || leg.captureState === 'confirmed') return publicState(workflow);
+      if (workflow.blockedReason || leg.captureState === 'confirmed') return view(workflow);
       if (leg.captureState !== 'reserved') return reconcile({ id });
-      if (leg.createState !== 'ready' || !leg.orderId) return publicState(workflow);
+      if (leg.createState !== 'ready' || !leg.orderId) return view(workflow);
       if (workflow.legs.some((item) => item.createState !== 'ready' || ['claimed', 'unknown'].includes(item.captureState)) ||
-        workflow.legs.slice(0, workflow.legs.indexOf(leg)).some((item) => item.captureState !== 'confirmed')) return publicState(workflow);
-      if (!await freshQuote(workflow, leg.allocation)) return publicState(await load(id));
+        workflow.legs.slice(0, workflow.legs.indexOf(leg)).some((item) => item.captureState !== 'confirmed')) return view(workflow);
+      if (!await freshQuote(workflow, leg.allocation)) return view(await load(id));
       const order = await paypal.getOrder(leg.orderId);
       try { boundOrder(order, workflow, leg); }
       catch (error) { await store.block(scope(id, { reason: 'provider_binding_changed' })); throw error; }
       if (order.status === 'COMPLETED') return reconcile({ id });
       if (order.status === 'VOIDED') {
         await store.block(scope(id, { reason: 'order_voided' }));
-        return publicState(await load(id));
+        return view(await load(id));
       }
-      if (order.status !== 'APPROVED') return publicState(workflow);
+      if (order.status !== 'APPROVED') return view(workflow);
       const claim = await store.claimCapture(scope(id, { legId }));
-      if (!claim.claimed) return publicState(await load(id));
+      if (!claim.claimed) return view(await load(id));
       if (Date.parse(workflow.proposal.expiresAt) <= time()) {
         await store.recordCapture(scope(id, { legId, state: 'unknown', proof: { reason: 'quote_expired_before_dispatch' } }));
         await store.block(scope(id, { reason: 'quote_changed' }));
-        return publicState(await load(id));
+        return view(await load(id));
       }
       try { await paypal.captureOrder({ id: leg.orderId, requestId: claim.requestId }); }
       catch { /* Only authoritative reads can establish whether a timed-out capture completed. */ }
       try {
         const current = await load(id);
-        if (await inspect(current, current.legs.find((item) => item.id === legId))) return publicState(await load(id));
+        if (await inspect(current, current.legs.find((item) => item.id === legId))) return view(await load(id));
       } catch { /* Keep the committed attempt unknown when its provider read cannot be verified. */ }
       await store.recordCapture(scope(id, { legId, state: 'unknown', proof: { reason: 'capture_not_authoritatively_confirmed' } }));
-      return publicState(await load(id));
+      return view(await load(id));
     },
     reconcile,
+    closeUnpaid,
   };
 }

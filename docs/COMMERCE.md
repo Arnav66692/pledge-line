@@ -2,7 +2,7 @@
 
 The Supply desk at `/procurement` compares complete, all-in supplier allocations under an exact specification, quantity, USD budget and delivery deadline. Code enforces those constraints and the buyer's exact approval. When enabled, Sonnet proposes bounded counteroffers and Jev reviews the proposal; neither model can change a payee, grant consent or authorize a payment.
 
-The network protocol and PayPal checkout path are implemented. Both API keys authenticate, and one tiny Anthropic Haiku probe passed. Prepaid billing confirmation and actual composed-agent evaluation are pending; no actual PayPal order or capture has run through this new path. The [three-process supplier lab](SUPPLIER-LAB.md) uses controlled reference software with authenticated HTTP and persistent quotes. Independent supplier participation, real stock, goods fulfillment and production merchant permissions are unverified. No live payments are enabled, and the original pilot checkout and Render deployment are unchanged.
+The network path completed authenticated HTTP/MCP quotes and two buyer-approved PayPal sandbox orders/captures totaling $674.15 test funds using rules routing. Fresh provider reads match the amounts, merchant and durable identities, with one create and capture attempt per leg. The [three-process supplier lab](SUPPLIER-LAB.md) is controlled reference software; all endpoints share one owned sandbox merchant. Independent suppliers, stock, goods fulfillment and production merchant permissions remain unverified. Fresh blind-reviewed V4 passed its frozen routing gates with 29/30 routing, zero wrong mutations, ten pending-consent cases using zero provider calls, and median/p95 3,465/4,512 ms. Three earlier failed evaluations remain preserved. The first actual composed AI quote request failed and stopped both model providers; it is separate from completed payment acceptance. [AI-STATUS.md](AI-STATUS.md) records results and billing observations. No live payments are enabled, and the original pilot checkout and Render deployment are unchanged.
 
 ## Modes
 
@@ -17,7 +17,7 @@ The page displays its configured mode, full quote costs, rejected offers, exact 
 
 `ROUTER_MODE=anthropic` requires PostgreSQL, `ANTHROPIC_API_KEY`, `TYPESAFE_API_KEY` and an initialized AI allocation scope. Keep the keys and AI settings in ignored `.ai.env` with mode `600`. Legacy `haiku` startup is refused. Gemini is an explicit historical pilot option; the new agent never falls back to it, another provider or subscription/OAuth credentials.
 
-Before setting `AI_PREPAID_ONLY_CONFIRMED=true`, the operator must verify the correct organizations, purchased/prepaid funding and disabled auto-reload with both providers. This is an attestation, not an automatic account or balance check. An API key cannot choose the credit pool; some organizations can spend subscription credits before purchased credits. Do not claim prepaid isolation until the provider's account behavior has been established.
+Before setting `AI_PREPAID_ONLY_CONFIRMED=true`, confirm the intended organizations and API-credit funding. Check automatic credit purchase and invoicing settings where available. This is an operator attestation, not an automatic account or balance check. An API key cannot choose the credit pool. The observed $200 Anthropic grant comes from Ultra and is used before purchased credits, but API usage is separate from plan limits and is never charged to the Claude plan. The user confirmed Jev's $10 balance and authorized proceeding without further Console checks; its automatic-recharge settings remain independently unverified. The intended boundary is API-credit usage without subscription-session credentials or additional billing, not an assertion that the grant has no relationship to Ultra. [AI-STATUS.md](AI-STATUS.md) records the dated observations and process-scoped evaluation authorization.
 
 The gateway calls only its fixed Anthropic and Typesafe API hosts using explicit API keys. Defaults are a $5 Anthropic and $0.25 Jev development allocation in PostgreSQL, not the providers' balances. It reserves a conservative maximum before each request and settles verified usage. An ambiguous request keeps the full reservation. Exhaustion, authentication/billing failure or unverified usage latches a shared stop for both providers, with no automatic retry or reset on restart. `/api/ai/status` and `scripts/ai-check.js` report local allocation/stop state; neither verifies billing or disables auto-reload.
 
@@ -82,7 +82,11 @@ The ignored `.sandbox.env` contains only the existing sandbox app's client ID an
 5. Explicitly capture the next approved leg. Code rechecks the quote and order binding, commits its capture claim, and verifies fresh order and capture reads before marking it confirmed. Earlier captures must be confirmed before later legs advance.
 6. Reconcile unknown results using the same stored identities. A lost create response with no readable order identity stays blocked; a new request ID cannot replace it. Partial settlement stays visible. There is no automatic refund, replacement purchase or atomic rollback across suppliers.
 
-HTTP reads and writes require `x-procurement-secret`, independent of the quote confirmation token. After approval, the durable workflow can resume through its original key even after process replacement. Losing that key, clearing tab storage or visiting only a return URL does not authorize a replacement purchase. No automatic recovery worker exists, and the shared demo organization is not production tenant authentication.
+HTTP reads and writes require `x-procurement-secret`, independent of the quote confirmation token. After approval, the durable workflow can resume through its original key even after process replacement. Losing that key, clearing tab storage or visiting only a return URL does not authorize a replacement purchase. The shared demo organization is not production tenant authentication.
+
+An expired plan may be explicitly closed only after fresh exact-bound order reads establish unpaid status and the stored workflow has no capture attempts or unknown/in-flight writes. A permanent `closed_unpaid` latch prevents later creation/capture under its old authority. This closes the plan in the app, without claiming to cancel provider orders. New quotes and exact approval are required for another plan.
+
+The optional [read-only recovery controller](CHECKOUT-RECOVERY.md), enabled by `CHECKOUT_RECOVERY_ENABLED=true`, scans known uncertain identities under a transaction advisory lease. It defaults off, scans at most 30 IDs and reconciles at most three workflows per ten-second bounded sweep. It cannot create, capture, refund, replace an unknown identity or automatically advance another payment. Missing creation IDs, lost browser keys and donor-state recovery remain outside its capability.
 
 | Route | Purpose |
 | --- | --- |
@@ -92,15 +96,23 @@ HTTP reads and writes require `x-procurement-secret`, independent of the quote c
 | `POST /api/procurement/:id/prepare` | Create still-unattempted sandbox orders when the write gate allows |
 | `POST /api/procurement/:id/capture` | Explicitly capture the authorized next `legId` after PayPal buyer approval |
 | `POST /api/procurement/:id/reconcile` | Read and reconcile the same identities; mock mode may continue still-valid original legs |
+| `POST /api/procurement/:id/close-unpaid` | Permanently close an expired, authoritatively unpaid sandbox plan in the app |
 
 ## Write gate and acceptance evidence
 
 PayPal order creation and capture require **both** `PAYPAL_SANDBOX_CHECKOUT_WRITES=true` and a clock at or after `2026-11-05T05:00:00Z` (November 4, 2026, 9:00 pm PT). The lab's `LAB_MERCHANT_MODE=placeholder` independently prohibits writes, including after that time. The approved plan can be retained and read without a checkout write. The time gate does not enable writes by itself, provide buyer approval or authorize production money. Keep the switch false until authorized sandbox merchant IDs are configured and an operator chooses the acceptance run.
 
-After the keys and billing attestation are ready, an operator can explicitly run the composed-agent evaluation. This makes model requests and consumes the guarded allocation; it uses synthetic cases and disables PayPal/supplier calls. It writes an evaluation report without changing the frozen rubric:
+The completed workflow is `ac017a40-1900-4c9b-9dc1-39a865e82760`, using sandbox merchant `VL6MYE4R2TBSJ`:
 
-```sh
-node --env-file=.database.env --env-file=.ai.env scripts/agent-eval.js --run
-```
+| Order | Capture | Test amount |
+| --- | --- | --- |
+| `4DL24076LW3255731` | `59C72659KK0134257` | $396.50 USD |
+| `23341763JB5935315` | `61696644CK523954V` | $277.65 USD |
 
-Remaining evidence includes actual registered merchant IDs and reachable authenticated endpoints, confirmed provider funding/API credentials, a completed composed-agent evaluation, buyer-approved sandbox orders/captures and authoritative reads, real provider timeout/duplicate behavior, and independent supplier participation. [AI-EVAL.md](AI-EVAL.md) is the frozen 90-point evaluation contract. Mocked tests, a protocol implementation or database migrations alone do not establish 72/90, 80/90, a hackathon win or live-payment readiness. [PRODUCTION.md](../PRODUCTION.md) lists the remaining production gates.
+The sanitized read-only proof is `handoff/results/ai-commerce-2026-11-04/paypal-sandbox-completed-read-proof-2026-11-05.json` in the parent workspace. Earlier orders `4MC02219J6758725U` and `1LL96044P6101504F` expired before approval; fresh reads showed `PAYER_ACTION_REQUIRED` with no captures, and their app workflow was closed before new quotes. No uncertain payment was retried or replaced.
+
+V1, V2 and V3 composed evaluations are preserved failures. Do not rerun their exposed cases as fresh quality evidence. V4's one frozen, blind-reviewed routing run passed all gates; its sole false unclear remains included. A later plan-only schema correction preserves that routing code and its original archived source. The final schema-reviewed suite passed 648 of 655 tests, with zero failures and seven hosted-only skips.
+
+The first actual composed quote-only UI request failed before approval and retained a $0.05124 Anthropic reservation under the shared `usage_unverified` stop. No Jev review or PayPal write followed. A reviewed transport-schema compatibility fix passed 35 offline agent/procurement tests and the full suite, but a new paid acceptance request awaits user approval for one separate $0.10/$0.01 test allocation. The original stop and reservation remain intact. The local app's model calls remain stopped; read-only recovery runs independently, and the original completed workflow restored its exact payment IDs after restart. Unified AI-negotiation-to-checkout acceptance remains unestablished.
+
+Remaining evidence includes the corrected composed quote flow, a current hosted voice/recorded demonstration, independent supplier participation, observed target-user benefit, and actual provider timeout/duplicate recovery. [AI-EVAL.md](AI-EVAL.md) preserves the evaluation contract. These synthetic and sandbox checks do not establish a 72/90 or 80/90 judging score, a hackathon win or live-payment readiness. [PRODUCTION.md](../PRODUCTION.md) lists the production gates.

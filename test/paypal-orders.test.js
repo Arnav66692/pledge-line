@@ -71,3 +71,41 @@ test('malformed or oversized provider responses do not leak bodies', async () =>
     ? response({ access_token: 'token', expires_in: 300 }) : new Response('private'.repeat(50000)) });
   await assert.rejects(client.getOrder('ORDER00000001'), (error) => error.code === 'PAYPAL_RESPONSE_INVALID' && !error.message.includes('private'));
 });
+
+test('recovery client exposes only fixed-host reads and cancellation never affects the payment client', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return url.endsWith('/token') ? response({ access_token: 'synthetic-token', expires_in: 300 }) : response({ id: 'ORDER00000001' });
+  };
+  const credentials = { clientId: 'client', clientSecret: 'secret', fetchImpl };
+  const payment = createSandboxOrders(credentials), recovery = createSandboxOrders({ ...credentials, readOnly: true });
+  assert.deepEqual(Object.keys(recovery).sort(), ['getCapture', 'getOrder', 'mode']);
+  assert.throws(() => createSandboxOrders({ ...credentials, readOnly: true, timeoutMs: 3001 }), /PAYPAL_TIMEOUT_INVALID/);
+  const abort = new AbortController(); abort.abort(new Error('private-stop-reason'));
+  await assert.rejects(recovery.getOrder('ORDER00000001', { signal: abort.signal }), (error) => error.code === 'PAYPAL_SANDBOX_ABORTED' && !error.message.includes('private'));
+  assert.equal(requests.length, 0);
+  await payment.createOrder(input);
+  await recovery.getCapture('CAPTURE000001');
+  assert.equal(requests.filter(({ url }) => url.endsWith('/token')).length, 2, 'Recovery owns its OAuth cache.');
+  assert.ok(requests.every(({ url, options }) => new URL(url).origin === 'https://api-m.sandbox.paypal.com' && options.redirect === 'error'));
+  assert.equal(requests.at(-1).options.method, 'GET');
+});
+
+test('recovery cancellation propagates through OAuth and provider response body reads', async (t) => {
+  for (const phase of ['oauth', 'order']) await t.test(phase, async () => {
+    const abort = new AbortController(); let opened;
+    const bodyOpened = new Promise((resolve) => { opened = resolve; });
+    let cancelled = 0, fetches = 0;
+    const recovery = createSandboxOrders({ clientId: 'client', clientSecret: 'secret', readOnly: true, fetchImpl: async (url, options) => {
+      fetches += 1;
+      assert.equal(options.redirect, 'error');
+      if (phase === 'order' && url.endsWith('/token')) return response({ access_token: 'token', expires_in: 300 });
+      return new Response(new ReadableStream({ start() { opened(); }, cancel() { cancelled += 1; } }));
+    } });
+    const pending = recovery.getOrder('ORDER00000001', { signal: abort.signal });
+    await bodyOpened; abort.abort(new Error('private-abort-detail'));
+    await assert.rejects(pending, (error) => error.code === 'PAYPAL_SANDBOX_ABORTED' && !error.message.includes('private'));
+    assert.equal(cancelled, 1); assert.equal(fetches, phase === 'oauth' ? 1 : 2);
+  });
+});

@@ -99,6 +99,90 @@ test('confirmed capture replay accepts equivalent JSONB key order without overwr
   assert.ok(!f.seen.some(({ sql }) => sql.startsWith('UPDATE')));
 });
 
+function unpaidClosureFixture() {
+  const input = reservation(), at = Date.now();
+  input.proposal.expiresAt = new Date(at - 60000).toISOString();
+  const legId = randomUUID(), orderId = 'ORDER00000001';
+  const leg = { id: legId, allocation: input.proposal.allocations[0], referenceId: `pl-${input.proposal.termsHash}-${legId}`,
+    createRequestId: randomUUID(), captureRequestId: randomUUID(), createState: 'ready', createAttempts: 1,
+    orderId, approvalUrl: `https://www.sandbox.paypal.com/checkoutnow?token=${orderId}`, orderStatus: 'PAYER_ACTION_REQUIRED',
+    createEvidence: { orderId, original: true }, captureState: 'reserved', captureAttempts: 0, captureId: null, captureEvidence: null };
+  const row = { id: input.id, organization_id: input.organizationId, binding: { request: input.rfq, proposal: input.proposal },
+    session_secret_hash: input.sessionSecretHash, created_at: new Date(at - 120000), updated_at: new Date(at - 120000), blocked_reason: null, legs: [leg] };
+  const orderChecks = [{ legId, orderId, status: 'PAYER_ACTION_REQUIRED', payeeId: leg.allocation.payeeId,
+    amountCents: leg.allocation.totalCents, currency: leg.allocation.currency, referenceId: leg.referenceId,
+    checkedAt: new Date(at).toISOString(), noPaymentEvidence: true }];
+  const f = fixture(async (sql, values) => {
+    if (sql.startsWith('SELECT * FROM pledge_checkout_workflows')) return { rows: [copy(row)] };
+    if (sql.startsWith('UPDATE pledge_checkout_workflows')) {
+      row.legs = JSON.parse(values[2]); row.blocked_reason = values[3]; row.updated_at = new Date();
+      return { rows: [copy(row)] };
+    }
+    return { rows: [] };
+  });
+  return { ...f, input, at, orderChecks, row, leg: copy(leg), store: createCheckoutStore({ pool: f.pool }) };
+}
+
+test('expired unpaid closure rechecks the locked claims, retains identities and latches the app closed', async () => {
+  const f = unpaidClosureFixture();
+  const closed = await f.store.closeExpiredUnpaid({ ...f.input, at: f.at, orderChecks: f.orderChecks });
+  assert.equal(closed.blockedReason, 'closed_unpaid');
+  assert.ok(f.seen.some(({ sql }) => sql.endsWith('FOR UPDATE')));
+  for (const key of Object.keys(f.leg)) assert.deepEqual(closed.legs[0][key], f.leg[key], `${key} stays unchanged`);
+  assert.deepEqual(closed.legs[0].closedUnpaidEvidence, { ...f.orderChecks[0], closedAt: new Date(f.at).toISOString() });
+  assert.equal((await f.store.claimCreate({ ...f.input, legId: f.leg.id })).claimed, false);
+  assert.equal((await f.store.claimCapture({ ...f.input, legId: f.leg.id })).claimed, false);
+  const writes = f.seen.filter(({ sql }) => sql.startsWith('UPDATE')).length;
+  const again = await f.store.closeExpiredUnpaid({ ...f.input, at: f.at + 1, orderChecks: [] });
+  assert.equal(again.blockedReason, 'closed_unpaid');
+  assert.equal(f.seen.filter(({ sql }) => sql.startsWith('UPDATE')).length, writes, 'Repeated closure preserves its first evidence.');
+});
+
+test('unpaid closure refuses stale proof, an earlier capture claim and any existing blocked reason', async (t) => {
+  for (const [label, mutate] of [
+    ['unexpired terms', (f) => { f.row.binding.proposal.expiresAt = new Date(f.at + 1000).toISOString(); }],
+    ['a capture claim after provider inspection', (f) => { f.row.legs[0].captureState = 'claimed'; f.row.legs[0].captureAttempts = 1; }],
+    ['lost creation identity', (f) => { f.row.legs[0].createState = 'unknown'; f.row.legs[0].orderId = null; }],
+    ['existing provider-binding block', (f) => { f.row.blocked_reason = 'provider_binding_changed'; }],
+    ['old provider read', (f) => { f.orderChecks[0].checkedAt = new Date(f.at - 90001).toISOString(); }],
+    ['changed provider order identity', (f) => { f.orderChecks[0].orderId = 'OTHERORDER01'; }],
+    ['provider payment evidence', (f) => { f.orderChecks[0].noPaymentEvidence = false; }],
+    ['no matching provider proof', (f) => { f.orderChecks.length = 0; }],
+  ]) {
+    await t.test(label, async () => {
+      const f = unpaidClosureFixture(); mutate(f);
+      await assert.rejects(f.store.closeExpiredUnpaid({ ...f.input, at: f.at, orderChecks: f.orderChecks }), /CHECKOUT_CLOSE_UNPAID_BLOCKED/);
+      assert.ok(!f.seen.some(({ sql }) => sql.startsWith('UPDATE')));
+    });
+  }
+});
+
+test('actual PostgreSQL keeps expired unpaid closure terminal without a schema change', { skip: !process.env.DATABASE_TEST_URL }, async () => {
+  const { default: pg } = await import('pg');
+  const { databaseOptions } = await import('../src/database.js');
+  const pool = new pg.Pool(databaseOptions(process.env.DATABASE_TEST_URL));
+  const store = createCheckoutStore({ pool }), input = reservation(), at = Date.now();
+  input.proposal.expiresAt = new Date(at - 60000).toISOString();
+  try {
+    await store.migrate();
+    const reserved = await store.reserve(input), leg = reserved.legs[0];
+    await store.claimCreate({ ...input, legId: leg.id });
+    const orderId = `TEST${randomUUID().replaceAll('-', '').slice(0, 20).toUpperCase()}`;
+    await store.recordOrder({ ...input, legId: leg.id, orderId, approvalUrl: `https://www.sandbox.paypal.com/checkoutnow?token=${orderId}`,
+      orderStatus: 'PAYER_ACTION_REQUIRED', proof: { synthetic: true, orderId } });
+    const checks = [{ legId: leg.id, orderId, status: 'PAYER_ACTION_REQUIRED', payeeId: leg.allocation.payeeId,
+      amountCents: leg.allocation.totalCents, currency: leg.allocation.currency, referenceId: leg.referenceId,
+      checkedAt: new Date(at).toISOString(), noPaymentEvidence: true }];
+    const closed = await store.closeExpiredUnpaid({ ...input, at, orderChecks: checks });
+    assert.equal(closed.blockedReason, 'closed_unpaid');
+    assert.equal((await createCheckoutStore({ pool }).get(input)).legs[0].closedUnpaidEvidence.orderId, orderId);
+    assert.equal((await store.claimCapture({ ...input, legId: leg.id })).claimed, false);
+    await assert.rejects(pool.query('UPDATE pledge_checkout_workflows SET blocked_reason=NULL WHERE id=$1', [input.id]), (error) => error.code === '23000');
+    await assert.rejects(pool.query("UPDATE pledge_checkout_workflows SET legs=jsonb_set(jsonb_set(legs,'{0,captureState}','\"claimed\"'::jsonb),'{0,captureAttempts}','1'::jsonb) WHERE id=$1", [input.id]), (error) => error.code === '23000');
+    assert.deepEqual(await store.checkSchema(), { version: 1, matches: true });
+  } finally { await pool.end(); }
+});
+
 test('actual PostgreSQL preserves checkout creation/capture identities and unknown states across clients', { skip: !process.env.DATABASE_TEST_URL }, async () => {
   const { default: pg } = await import('pg');
   const { databaseOptions } = await import('../src/database.js');

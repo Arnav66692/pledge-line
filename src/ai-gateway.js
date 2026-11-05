@@ -86,7 +86,7 @@ function reservation(provider, body, rate) {
 /** Only explicit API keys and fixed API hosts are accepted. No SDK credential chain, OAuth, cookies or retry exists. */
 export function createAiGateway({ budget, anthropicApiKey, jevApiKey, fetchImpl = globalThis.fetch,
   anthropicModel = MODELS.anthropic.model, jevModel = MODELS.jev.model, timeoutMs = 12000 } = {}) {
-  if (!budget || ['reserve', 'settle', 'trip', 'status'].some((method) => typeof budget[method] !== 'function')) fail('AI_STORAGE_REQUIRED');
+  if (!budget || ['reserve', 'checkDispatch', 'settle', 'trip', 'status'].some((method) => typeof budget[method] !== 'function')) fail('AI_STORAGE_REQUIRED');
   if (typeof fetchImpl !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) fail('AI_INVALID_INPUT');
   const keys = { anthropic: anthropicApiKey, jev: jevApiKey };
   const models = { anthropic: anthropicModel, jev: jevModel };
@@ -116,9 +116,15 @@ export function createAiGateway({ budget, anthropicApiKey, jevApiKey, fetchImpl 
       if (permission?.stopped) haltLocal();
       fail(permission?.stopped ? 'AI_STOPPED' : permission?.reason === 'request_in_progress' ? 'AI_BUSY' : 'AI_REQUEST_BLOCKED', provider);
     }
-    // A peer may have tripped the shared circuit while this request waited for dispatch.
-    try { if ((await budget.status()).stopped) { haltLocal(); fail('AI_STOPPED', provider); } }
-    catch (error) { if (error instanceof AiGatewayError) throw error; haltLocal(); fail('AI_STORAGE_UNAVAILABLE', provider); }
+    // A peer may have tripped the circuit or settled this claim before dispatch. Re-read the
+    // durable matching reservation and latched stop, without hydrating the whole budget view.
+    let dispatchPermission;
+    try { dispatchPermission = await budget.checkDispatch({ provider, requestId, maxCostNanos }); }
+    catch { haltLocal(); fail('AI_STORAGE_UNAVAILABLE', provider); }
+    if (!dispatchPermission?.allowed) {
+      haltLocal();
+      fail(dispatchPermission?.stopped ? 'AI_STOPPED' : 'AI_REQUEST_BLOCKED', provider);
+    }
     if (locallyStopped) fail('AI_STOPPED', provider);
     const controller = new AbortController();
     controllers.add(controller);

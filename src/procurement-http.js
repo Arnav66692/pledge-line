@@ -1,6 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 
-const SESSION_PATH = /^\/api\/procurement\/([0-9a-f-]{36})(?:\/(approve|reconcile|prepare|capture))?$/;
+const SESSION_PATH = /^\/api\/procurement\/([0-9a-f-]{36})(?:\/(approve|reconcile|prepare|capture|close-unpaid))?$/;
 const TTL_MS = 60 * 60 * 1000;
 const MAX_SESSIONS = 500;
 const digest = (value) => createHash('sha256').update(value).digest();
@@ -57,6 +57,7 @@ export function createProcurementHttp({ createService, send, readJson, limiter, 
           if (!commerceStatus().sandboxWritesEnabled) return error(res, 409, 'PayPal sandbox writes are disabled. The approved plan is retained and no capture was attempted.');
           state = await checkout.capture({ id, legId: body.legId });
         }
+        else if (action === 'close-unpaid') state = await checkout.closeUnpaid({ id });
         else state = await checkout.reconcile({ id });
       } else {
         if (!session) return error(res, 401, 'This supply request needs its original session key.');

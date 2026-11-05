@@ -1,10 +1,38 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { createHash, randomUUID } from 'node:crypto';
 import { loadConfig } from '../src/config.js';
 import { buildDeps, createServer } from '../src/server.js';
 import { tempLedgerPath } from './helpers.js';
 import { databaseOptions, verifyDatabaseSettings, protectDatabasePool } from '../src/database.js';
+import { createProcurementHttp } from '../src/procurement-http.js';
+
+test('closing an expired unpaid checkout requires its original session and never invokes financial methods', async () => {
+  const id = randomUUID(), secret = 'synthetic-private-session-key', calls = [];
+  const closed = { id, status: 'closed_unpaid', checkout: { blockedReason: 'closed_unpaid' } };
+  const route = createProcurementHttp({
+    createService() { throw Error('No replacement service may be created'); }, limiter: { allow: () => true },
+    readJson: async () => ({}), send(res, status, body) { Object.assign(res, { status, body }); },
+    checkoutStore: { get: async () => ({ sessionSecretHash: createHash('sha256').update(secret).digest('hex') }) },
+    checkout: { closeUnpaid: async (input) => { calls.push(input); return closed; },
+      prepare() { throw Error('Unexpected order creation'); }, capture() { throw Error('Unexpected capture'); },
+      reconcile() { throw Error('Closure must use its bounded verification path'); } },
+  });
+  const request = async (method, key) => {
+    const response = {};
+    await route({ method, headers: { 'x-procurement-secret': key } }, response, `/api/procurement/${id}/close-unpaid`, 'test');
+    return response;
+  };
+  assert.equal((await request('POST', 'wrong-session')).status, 401);
+  assert.equal((await request('GET', secret)).status, 405);
+  assert.equal(calls.length, 0);
+  const response = await request('POST', secret);
+  assert.equal(response.status, 200);
+  assert.equal(response.body.state.status, 'closed_unpaid');
+  assert.deepEqual(calls, [{ id }]);
+  assert.equal(JSON.stringify(response.body).includes(secret), false);
+});
 
 test('supply desk binds HTTP approval to its session and exact terms', async () => {
   const config = loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'rules' });

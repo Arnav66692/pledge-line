@@ -6,9 +6,12 @@ import { createMcpSuppliers } from './supplier-mcp.js';
 import { createSandboxOrders } from './paypal-orders.js';
 import { createCheckoutStore } from './checkout-store.js';
 import { createSandboxCheckout } from './sandbox-checkout.js';
+import { createCheckoutRecovery } from './checkout-recovery.js';
 import { validateProcurementQuote } from './procurement.js';
 
 export const SANDBOX_WRITE_UNLOCK_AT = '2026-11-05T05:00:00.000Z';
+// The HTTP adapter uses this fixed organization; requests cannot nominate another tenant.
+export const CHECKOUT_ORGANIZATION_ID = 'demo-organization';
 const fail = (code) => { const error = new Error(code); error.code = code; throw error; };
 
 export function sandboxWritePolicy(env, at) {
@@ -52,7 +55,7 @@ export function readSupplierRegistry(file, env = process.env) {
 export async function configureRuntimeServices({ config, database, env = process.env, now = () => new Date(), fetchImpl = globalThis.fetch } = {}) {
   const paid = config.router.mode === 'anthropic';
   if (config.router.mode === 'haiku') fail('USE_GUARDED_ANTHROPIC_MODE');
-  let gateway = null, agent = null, suppliers = null, checkoutStore = null, checkout = null;
+  let gateway = null, agent = null, suppliers = null, checkoutStore = null, checkout = null, checkoutRecovery = null;
   if (paid) {
     if (!database?.pool) fail('AI_DATABASE_REQUIRED');
     if (env.AI_PREPAID_ONLY_CONFIRMED !== 'true') fail('AI_PREPAID_CONFIRMATION_REQUIRED');
@@ -75,7 +78,7 @@ export async function configureRuntimeServices({ config, database, env = process
     checkoutStore = createCheckoutStore({ pool: database.pool });
     await checkoutStore.checkSchema();
     const paypal = createSandboxOrders({ clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, fetchImpl });
-    const options = { store: checkoutStore, paypal, now, checkoutOrigin: new URL(config.publicBaseUrl).origin,
+    const options = { store: checkoutStore, paypal, now, organizationId: CHECKOUT_ORGANIZATION_ID, checkoutOrigin: new URL(config.publicBaseUrl).origin,
       getQuote: async (allocation, rfq) => {
         const supplier = registered.get(allocation.supplierId);
         if (!supplier || supplier.payeeId !== allocation.payeeId) fail('SUPPLIER_BINDING_CHANGED');
@@ -86,11 +89,33 @@ export async function configureRuntimeServices({ config, database, env = process
       prepare: (input) => createSandboxCheckout({ ...options, allowSandboxWrites: writesAllowed() }).prepare(input),
       capture: (input) => createSandboxCheckout({ ...options, allowSandboxWrites: writesAllowed() }).capture(input),
     };
+    if (env.CHECKOUT_RECOVERY_ENABLED === 'true') {
+      // This instance owns a separate token cache and exposes no financial methods.
+      const reads = createSandboxOrders({ clientId: config.paypal.clientId, clientSecret: config.paypal.clientSecret, fetchImpl, readOnly: true });
+      checkoutRecovery = createCheckoutRecovery({ enabled: true, now: () => new Date(now()).getTime(),
+        listCandidates: ({ after, limit, signal }) => checkoutStore.listRecoveryCandidates({ organizationId: CHECKOUT_ORGANIZATION_ID, after, limit, signal }),
+        withLease: ({ signal }, work) => checkoutStore.withRecoveryLease({ organizationId: CHECKOUT_ORGANIZATION_ID, signal }, work),
+        reconcileExisting: async ({ id, signal }) => {
+          signal.throwIfAborted();
+          const scoped = createCheckoutStore({ pool: database.pool, recoverySignal: signal });
+          const store = Object.fromEntries(['get', 'block', 'recordOrder', 'recordCapture'].map((method) => [method, scoped[method]]));
+          const readOnlyPaypal = { mode: reads.mode, getOrder: (orderId) => reads.getOrder(orderId, { signal }),
+            getCapture: (captureId) => reads.getCapture(captureId, { signal }) };
+          const service = createSandboxCheckout({ store, paypal: readOnlyPaypal, now, organizationId: CHECKOUT_ORGANIZATION_ID,
+            checkoutOrigin: options.checkoutOrigin, allowSandboxWrites: false,
+            getQuote: async () => fail('CHECKOUT_RECOVERY_QUOTE_ACCESS_REFUSED') });
+          const state = await service.reconcile({ id });
+          signal.throwIfAborted();
+          return state;
+        },
+      });
+    }
   }
-  return { agent, aiGateway: gateway, suppliers, checkout, checkoutStore, commerceStatus: () => ({
+  return { agent, aiGateway: gateway, suppliers, checkout, checkoutStore, checkoutRecovery, commerceStatus: () => ({
     suppliers: supplierMode, payments: supplierMode === 'mcp-sandbox' ? 'paypal-sandbox' : 'mock',
     sandboxWritesEnabled: supplierMode === 'mcp-sandbox' && writesAllowed(), sandboxWriteUnlockAt: SANDBOX_WRITE_UNLOCK_AT,
     sandboxWriteBlockedReason: supplierMode === 'mcp-sandbox' ? writePolicy().blockedReason : 'mock_mode',
+    checkoutRecovery: checkoutRecovery?.status() ?? { enabled: false, running: false, inFlight: false },
     supplierProvenance: suppliers ? env.LAB_MERCHANT_MODE === 'placeholder' ? 'Controlled sandbox supplier lab. Merchant IDs are placeholders and checkout writes are disabled. No independent business participation or fulfillment.' : 'Operator-registered endpoints. Independent business participation and fulfillment are not verified.' : 'Simulated suppliers.',
     livePayments: false,
   }) };

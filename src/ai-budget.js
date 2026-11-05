@@ -100,9 +100,8 @@ export function createAiBudget({ pool, scope = 'pledge-line', limits = AI_DEFAUL
     let client;
     try {
       client = await pool.connect();
-      await client.query(readOnly ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
-      await client.query("SET LOCAL lock_timeout='5s'");
-      await client.query("SET LOCAL statement_timeout='15s'");
+      // Fixed statements execute in order on the same connection, without three network round trips.
+      await client.query(`${readOnly ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN'}; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s'`);
       const result = await work(client);
       await client.query('COMMIT');
       return result;
@@ -197,6 +196,29 @@ export function createAiBudget({ pool, scope = 'pledge-line', limits = AI_DEFAUL
         await client.query('INSERT INTO pledge_ai_requests(scope,request_id,provider,reservation_nanos) VALUES($1,$2,$3,$4)', [scope, requestId, provider, maxCostNanos]);
         return { allowed: true, requestId, provider, maxCostNanos };
       });
+    },
+    async checkDispatch({ provider, requestId, maxCostNanos } = {}) {
+      providerOf(provider); identifier(requestId); nanos(maxCostNanos, { positive: true });
+      let client;
+      try {
+        client = await pool.connect();
+        // One statement has one authoritative snapshot. The reservation binding and scope stop are
+        // immutable once changed, so this needs neither account hydration nor a read transaction.
+        const result = await client.query(`SELECT s.stopped,s.stop_reason,s.stop_provider,
+          r.request_id,r.provider,r.reservation_nanos,r.state
+          FROM pledge_ai_scopes s LEFT JOIN pledge_ai_requests r ON r.scope=s.scope AND r.request_id=$2
+          WHERE s.scope=$1`, [scope, requestId]);
+        const row = result.rows[0];
+        if (!row) fail('AI_NOT_INITIALIZED');
+        if (row.stopped) return { allowed: false, stopped: true, reason: row.stop_reason };
+        if (!row.request_id) fail('AI_REQUEST_NOT_FOUND');
+        if (row.provider !== provider || Number(row.reservation_nanos) !== maxCostNanos) fail('AI_REQUEST_CONFLICT');
+        if (row.state !== 'reserved') return { allowed: false, stopped: false, reason: 'request_not_reserved' };
+        return { allowed: true, stopped: false, requestId, provider, maxCostNanos };
+      } catch (error) {
+        if (error instanceof AiBudgetError) throw error;
+        throw new AiBudgetError('AI_STORAGE_UNAVAILABLE');
+      } finally { client?.release(); }
     },
     async settle({ requestId, costNanos } = {}) {
       identifier(requestId); nanos(costNanos);
