@@ -1,0 +1,75 @@
+{
+  "at": "2026-11-05T19:21:45.976Z",
+  "url": "https://pledge-line.onrender.com",
+  "runtimeSourceCommit": "a81b76f73594158c1ba72a20f7e544c155fcbe7c",
+  "deployId": "dep-dbmdb4ijnfac739as8dg",
+  "status": "live",
+  "nodeVersion": "24.22.1",
+  "plan": "free",
+  "health": {
+    "http": 200,
+    "data": {
+      "ok": true,
+      "mode": {
+        "paypal": "sandbox",
+        "router": "anthropic"
+      }
+    }
+  },
+  "runtime": {
+    "suppliers": "mcp-sandbox",
+    "supplierCount": 3,
+    "privateSupplierListeners": true,
+    "payments": "paypal-sandbox",
+    "livePayments": false
+  },
+  "hostedFunctional": {
+    "donorPinAndReadPassed": true,
+    "quotePassed": true,
+    "quoteTotalCents": 67625,
+    "quoteSupplierCount": 3,
+    "approved": false,
+    "paymentWritesAttempted": false
+  },
+  "apiBudget": {
+    "scope": "pledge-line-functional-20261105",
+    "apiKeyOnly": true,
+    "anthropicCapUsd": 3,
+    "jevCapUsd": 0.1,
+    "anthropicUsedUsd": 0.051998,
+    "jevUsedUsd": 0.000453306,
+    "stopped": false,
+    "pendingRequests": 0,
+    "providerBalanceVerified": false,
+    "localCountersPreserved": true
+  },
+  "receipt": {
+    "http": 200,
+    "signatureValid": true,
+    "keyId": "b63c499b55817461",
+    "unchanged": true
+  },
+  "permanentWebhook": {
+    "id": "11H53440JW2025807",
+    "eventId": "WH-2ET217543L972721N-7ML97454FY361641A",
+    "type": "INVOICING.INVOICE.PAID",
+    "resourceId": "INV2-UWF7-EA8Y-UCFQ-CLW2",
+    "verifiedDuplicate": true,
+    "renderLogAtPacific": "2026-11-05T11:16:29-08:00",
+    "http": 200,
+    "durationMs": 356
+  },
+  "browser": {
+    "publicDonorAndSupplyPages200": true,
+    "mobileViewportWidth": 390,
+    "mobileDocumentWidth": 390,
+    "horizontalOverflow": false,
+    "supplyConsoleErrors": 0
+  },
+  "restart": {
+    "localVerified": true,
+    "oldReceiptRecoveredOnDifferentHost": true,
+    "oldVerifiedWebhookRecoveredOnDifferentHost": true
+  },
+  "runtimeSourceTree": "bdedf881ba645cee157798269146fb9c82a8cee7"
+}
