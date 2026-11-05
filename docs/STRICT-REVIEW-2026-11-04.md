@@ -22,3 +22,9 @@ The strongest blockers are a missing complete primary demonstration, no observed
 The highest-value next work is one coherent accepted AI-to-PayPal sandbox journey, a truthful three-minute recording, a reviewable build, and observed tasks with willing target users. If voice leads, measure actual microphone task success and end-to-end latency. If procurement leads, compare the model fairly against a deterministic negotiating agent on unseen briefs. The existing initial-quote comparison cannot establish AI-specific savings. Outreach requires separate authorization.
 
 Those changes could strengthen a 72-point case. An 80-point case requires repeated benefit, a distinctive contribution and credible delivery evidence. Adding features or using production money does not establish either score. See [validation](../VALIDATION.md), [AI results](AI-STATUS.md) and [production requirements](../PRODUCTION.md).
+
+## Addendum, November 4, 2026, about 11:53 pm Pacific
+
+After this panel, one separately approved bounded test verified corrected actual Anthropic planning, Jev advisory review and three controlled MCP supplier endpoints. It produced a 100-shirt plan for $676.25 within an $800 budget. Jev flagged closer review. No approval or PayPal payment occurred. Exactly one request per provider settled for $0.005544906 total under separate $0.10/$0.01 ceilings, and the test scope was stopped afterward. The original shared stop and $0.05124 uncertain reservation remained unchanged. [AI results](AI-STATUS.md) record the proof and limits.
+
+This closes the corrected quote-generation acceptance gap. It does not establish a unified model-produced purchase, independent supplier participation, observed user benefit or a current recording. The scores above remain the panel's earlier assessments. No new panel, automatic uplift or 72/80 result is claimed.
