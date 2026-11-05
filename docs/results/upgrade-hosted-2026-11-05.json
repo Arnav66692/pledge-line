@@ -1,0 +1,252 @@
+{
+  "at": "2026-11-05T22:36:21.926Z",
+  "releaseCommit": "9dccdcd89e9d99182ff364b37d7703201acff772",
+  "githubDeploymentId": 7586275514,
+  "renderDeployId": "dep-dbmfkgou01pc73e358lg",
+  "githubDeploymentState": "success",
+  "url": "https://pledge-line.onrender.com",
+  "healthHttp": 200,
+  "paypalMode": "sandbox",
+  "mainAgent": "claude-sonnet-5-5",
+  "reviewer": "jev-1.14.0",
+  "assets": {
+    "at": "2026-11-05T22:33:42.132Z",
+    "commit": "9dccdcd89e9d99182ff364b37d7703201acff772",
+    "initialObservation": "Initial browser demo read503 and first asset probe timed out after20s. Cause was not established. Subsequent health, browser and complete asset reads passed.",
+    "checks": [
+      {
+        "path": "/procurement.js",
+        "status": 200,
+        "byteLength": 62755,
+        "contentType": "text/javascript; charset=utf-8",
+        "sha256": "7c56e5e94e79730a801106413482da5ac491c892f20a205844d600e9bc7c44d9",
+        "matchesReviewedLocalBytes": true
+      },
+      {
+        "path": "/procurement.css",
+        "status": 200,
+        "byteLength": 16278,
+        "contentType": "text/css; charset=utf-8",
+        "sha256": "556112a96f9897a3b508fa4abe4247cb151c6d014f659bb5d1837a141b18af4d",
+        "matchesReviewedLocalBytes": true
+      },
+      {
+        "path": "/demo",
+        "status": 200,
+        "byteLength": 7881,
+        "contentType": "text/html; charset=utf-8",
+        "sha256": "df9edc34818d1eef25a383ef571ec2c863838a9e0ba5c472a56fef81472580a2",
+        "matchesReviewedLocalBytes": true
+      },
+      {
+        "path": "/demo.js",
+        "status": 200,
+        "byteLength": 4178,
+        "contentType": "text/javascript; charset=utf-8",
+        "sha256": "25277c303e7407208d99cb0002457e316cb09b3eaf28b2245f7fb1cb8e30751c",
+        "matchesReviewedLocalBytes": true
+      },
+      {
+        "path": "/demo-assets/walkthrough.mp4",
+        "status": 200,
+        "byteLength": 2791742,
+        "contentType": "video/mp4",
+        "sha256": "37367a8e1f96bd24b78d9ea5dd56993d30c0c0f0f521192eeb32a4cf9f94567c",
+        "matchesReviewedLocalBytes": true
+      },
+      {
+        "path": "/demo-assets/walkthrough.vtt",
+        "status": 200,
+        "byteLength": 1571,
+        "contentType": "text/vtt; charset=utf-8",
+        "sha256": "fd88d3d4c3ca357c1dc883bb64d832640a16a99d4d736290a896c0c9ea62f0d7",
+        "matchesReviewedLocalBytes": true
+      }
+    ]
+  },
+  "donor": {
+    "at": "2026-11-05T22:35:30.655Z",
+    "status": 200,
+    "callId": "4a407454-c723-481a-95e6-11d0b741e697",
+    "ended": true,
+    "keys": [
+      "callId",
+      "turn",
+      "restored",
+      "script",
+      "verified",
+      "locked",
+      "ended",
+      "pending",
+      "record",
+      "drill",
+      "receipts",
+      "recovery",
+      "events"
+    ],
+    "noFinancialMutation": true
+  },
+  "hostedGoal": {
+    "status": 200,
+    "quantity": 100,
+    "budgetCents": 80000,
+    "deadline": "2026-11-14T01:00:00.000Z",
+    "allowSplit": true,
+    "currencyAssumptionDisplayed": true,
+    "draftOnlyBeforeExplicitFindPlan": true
+  },
+  "hostedQuote": {
+    "workflowId": "9c9c70a1-620a-4e30-b78c-c14d2528af6b",
+    "state": "awaiting_approval",
+    "totalCents": 67415,
+    "supplierRounds": 3,
+    "priceGuard": {
+      "version": 1,
+      "baselineTotalCents": 67415,
+      "agentTotalCents": 67625,
+      "selectedTotalCents": 67415,
+      "selectedSource": "baseline",
+      "comparisonComplete": true,
+      "avoidedCents": 210
+    },
+    "checks": [
+      {
+        "code": "BUDGET",
+        "label": "All-in budget",
+        "status": "pass",
+        "message": "All-in budget: the supplied evidence matches.",
+        "evidence": {
+          "budgetCents": 80000,
+          "totalCents": 67415
+        }
+      },
+      {
+        "code": "QUANTITY",
+        "label": "Complete quantity",
+        "status": "pass",
+        "message": "Complete quantity: the supplied evidence matches.",
+        "evidence": {
+          "requested": 100,
+          "allocated": 100
+        }
+      },
+      {
+        "code": "SPLIT_POLICY",
+        "label": "Split-order permission",
+        "status": "pass",
+        "message": "Split-order permission: the supplied evidence matches.",
+        "evidence": {}
+      },
+      {
+        "code": "QUOTE_BINDING",
+        "label": "Supplier and payee binding",
+        "status": "pass",
+        "message": "Supplier and payee binding: the supplied evidence matches.",
+        "evidence": {
+          "selectedQuoteIds": [
+            "mcp-quote-42371e3c-1b54-4d10-9826-1f2d69911e01",
+            "mcp-quote-8078e4fe-5d7d-495d-85c7-2edb6e31d4b7"
+          ]
+        }
+      },
+      {
+        "code": "COST_TOTAL",
+        "label": "Goods, fees and tax arithmetic",
+        "status": "pass",
+        "message": "Goods, fees and tax arithmetic: the supplied evidence matches.",
+        "evidence": {
+          "allocationTotalCents": 67415
+        }
+      },
+      {
+        "code": "DEADLINE",
+        "label": "Delivery deadline",
+        "status": "pass",
+        "message": "Delivery deadline: the supplied evidence matches.",
+        "evidence": {}
+      },
+      {
+        "code": "QUOTE_FRESHNESS",
+        "label": "Quote expiry",
+        "status": "pass",
+        "message": "Quote expiry: the supplied evidence matches.",
+        "evidence": {}
+      },
+      {
+        "code": "CURRENCY",
+        "label": "Currency",
+        "status": "pass",
+        "message": "Currency: the supplied evidence matches.",
+        "evidence": {}
+      },
+      {
+        "code": "SPECIFICATION",
+        "label": "Exact specification",
+        "status": "pass",
+        "message": "Exact specification: the supplied evidence matches.",
+        "evidence": {}
+      }
+    ],
+    "reasons": [
+      {
+        "code": "JEV_LOW_CONFIDENCE",
+        "source": "reviewer",
+        "message": "Jev did not reach the 99% review threshold. This is uncertainty, not a confirmed constraint violation.",
+        "evidence": {
+          "confidence": 0.68,
+          "choiceProbability": 0.84,
+          "threshold": 0.99
+        }
+      }
+    ],
+    "reviewAuthorizesPayment": false,
+    "approvalGiven": false,
+    "paypalCreateOrCaptureRequested": false
+  },
+  "demo": {
+    "originalSignatureVerified": true,
+    "editedAmountRejected": true,
+    "videoDurationSeconds": 73,
+    "videoReadyState": 4,
+    "videoPlaybackStarted": true,
+    "captionsTrackPresent": true,
+    "verifiedKeyPersistedAfterRedeploy": true
+  },
+  "responsive": {
+    "width390": true,
+    "horizontalOverflow": false,
+    "supplyDeskConsoleErrorsAfterClear": 0
+  },
+  "budget": {
+    "scope": "pledge-line-functional-20261105",
+    "stopped": false,
+    "reason": null,
+    "provider": null,
+    "providerBalanceVerified": false,
+    "allocationUnit": "USD nanodollars",
+    "accounts": {
+      "anthropic": {
+        "allocationNanos": 3000000000,
+        "usedNanos": 300002000,
+        "remainingNanos": 2699998000
+      },
+      "jev": {
+        "allocationNanos": 100000000,
+        "usedNanos": 1590498,
+        "remainingNanos": 98409502
+      }
+    },
+    "pendingRequests": [],
+    "apiKeyOnly": true,
+    "autoRechargeManagedByProvider": true,
+    "credentialsConfigured": {
+      "anthropic": true,
+      "jev": true
+    },
+    "enabled": true,
+    "mainAgent": "claude-sonnet-5-5",
+    "reviewer": "jev-1.14.0",
+    "jevPaymentAuthority": false
+  },
+  "noLivePaypalPayment": true
+}

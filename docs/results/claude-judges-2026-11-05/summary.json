@@ -1,0 +1,32 @@
+{
+  "kind": "summary",
+  "requestedSamples": 3,
+  "completedAssessments": 3,
+  "allValid": true,
+  "totals": [
+    59,
+    58,
+    58.5
+  ],
+  "median": 58.5,
+  "range": [
+    58,
+    59
+  ],
+  "criterionMedians": {
+    "Stage One likelihood": 6.5,
+    "technological implementation": 8.5,
+    "design": 6.5,
+    "potential impact": 4.5,
+    "innovation": 6.5,
+    "presentation": 8,
+    "feasibility": 4.5,
+    "prize-lane fit": 7,
+    "personal fit": 6.5
+  },
+  "limitation": "Three separate-context samples from one Claude version, not independent human judges. Text-only evidence; no direct visual, interactive or external-user assessment. Shared-scope deltas require an exclusive inference window.",
+  "recordedAt": "2026-11-05T22:38:30.562Z",
+  "knownSharedScopeAnthropicDeltaNanos": 84286000,
+  "promptSha256": "27f76357f03b78bfd1fa6dadfe9c0a70d61cea103ea7126c37c07a0ceeec814f",
+  "allOutcomesPreserved": true
+}

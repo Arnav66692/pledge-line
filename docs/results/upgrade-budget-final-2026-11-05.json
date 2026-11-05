@@ -1,0 +1,29 @@
+{
+  "at": "2026-11-05T22:40:05.070Z",
+  "active": {
+    "scope": "pledge-line-functional-20261105",
+    "stopped": false,
+    "reason": null,
+    "provider": null,
+    "providerBalanceVerified": false,
+    "allocationUnit": "USD nanodollars",
+    "accounts": {
+      "anthropic": {
+        "allocationNanos": 3000000000,
+        "usedNanos": 384288000,
+        "remainingNanos": 2615712000
+      },
+      "jev": {
+        "allocationNanos": 100000000,
+        "usedNanos": 1590498,
+        "remainingNanos": 98409502
+      }
+    },
+    "pendingRequests": []
+  },
+  "originalStopped": true,
+  "originalReason": "usage_unverified",
+  "originalReservationNanos": 51240000,
+  "noScopeReset": true,
+  "noLivePaypalPayment": true
+}
