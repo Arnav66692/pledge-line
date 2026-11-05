@@ -353,8 +353,10 @@ test('a capture that answers with no completed money, as a replay of a refunded 
   const { stack, callId } = await offered();
   stack.paypal.captureSponsorHold = async () => ({ id: 'CAP1', status: 'REFUNDED', amountValue: '25.00', debugId: 'd', ms: 1 });
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.match(reply, /didn't accept the sponsor's payment/);
+  assert.match(reply, /didn't answer clearly about the sponsor's payment/);
   assert.equal(donorRefunded(stack), 0);
+  assert.equal(eventsOf(stack, callId, 'cover_month')[0].outcome, 'open', 'an unusable success response cannot prove no money moved');
+  clean(stack, callId);
   const other = await offered();
   other.stack.paypal.captureSponsorHold = async () => ({ id: 'CAP1', status: 'COMPLETED', amountValue: '24.00', debugId: 'd', ms: 1 });
   await say(other.stack, other.callId, 'Yes.');
@@ -418,10 +420,9 @@ test('a refund with a lost answer is read back: went through says what PayPal sh
 test('a read that fails after the moves never hides them or claims them', async () => {
   const { stack, callId } = await offered();
   const realCapture = stack.paypal.getCapture;
-  let calls = 0;
   stack.paypal.getCapture = async (id) => {
-    calls += 1;
-    if (calls > 1) throw lost();
+    // The pre-write and sponsor-funding reads must succeed. Fail only once the donor refund has actually run.
+    if (donorRefunded(stack) > 0) throw lost();
     return realCapture(id);
   };
   const { reply } = await say(stack, callId, 'Yes.');
@@ -677,9 +678,10 @@ test('a replayed capture answer that PayPal now shows as given back never runs t
     return id.startsWith('MOCKCAP') ? { ...res, data: { ...res.data, status: 'REFUNDED' } } : res;
   };
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.match(reply, /PayPal didn't accept the sponsor's payment/);
+  assert.match(reply, /PayPal didn't answer clearly about the sponsor's payment/);
   assert.deepEqual(legs(stack, callId), [['cover_capture', false]]);
   assert.equal(donorRefunded(stack), 0);
+  assert.equal(eventsOf(stack, callId, 'cover_month')[0].outcome, 'open');
   clean(stack, callId);
 });
 

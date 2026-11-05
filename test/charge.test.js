@@ -219,15 +219,16 @@ test('the desk only logs with a live token for this call and this gift, and a to
 
 // ---- The read-back after the request ----
 
-test('the yes reads PayPal again, and a newer charge there means the line names no amount it cannot tie to the request', async () => {
+test('the yes withdraws a refund request when PayPal now lists a different charge', async () => {
   const { stack, callId } = await askedCall();
   stack.paypal.mockSetCharges(SUB, [mockCharge({ time: '2026-11-01T10:00:00.000Z' }), mockCharge({ id: 'NEWTX0000000099ZZ', value: '40.00', time: '2026-11-03T17:00:00.000Z' })]);
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.equal(reply, "OK. I've asked staff to look at a refund for the charge I read you. What else can I help with?");
+  assert.match(reply, /set that earlier request aside/);
   const reads = eventsOf(stack, callId, 'read');
-  const write = eventsOf(stack, callId, 'write')[0];
-  assert.ok(reads.some((e) => e.what === 'charge' && e.turn === write.turn && e.seq > write.seq), 'a fresh charge read after the request');
-  assert.equal(eventsOf(stack, callId, 'refund_request')[0].transactionId, MOCK_TRANSACTION_ID, 'the request names the charge read aloud, not the newer one');
+  assert.ok(reads.some((e) => e.what === 'charge' && e.snapshot?.transaction_id === 'NEWTX0000000099ZZ'), 'a fresh charge read detects the changed target');
+  assert.equal(eventsOf(stack, callId, 'write').length, 0);
+  assert.equal(eventsOf(stack, callId, 'refund_request').length, 0, 'neither charge is forwarded without new consent');
+  assert.equal(eventsOf(stack, callId, 'withdrawn').length, 1);
   assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
 });
 
@@ -254,12 +255,14 @@ test('a PayPal error on the charge read says so, offers nothing, and grades clea
   assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
 });
 
-test('a PayPal error on the read after the yes still keeps the request and names no fact', async () => {
+test('a PayPal error during consent revalidation withdraws the request without forwarding it', async () => {
   const { stack, callId } = await askedCall();
   stack.paypal.getSubscriptionCharges = async () => { throw new PayPalError({ status: 0, name: 'TIMEOUT', message: 'PayPal did not answer in time' }); };
   const { reply } = await say(stack, callId, 'Yes.');
-  assert.equal(reply, "OK. I've asked staff to look at a refund for the charge I read you. What else can I help with?");
-  assert.equal(eventsOf(stack, callId, 'refund_request').length, 1);
+  assert.match(reply, /set that earlier request aside/);
+  assert.equal(eventsOf(stack, callId, 'refund_request').length, 0);
+  assert.equal(eventsOf(stack, callId, 'write').length, 0);
+  assert.equal(eventsOf(stack, callId, 'withdrawn').length, 1);
   assert.deepEqual(allClear(gradeCall(stack.ledger.byCall(callId), null)), []);
 });
 

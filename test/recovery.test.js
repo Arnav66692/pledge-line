@@ -114,7 +114,7 @@ test('a refusal says PayPal turned it down and what PayPal shows now', async () 
   assertFromLedger(stack.ledger.byCall(callId), state.recovery);
 });
 
-test('a record changed by someone else sets a waiting change aside, and a refused write is told once, not twice', async () => {
+test('a record changed by someone else sets a waiting change aside before any write', async () => {
   const stack = drillStack('gift-changed');
   const callId = await verifiedCall(stack);
   await say(stack, callId, 'Pause my gift.');
@@ -133,7 +133,9 @@ test('a record changed by someone else sets a waiting change aside, and a refuse
   await say(refused, call, 'Pause my gift.');
   refused.paypal.mockSetSubscriptionStatus(refused.config.demoSubscriptionId, 'CANCELLED');
   const after = await say(refused, call, 'Yes.');
-  assert.deepEqual(after.state.recovery.incidents.map((i) => i.kind), ['refused']);
+  assert.deepEqual(after.state.recovery.incidents.map((i) => i.kind), ['changed']);
+  assert.equal(eventsOf(refused, call, 'write').length, 0);
+  assert.equal(after.state.pending, null);
   assert.equal(row(after.state.recovery.incidents[0], 'now').text, 'Your monthly gift is cancelled.');
 
   const asked = buildStack();
@@ -194,8 +196,17 @@ test('a lost write with no read after it never names a status', async () => {
   const stack = buildStack();
   const callId = await verifiedCall(stack);
   await say(stack, callId, 'Pause my gift.');
-  stack.paypal.suspendSubscription = async () => { throw new PayPalError({ status: 0, name: 'TIMEOUT', message: 'late', debugId: null }); };
-  stack.paypal.getSubscription = async () => { throw new PayPalError({ status: 503, name: 'SERVICE_UNAVAILABLE', message: 'try later', debugId: null }); };
+  let attempted = false;
+  const getSubscription = stack.paypal.getSubscription;
+  stack.paypal.suspendSubscription = async (id, token, ctx) => {
+    stack.tokens.consume(token, { kind: 'suspend', targetId: id, callId: ctx.callId });
+    attempted = true;
+    throw new PayPalError({ status: 0, name: 'TIMEOUT', message: 'late', debugId: null });
+  };
+  stack.paypal.getSubscription = async (...args) => {
+    if (attempted) throw new PayPalError({ status: 503, name: 'SERVICE_UNAVAILABLE', message: 'try later', debugId: null });
+    return getSubscription(...args);
+  };
   const { state } = await say(stack, callId, 'Yes.');
   const [incident] = state.recovery.incidents;
   assert.match(row(incident, 'did').text, /tried to read PayPal again, couldn't/);

@@ -46,7 +46,7 @@ for (const [key, lead, claim, httpStatus, name] of [['refused', REFUSED, 'write_
     const { callId, ask, yes, list } = await drillCall(stack, key);
     const drill = DRILLS[key];
     // The proposal reads the real gift, and the suspend goes to PayPal's test id.
-    assert.match(ask.reply, /^PayPal shows your monthly gift of \$25\.00 as active\. Pausing it holds/);
+    assert.match(ask.reply, /^PayPal shows your monthly gift of \$25\.00 as active\. I can ask PayPal to pause your monthly gift\. Do you want me to pause it\?/);
     const [proposed] = list.filter((e) => e.type === 'proposed');
     assert.equal(proposed.targetId, drill.writeId);
     const [write] = list.filter((e) => e.type === 'write');

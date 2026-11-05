@@ -132,10 +132,14 @@ test('a refused write is followed by a fresh GET and an honest read-back', async
   const stack = buildStack();
   const callId = await verifiedCall(stack);
   await say(stack, callId, 'Can I pause my gift for a while?');
-  stack.paypal.mockSetSubscriptionStatus('I-MOCK0000001', 'SUSPENDED');
+  // Keep the proposal fresh so the request reaches PayPal, then make PayPal refuse the write itself.
+  stack.paypal.suspendSubscription = async (id, token, ctx) => {
+    stack.tokens.consume(token, { kind: 'suspend', targetId: id, callId: ctx.callId });
+    throw new PayPalError({ status: 422, name: 'UNPROCESSABLE_ENTITY', message: 'The requested change was refused' });
+  };
   const { reply } = await say(stack, callId, 'Yes.');
   assert.match(reply, /didn't accept that change/);
-  assert.match(reply, /as suspended/);
+  assert.match(reply, /as active/);
   const write = eventsOf(stack, callId, 'write')[0];
   assert.equal(write.ok, false);
   assert.match(write.error, /422/);
