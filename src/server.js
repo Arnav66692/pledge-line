@@ -365,6 +365,8 @@ function createApi(deps) {
       return { ...service, request: (rfq) => service.request({ ...rfq, scenario }) };
     },
     send, readJson, limiter: createRateLimiter({ limit: 60, windowMs: MINUTE_MS }), now: () => clock().getTime(),
+    interpretGoal: typeof deps.agent?.interpretGoal === 'function'
+      ? (goal) => deps.agent.interpretGoal({ goal, now: clock().getTime(), timeZone: config.timeZone }) : null,
     checkout: deps.checkout, checkoutStore: deps.checkoutStore, commerceStatus: deps.commerceStatus ?? (() => ({})),
   });
 

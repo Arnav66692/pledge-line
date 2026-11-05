@@ -2,6 +2,7 @@ import { INTENTS, EMPATHY, ROUTE_TOOL, SYSTEM_PROMPT, buildRouterContent, rulesR
 import { isClearNo, isAcknowledgment } from './gate.js';
 import { assessIntentClarity } from './intent-guards.js';
 import { explainProposalReview } from './proposal-review.js';
+import { GOAL_INTAKE_TOOL, GOAL_INTAKE_PROMPT, goalContext, normalizeGoalDraft } from './goal-intake.js';
 
 const QUICK_READS = new Set(['gift_status', 'how_do_you_know', 'repeat', 'help', 'goodbye']);
 const MUTATIONS = new Set(['stop_gift', 'cancel_now', 'pause_gift', 'resume_gift', 'one_time_gift', 'other_email', 'hardship_cover']);
@@ -32,6 +33,13 @@ export function createMainAgent({ gateway }) {
   if (!gateway || typeof gateway.anthropic !== 'function' || typeof gateway.jev !== 'function') throw new Error('AI_GATEWAY_REQUIRED');
   return {
     mode: 'anthropic',
+    async interpretGoal(input) {
+      const context = goalContext(input);
+      const response = await gateway.anthropic({ system: GOAL_INTAKE_PROMPT,
+        messages: [{ role: 'user', content: JSON.stringify({ goal: context.goal, now: new Date(context.now).toISOString(), timeZone: context.timeZone }) }],
+        tools: [GOAL_INTAKE_TOOL], tool_choice: autoTool, max_tokens: 700 });
+      return normalizeGoalDraft(toolInput(response, GOAL_INTAKE_TOOL.name), context);
+    },
     async route({ text, state = {} }) {
       const started = performance.now();
       const result = (intent = 'unclear', extra = {}) => ({ intent, amountDollars: 0, empathy: 'none', model: 'claude-sonnet-5-5', latencyMs: Math.round(performance.now() - started), ...extra });

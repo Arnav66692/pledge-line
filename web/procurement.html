@@ -30,11 +30,21 @@
       <aside class="brief panel" aria-labelledby="brief-title">
         <div class="section-head"><span class="step" aria-hidden="true">1</span><h2 id="brief-title">The order brief</h2></div>
         <p class="hint">Set the limits the agent must keep, including delivery and every fee.</p>
+        <form id="goal-intake" class="goal-intake" method="post" action="/api/procurement/interpret" aria-labelledby="goal-title">
+          <h3 id="goal-title">Start with a goal</h3>
+          <label for="goal">What do you need?</label>
+          <textarea id="goal" name="goal" rows="3" maxlength="1000" aria-describedby="goal-hint goal-status" placeholder="For example, buy 100 volunteer shirts within $800 total. Include a delivery date and time."></textarea>
+          <p id="goal-hint" class="field-hint">Drafting uses the configured AI credits. It fills reviewable limits only. It does not contact suppliers or approve a purchase.</p>
+          <button id="draft-goal" class="button secondary" type="submit" disabled>Draft the limits</button>
+          <p id="goal-status" class="field-hint" role="status" aria-live="polite">You can also enter the limits below yourself.</p>
+          <ul id="goal-assumptions" class="goal-assumptions" aria-label="Draft assumptions to review" hidden></ul>
+        </form>
         <form id="request">
           <label for="specification">What are you ordering?</label>
-          <textarea id="specification" name="specification" rows="3" maxlength="500" required>White cotton volunteer shirts for the pantry, one navy screen print, identical artwork and print quality.</textarea>
+          <textarea id="specification" name="specification" rows="3" maxlength="1000" required>White cotton volunteer shirts for the pantry, one navy screen print, identical artwork and print quality.</textarea>
           <div class="field-pair"><div><label for="quantity">Quantity</label><input id="quantity" name="quantity" type="number" min="1" max="500" step="1" value="100" inputmode="numeric" required></div><div><label for="budget">Total budget, USD</label><input id="budget" name="budget" type="number" min="1" max="100000" step="0.01" value="800" inputmode="decimal" required></div></div>
-          <label for="deadline">Deliver by</label><input id="deadline" name="deadline" type="datetime-local" required aria-describedby="deadline-hint"><p class="field-hint" id="deadline-hint">Your local time. Displayed timestamps include their timezone. Shipping, tax and setup must fit the budget.</p>
+          <label for="deadline">Deliver by</label><input id="deadline" name="deadline" type="datetime-local" step="0.001" required aria-describedby="deadline-hint"><p class="field-hint" id="deadline-hint">Your local time. Displayed timestamps include their timezone. Shipping, tax and setup must fit the budget.</p>
+          <label class="check-label brief-split"><input id="allow-split" name="allowSplit" type="checkbox" checked><span>Allow a split order across suppliers</span></label>
           <details id="demo-controls" class="demo-controls"><summary>Try a recovery scenario</summary><label for="scenario">Mock supplier behavior</label><select id="scenario" name="scenario"><option value="normal">All selected suppliers accept</option><option value="timeout-after-payment">A payment answer is lost</option><option value="pending-payment">A payment remains pending</option><option value="supplier-declines">One supplier declines</option><option value="injected-payee">A quote tries to change the payee</option><option value="expired-quotes">The quotes have expired</option><option value="delivery-miss">No supplier can meet delivery</option></select><p class="field-hint">These faults are staged. They never affect a real supplier or payment.</p></details>
           <button id="find-plan" class="button primary" type="submit"><span>Find a plan</span><span aria-hidden="true">↗</span></button>
         </form>

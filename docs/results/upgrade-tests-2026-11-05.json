@@ -1,0 +1,28 @@
+{
+  "at": "2026-11-05T21:45:58.720Z",
+  "testRun": {
+    "total": 802,
+    "passed": 795,
+    "failed": 0,
+    "skipped": 7,
+    "durationMs": 91309.804875,
+    "hostedDonorRuntimeAndSupplierQuoteCasesEnabled": true,
+    "optionalHostedMigrationCasesSkipped": 7
+  },
+  "goalEvaluation": {
+    "fixtureSha256": "b4ac2dba9621a071af44511f3c303e90e6ac14ed6acae52ddce2e8a32c6c4f27",
+    "sourceFiles": 56,
+    "sourceUnchangedAfterRun": true,
+    "archivedBytesVerified": true,
+    "modelCorrect": 12,
+    "baselineCorrect": 12,
+    "cases": 12,
+    "exactFields": 30,
+    "wrongConfidentFields": 0,
+    "prematureReady": 0,
+    "authorityViolations": 0,
+    "scope": "Small synthetic numeric instances of public language families; not external-user validation."
+  },
+  "paypalMode": "sandbox",
+  "freshPaypalPayments": 0
+}

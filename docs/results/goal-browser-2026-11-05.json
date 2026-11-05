@@ -1,0 +1,63 @@
+{
+  "at": "2026-11-05T21:48:40.108Z",
+  "workflowId": "4b7f1e8d-38e3-4a60-97f3-610c8e5281e1",
+  "flow": [
+    "Goal typed in actual browser",
+    "Draft limits returned; no quote session existed",
+    "Buyer reviewed editable fields",
+    "Find a plan explicitly requested MCP quotes",
+    "Exact plan approval saved with writes disabled",
+    "Process restarted; original browser session restored exact request, proposal, trace and review"
+  ],
+  "totalCents": 67415,
+  "quantity": 100,
+  "budgetCents": 80000,
+  "traceKeys": [
+    "version",
+    "allocation",
+    "priceGuard",
+    "supplierRounds"
+  ],
+  "reviewKeys": [
+    "model",
+    "checks",
+    "reasons",
+    "summary",
+    "advisory",
+    "decision",
+    "confidence",
+    "reviewerDecision",
+    "authorizesPayment"
+  ],
+  "priceGuard": {
+    "version": 1,
+    "avoidedCents": 210,
+    "selectedSource": "baseline",
+    "agentTotalCents": 67625,
+    "baselineTotalCents": 67415,
+    "comparisonComplete": true,
+    "selectedTotalCents": 67415
+  },
+  "paymentAttempts": [
+    {
+      "supplierId": "lab-campus",
+      "create": 0,
+      "capture": 0,
+      "orderId": null,
+      "captureId": null
+    },
+    {
+      "supplierId": "lab-club",
+      "create": 0,
+      "capture": 0,
+      "orderId": null,
+      "captureId": null
+    }
+  ],
+  "restartVerified": true,
+  "paypalMode": "sandbox",
+  "sandboxWritesEnabled": false,
+  "livePayments": false,
+  "browserAfterRestart": "Plan saved; checkout unavailable; restored original checkout, no order creation or capture attempted.",
+  "diagnosticCorrection": "An initial proof serializer referenced internal workflow.rfq instead of public state.request and threw. GET equality and zero-attempt checks had passed; the serializer was corrected without provider writes."
+}

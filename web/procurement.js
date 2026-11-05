@@ -2,7 +2,8 @@
   'use strict';
 
   const byId = (id) => document.getElementById(id);
-  const els = Object.fromEntries(['request', 'specification', 'quantity', 'budget', 'deadline', 'scenario', 'find-plan', 'request-status', 'error',
+  const els = Object.fromEntries(['request', 'specification', 'quantity', 'budget', 'deadline', 'allow-split', 'scenario', 'find-plan', 'request-status', 'error',
+    'goal-intake', 'goal', 'draft-goal', 'goal-status', 'goal-assumptions',
     'quotes-summary', 'quotes-caption', 'empty-quotes', 'quote-results', 'quotes', 'rejections', 'rejection-list', 'plan-panel', 'state-label', 'plan-empty',
     'plan-details', 'plan-total', 'plan-budget', 'allocations', 'plan-expiry', 'terms-specification', 'terms-request', 'terms-disclosure', 'terms-hash',
     'approval-form', 'approval-check', 'approval-consent', 'approve', 'settlement', 'settlement-title', 'settlement-list', 'settlement-note',
@@ -16,8 +17,13 @@
   const storageKey = 'pledge-line.procurement.sandbox.v1';
   const session = { id: null, secret: null, state: null, busy: false, briefChanged: false, approvalUnknown: false,
     restoreBlocked: false, restoreRetryable: false, commerce: { payments: configuredMode, sandboxWritesEnabled: false }, legControls: [] };
+  let briefRevision = 0;
   const networkMode = () => configuredMode === 'paypal-sandbox';
   const list = (value) => Array.isArray(value) ? value : [];
+  function localDeadlineValue(deadline) {
+    const pad = (value, length = 2) => String(value).padStart(length, '0');
+    return `${deadline.getFullYear()}-${pad(deadline.getMonth() + 1)}-${pad(deadline.getDate())}T${pad(deadline.getHours())}:${pad(deadline.getMinutes())}:${pad(deadline.getSeconds())}${deadline.getMilliseconds() ? `.${pad(deadline.getMilliseconds(), 3)}` : ''}`;
+  }
   const money = (cents, currency = 'USD') => Number.isSafeInteger(cents)
     ? new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(cents / 100) : 'Not provided';
   const date = (value, timeZone) => {
@@ -149,7 +155,10 @@
     // Keep this order in view until an uncertain payment is reconciled. Starting another session must not become
     // an accidental way to repeat a purchase whose first answer was lost.
     els.findPlan.disabled = newPlanBlocked();
-    for (const field of [els.specification, els.quantity, els.budget, els.deadline, els.scenario]) field.disabled = session.busy || (networkMode() && unfinishedPurchase());
+    for (const field of [els.specification, els.quantity, els.budget, els.deadline, els.allowSplit, els.scenario]) field.disabled = session.busy || (networkMode() && unfinishedPurchase());
+    els.goal.disabled = newPlanBlocked();
+    els.draftGoal.disabled = newPlanBlocked() || !els.goal.value.trim() || els.goal.value.length > 1000;
+    els.draftGoal.setAttribute('aria-busy', String(session.busy));
     els.findPlan.setAttribute('aria-busy', String(session.busy));
     els.approvalCheck.disabled = !canApprove;
     els.approve.disabled = !canApprove || !els.approvalCheck.checked;
@@ -183,7 +192,7 @@
     try {
       const response = await fetch(path, {
         method, signal: controller.signal,
-        headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(session.secret && path.startsWith('/api/procurement/') ? { 'x-procurement-secret': session.secret } : {}) },
+        headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(session.secret && path.startsWith('/api/procurement/') && path !== '/api/procurement/interpret' ? { 'x-procurement-secret': session.secret } : {}) },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
       const result = await response.json().catch(() => ({}));
@@ -492,9 +501,85 @@
     if (!/^\d+(?:\.\d{1,2})?$/.test(budget) || !Number.isSafeInteger(budgetCents) || budgetCents < 100 || budgetCents > 10000000) throw new Error('Enter a budget from $1 to $100,000, with no more than two decimal places.');
     if (!Number.isFinite(deadline.getTime()) || deadline.getTime() <= Date.now()) throw new Error('Choose a delivery deadline in the future.');
     const specification = els.specification.value.trim();
-    if (!specification) throw new Error('Describe the shirts and printing you need.');
-    return { quantity, budgetCents, currency: 'USD', deadline: deadline.toISOString(), specification, scenario: els.scenario.value };
+    if (specification.length < 8 || specification.length > 1000) throw new Error('Describe the shirts and printing you need in 8 to 1000 characters.');
+    return { quantity, budgetCents, currency: 'USD', deadline: deadline.toISOString(), specification, allowSplit: els.allowSplit.checked, scenario: els.scenario.value };
   }
+
+  function invalidateBrief(message) {
+    briefRevision += 1;
+    if (session.state) session.briefChanged = true;
+    els.approvalCheck.checked = false;
+    if (session.state) els.requestStatus.textContent = message;
+    updateControls();
+  }
+
+  function draftedLimits(result) {
+    if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ready !== 'boolean' ||
+      result.requiresReview !== true || result.authorizesPayment !== false || typeof result.clarification !== 'string' ||
+      result.clarification.length > 500 || !Array.isArray(result.assumptions) || result.assumptions.length > 2 ||
+      result.assumptions.some((value) => !['currency_usd', 'single_supplier_default'].includes(value)) ||
+      new Set(result.assumptions).size !== result.assumptions.length) throw new Error('The drafted limits could not be checked. Enter or edit the limits below yourself.');
+    if (!result.ready) {
+      if (result.rfq !== null || !result.clarification.trim()) throw new Error('The draft is incomplete. Enter the limits below yourself.');
+      return null;
+    }
+    const rfq = result.rfq;
+    const keys = ['quantity', 'budgetCents', 'currency', 'deadline', 'specification', 'allowSplit'];
+    const deadline = new Date(rfq?.deadline);
+    if (!rfq || typeof rfq !== 'object' || Array.isArray(rfq) || Object.keys(rfq).length !== keys.length ||
+      Object.keys(rfq).some((key) => !keys.includes(key)) || !Number.isSafeInteger(rfq.quantity) || rfq.quantity < 1 || rfq.quantity > 500 ||
+      !Number.isSafeInteger(rfq.budgetCents) || rfq.budgetCents < 100 || rfq.budgetCents > 10000000 || rfq.currency !== 'USD' ||
+      typeof rfq.specification !== 'string' || rfq.specification.trim().length < 8 || rfq.specification.length > 1000 || typeof rfq.allowSplit !== 'boolean' ||
+      typeof rfq.deadline !== 'string' || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(rfq.deadline) ||
+      !Number.isFinite(deadline.getTime()) || deadline.getTime() <= Date.now() || deadline.getTime() > Date.now() + 366 * 86400000) {
+      throw new Error('The drafted limits are outside this form\'s supported quantity, budget or deadline. Enter or edit the limits below yourself.');
+    }
+    if (result.assumptions.includes('single_supplier_default') && rfq.allowSplit) throw new Error('The draft gives conflicting split-order limits. Enter or edit the limits below yourself.');
+    const localDeadline = localDeadlineValue(deadline);
+    if (new Date(localDeadline).getTime() !== deadline.getTime()) throw new Error('The drafted deadline is ambiguous in your local timezone. Enter the intended delivery deadline below yourself.');
+    return { ...rfq, localDeadline };
+  }
+
+  els.goal.addEventListener('input', () => {
+    if (unfinishedPurchase() || session.restoreBlocked || session.approvalUnknown) return;
+    invalidateBrief('Your buying goal changed. Draft and review the limits, then find a new plan before approving.');
+    els.goalStatus.textContent = 'Draft the limits, then review and edit every field before requesting quotes.';
+    els.goalAssumptions.hidden = true;
+    els.goalAssumptions.replaceChildren();
+  });
+
+  els.goalIntake.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (newPlanBlocked()) return;
+    const goal = els.goal.value.trim();
+    if (!goal || goal.length > 1000) { els.goalStatus.textContent = 'Describe the buying goal in up to 1000 characters, or enter the limits below yourself.'; return; }
+    invalidateBrief('A new buying goal is being drafted. The existing plan is not approved by this request.');
+    const revision = briefRevision;
+    session.busy = true;
+    updateControls();
+    els.goalStatus.textContent = 'Drafting the limits. No suppliers are being contacted and no purchase is approved.';
+    els.goalAssumptions.hidden = true;
+    els.goalAssumptions.replaceChildren();
+    try {
+      const result = await api('/api/procurement/interpret', { method: 'POST', body: { goal } });
+      if (revision !== briefRevision || els.goal.value.trim() !== goal) throw new Error('Your brief changed while the draft was being prepared. Draft it again to use the latest wording.');
+      const rfq = draftedLimits(result);
+      if (!rfq) { els.goalStatus.textContent = result.clarification; return; }
+      els.specification.value = rfq.specification;
+      els.quantity.value = String(rfq.quantity);
+      els.budget.value = (rfq.budgetCents / 100).toFixed(2);
+      els.deadline.value = rfq.localDeadline;
+      els.allowSplit.checked = rfq.allowSplit;
+      const assumptions = { currency_usd: 'The budget was interpreted as USD. Check the currency and amount.',
+        single_supplier_default: 'No split permission was supplied, so the draft requires one supplier.' };
+      for (const assumption of result.assumptions) els.goalAssumptions.append(node('li', assumptions[assumption]));
+      els.goalAssumptions.hidden = result.assumptions.length === 0;
+      els.goalStatus.textContent = 'Limits drafted only. Review the quantity, USD budget, specification, local delivery time and split permission below, then choose Find a plan when they are correct.';
+      els.specification.focus();
+    } catch (problem) {
+      els.goalStatus.textContent = `${String(problem.message || 'Drafting is unavailable.').slice(0, 500)} Enter or edit the limits below yourself.`;
+    } finally { session.busy = false; updateControls(); }
+  });
 
   els.request.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -654,12 +739,8 @@
 
   els.approvalCheck.addEventListener('change', updateControls);
   els.request.addEventListener('input', () => {
-    if (!session.state) return;
     if (unfinishedPurchase()) return;
-    session.briefChanged = true;
-    els.approvalCheck.checked = false;
-    els.requestStatus.textContent = 'Your brief changed. Find a new plan before approving a purchase.';
-    updateControls();
+    invalidateBrief('Your brief changed. Find a new plan before approving a purchase.');
   });
   els.scenario.addEventListener('change', () => {
     if (!session.state) return;
@@ -743,14 +824,19 @@
         session.restoreRetryable = false;
         renderCommerce();
         const request = session.state?.request;
+        let deadlineNeedsReview = false;
         if (request) {
           els.specification.value = request.specification || '';
           els.quantity.value = String(request.quantity);
           els.budget.value = (request.budgetCents / 100).toFixed(2);
+          els.allowSplit.checked = request.allowSplit !== false;
           const deadline = new Date(request.deadline);
-          if (Number.isFinite(deadline.getTime())) els.deadline.value = `${deadline.getFullYear()}-${pad(deadline.getMonth() + 1)}-${pad(deadline.getDate())}T${pad(deadline.getHours())}:${pad(deadline.getMinutes())}`;
+          const localDeadline = Number.isFinite(deadline.getTime()) ? localDeadlineValue(deadline) : '';
+          deadlineNeedsReview = !localDeadline || new Date(localDeadline).getTime() !== deadline.getTime();
+          els.deadline.value = deadlineNeedsReview ? '' : localDeadline;
         }
-        els.requestStatus.textContent = 'Restored this tab\'s original checkout from the server. The return URL granted no payment permission; no order creation or capture was attempted.';
+        els.requestStatus.textContent = 'Restored this tab\'s original checkout from the server. The return URL granted no payment permission; no order creation or capture was attempted.' +
+          (deadlineNeedsReview ? ' Choose an unambiguous delivery date and time before requesting another plan.' : '');
         els.planPanel.focus();
       } else {
         els.requestStatus.textContent = 'Ready to ask MCP sandbox suppliers. PayPal sandbox checkout uses test funds only.';

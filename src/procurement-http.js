@@ -6,7 +6,7 @@ const MAX_SESSIONS = 500;
 const digest = (value) => createHash('sha256').update(value).digest();
 
 /** Session authority is independent of the quote confirmation token and never appears in a comparison or receipt. */
-export function createProcurementHttp({ createService, send, readJson, limiter, checkout = null, checkoutStore = null, commerceStatus = () => ({}), now = () => Date.now() }) {
+export function createProcurementHttp({ createService, send, readJson, limiter, interpretGoal = null, checkout = null, checkoutStore = null, commerceStatus = () => ({}), now = () => Date.now() }) {
   const sessions = new Map();
   function expire() {
     for (const [id, session] of sessions) if (session.expiresAt <= now()) sessions.delete(id);
@@ -24,6 +24,16 @@ export function createProcurementHttp({ createService, send, readJson, limiter, 
     if (!limiter.allow(ip)) return error(res, 429, 'Please wait before trying the supply desk again.');
     expire();
     try {
+      if (pathname === '/api/procurement/interpret') {
+        if (req.method !== 'POST') return error(res, 405, 'Method not allowed.');
+        const body = await readJson(req);
+        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 1 ||
+          typeof body.goal !== 'string' || !body.goal.trim() || body.goal.length > 1000) {
+          return error(res, 400, 'Write one buying goal in 1 to 1000 characters.');
+        }
+        if (typeof interpretGoal !== 'function') return error(res, 503, 'Goal drafting is unavailable. You can still fill in the order brief yourself.');
+        return send(res, 200, await interpretGoal(body.goal));
+      }
       if (pathname === '/api/procurement') {
         if (req.method !== 'POST') return error(res, 405, 'Method not allowed.');
         if (sessions.size >= MAX_SESSIONS) return error(res, 503, 'The supply desk is busy. Please try again later.');

@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-05T21:20:29.388Z",
+  "sourceCommit": "ceda8e4efba76b3441070a5fc068468cd3d7f89b",
+  "workflowId": "33da8241-c058-43ec-a852-bdcd41fcbf65",
+  "quantity": 100,
+  "budgetCents": 80000,
+  "totalCents": 67415,
+  "priceGuard": {
+    "version": 1,
+    "avoidedCents": 210,
+    "selectedSource": "baseline",
+    "agentTotalCents": 67625,
+    "baselineTotalCents": 67415,
+    "comparisonComplete": true,
+    "selectedTotalCents": 67415
+  },
+  "traceSupplierRounds": 3,
+  "reviewReasons": [
+    "JEV_LOW_CONFIDENCE"
+  ],
+  "passedCodeChecks": 9,
+  "persistedApproval": true,
+  "paymentAttempts": [
+    {
+      "supplierId": "lab-campus",
+      "create": 0,
+      "capture": 0,
+      "orderId": null,
+      "captureId": null
+    },
+    {
+      "supplierId": "lab-club",
+      "create": 0,
+      "capture": 0,
+      "orderId": null,
+      "captureId": null
+    }
+  ],
+  "sandboxWritesEnabled": false,
+  "livePayments": false,
+  "restartVerified": true,
+  "diagnosticCorrection": "Initial smoke assertion expected internal attempt-state fields in the public API. The durable store confirms zero attempts.",
+  "restartVerifiedAt": "2026-11-05T21:39:29.885Z",
+  "quoteExpired": true,
+  "statusAfterRestart": "expired",
+  "paymentAttemptsAfterRestart": [
+    {
+      "supplierId": "lab-campus",
+      "create": 0,
+      "capture": 0,
+      "orderId": null,
+      "captureId": null
+    },
+    {
+      "supplierId": "lab-club",
+      "create": 0,
+      "capture": 0,
+      "orderId": null,
+      "captureId": null
+    }
+  ]
+}

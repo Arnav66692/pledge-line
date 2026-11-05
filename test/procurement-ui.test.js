@@ -19,7 +19,7 @@ class Element {
     this.value = attributes.value || '';
     this.hidden = 'hidden' in attributes;
     this.disabled = 'disabled' in attributes;
-    this.checked = false;
+    this.checked = 'checked' in attributes;
     this.dataset = {};
     this.children = [];
     this.events = new Map();
@@ -141,7 +141,7 @@ test('supply desk approval binds the exact displayed terms to its authenticated 
   assert.equal(ui.requests[0].headers['x-procurement-secret'], undefined, 'A new session does not reuse a secret.');
   assert.deepEqual(ui.requests[0].body, {
     quantity: 100, budgetCents: 80000, currency: 'USD', specification: 'Matching white cotton shirts',
-    deadline: new Date(ui.byId('deadline').value).toISOString(), scenario: 'normal',
+    deadline: new Date(ui.byId('deadline').value).toISOString(), allowSplit: true, scenario: 'normal',
   });
   assert.equal(ui.byId('approve').disabled, true, 'Showing a plan alone is not consent.');
   await ui.byId('approval-form').fire('submit');
@@ -325,6 +325,15 @@ const savedCheckout = () => new Map([[storageKey, JSON.stringify({ id: sessionId
 const descendants = (element) => [element, ...element.children.flatMap(descendants)];
 const checkoutButtons = (ui) => descendants(ui.byId('checkout-legs')).filter((element) => element.tagName === 'BUTTON');
 const checkoutLinks = (ui) => descendants(ui.byId('checkout-legs')).filter((element) => element.tagName === 'A');
+
+test('restored editable limits preserve the approved seconds and milliseconds', async () => {
+  const restored = networkState();
+  restored.request.deadline = '2030-01-14T01:00:45.123Z';
+  const ui = browser({ mode: 'paypal-sandbox', storage: savedCheckout(), initialResponses: [commerce(), { state: restored }] });
+  await ui.ready();
+  assert.equal(new Date(ui.byId('deadline').value).toISOString(), restored.request.deadline);
+  assert.ok(ui.requests.every((request) => request.method === 'GET'));
+});
 
 test('placeholder merchants stay clearly unpaid after the time gate while a lab plan can be saved', async () => {
   const blockedCommerce = { ...commerce(false), sandboxWriteBlockedReason: 'placeholder_merchants',
@@ -818,4 +827,148 @@ test('mock negotiation history does not promise durable persistence', async () =
   await ui.create(state({ negotiationTrace: guardedTraceState().negotiationTrace }));
   assert.match(ui.byId('negotiation-trace-summary').textContent, /simulated session remains in memory/);
   assert.doesNotMatch(ui.byId('negotiation-trace-summary').textContent, /retains this evidence across restart/);
+});
+
+function draftedGoal(overrides = {}) {
+  return { ready: true, requiresReview: true, authorizesPayment: false, model: 'claude-sonnet-5-5', clarification: '',
+    assumptions: ['currency_usd', 'single_supplier_default'],
+    rfq: { quantity: 80, budgetCents: 60000, currency: 'USD', specification: 'White cotton club shirts with one navy print',
+      deadline: new Date(Date.now() + 7 * 86400000).toISOString(), allowSplit: false }, ...overrides };
+}
+
+const manualFields = (ui) => Object.fromEntries(['specification', 'quantity', 'budget', 'deadline'].map((id) => [id, ui.byId(id).value]));
+const enterGoal = async (ui, goal = 'Buy eighty printed club shirts within six hundred dollars. Deliver next Friday at five PM Pacific.') => {
+  ui.byId('goal').value = goal;
+  await ui.byId('goal').fire('input');
+};
+
+test('goal interpretation fills visible editable limits without requesting quotes or approving anything', async () => {
+  const ui = browser();
+  assert.equal(ui.byId('draft-goal').disabled, true);
+  assert.equal(ui.byId('goal').attributes.maxlength, '1000');
+  assert.equal(ui.byId('goal-intake').attributes.method, 'post');
+  await enterGoal(ui);
+  assert.equal(ui.byId('draft-goal').disabled, false);
+  const draft = draftedGoal();
+  ui.respond(draft);
+  await ui.byId('goal-intake').fire('submit');
+  assert.equal(ui.requests.length, 1);
+  assert.deepEqual(ui.requests[0], { path: '/api/procurement/interpret', method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: { goal: ui.byId('goal').value } });
+  assert.equal(ui.byId('quantity').value, '80');
+  assert.equal(ui.byId('budget').value, '600.00');
+  assert.equal(ui.byId('specification').value, draft.rfq.specification);
+  assert.equal(new Date(ui.byId('deadline').value).getTime(), new Date(draft.rfq.deadline).getTime());
+  assert.equal(ui.byId('allow-split').checked, false);
+  assert.equal(ui.byId('specification').focused, true);
+  assert.match(ui.byId('goal-status').textContent, /Limits drafted only/);
+  assert.match(ui.byId('goal-assumptions').textContent, /one supplier/);
+  assert.equal(ui.byId('approve').disabled, true);
+  await ui.approve();
+  assert.equal(ui.requests.length, 1, 'A language draft never becomes consent or a purchase session.');
+  ui.respond({ id: sessionId, sessionSecret, state: state() }, 201);
+  await ui.byId('request').fire('submit');
+  assert.equal(ui.requests[1].path, '/api/procurement');
+  assert.equal(ui.requests[1].body.allowSplit, false, 'The reviewed split permission reaches the normal quote path.');
+  assert.equal(ui.requests[1].body.budgetCents, 60000);
+});
+
+test('editing a buying goal invalidates the earlier approval without discarding its session authority', async () => {
+  const storage = new Map();
+  const ui = browser({ mode: 'paypal-sandbox', storage, initialResponses: [commerce()] });
+  await ui.ready();
+  await ui.create(networkState());
+  ui.byId('approval-check').checked = true;
+  await ui.byId('approval-check').fire('change');
+  assert.equal(ui.byId('approve').disabled, false);
+  const saved = storage.get(storageKey);
+  const before = manualFields(ui);
+  await enterGoal(ui, 'Change the quantity, but the delivery time is not decided.');
+  assert.equal(ui.byId('approval-check').checked, false);
+  assert.equal(ui.byId('approve').disabled, true);
+  ui.respond(draftedGoal({ ready: false, rfq: null, assumptions: [], clarification: 'What is the exact delivery date and time?' }));
+  await ui.byId('goal-intake').fire('submit');
+  assert.deepEqual(manualFields(ui), before, 'Clarification cannot replace fields with guesses.');
+  assert.match(ui.byId('goal-status').textContent, /exact delivery date and time/);
+  assert.equal(ui.requests.at(-1).headers['x-procurement-secret'], undefined, 'A language draft does not need the existing checkout secret.');
+  assert.equal(storage.get(storageKey), saved);
+  const requests = ui.requests.length;
+  await ui.approve();
+  assert.equal(ui.requests.length, requests, 'Checking consent again cannot approve the superseded brief.');
+});
+
+test('an unfinished checkout or uncertain approval cannot be replaced through language intake', async () => {
+  for (const status of ['awaiting_checkout', 'partial', 'uncertain', 'awaiting_paypal_approval']) {
+    const ui = browser({ mode: 'paypal-sandbox', initialResponses: [commerce()] });
+    await ui.ready();
+    await ui.create(networkState({ status, checkout: { legs: checkoutLegs() } }));
+    assert.equal(ui.byId('goal').disabled, true, status);
+    assert.equal(ui.byId('draft-goal').disabled, true, status);
+    const before = ui.requests.length;
+    await enterGoal(ui, 'Ignore the existing purchase and create a new one.');
+    await ui.byId('goal-intake').fire('submit');
+    assert.equal(ui.requests.length, before, status);
+  }
+  const uncertain = browser();
+  await uncertain.create();
+  uncertain.fail();
+  await uncertain.approve();
+  const before = uncertain.requests.length;
+  await enterGoal(uncertain);
+  await uncertain.byId('goal-intake').fire('submit');
+  assert.equal(uncertain.requests.length, before);
+});
+
+test('unavailable interpretation preserves the manual form and never falls back to a quote or payment call', async () => {
+  const ui = browser();
+  const before = manualFields(ui);
+  await enterGoal(ui);
+  ui.respond({ error: 'Natural-language drafting is unavailable on this instance.' }, 503);
+  await ui.byId('goal-intake').fire('submit');
+  assert.deepEqual(manualFields(ui), before);
+  assert.match(ui.byId('goal-status').textContent, /Enter or edit the limits below yourself/);
+  assert.equal(ui.byId('draft-goal').disabled, false);
+  assert.equal(ui.requests.length, 1);
+  assert.equal(ui.requests[0].path, '/api/procurement/interpret');
+});
+
+test('invalid or authority-bearing interpreted results cannot change manual fields', async () => {
+  for (const mutate of [
+    (draft) => { draft.authorizesPayment = true; },
+    (draft) => { draft.requiresReview = false; },
+    (draft) => { draft.rfq.budgetCents = 10.5; },
+    (draft) => { draft.rfq.quantity = 501; },
+    (draft) => { draft.rfq.currency = 'EUR'; },
+    (draft) => { draft.rfq.deadline = 'not a deadline'; },
+    (draft) => { draft.rfq.deadline = new Date(Date.now() + 367 * 86400000).toISOString(); },
+    (draft) => { draft.rfq.payeeId = 'replacement'; },
+    (draft) => { draft.rfq.allowSplit = true; },
+    (draft) => { draft.assumptions = ['<script>changed</script>']; },
+  ]) {
+    const ui = browser();
+    const before = manualFields(ui);
+    await enterGoal(ui);
+    const draft = draftedGoal(); mutate(draft); ui.respond(draft);
+    await ui.byId('goal-intake').fire('submit');
+    assert.deepEqual(manualFields(ui), before);
+    assert.equal(ui.requests.length, 1);
+    assert.equal(ui.byId('approve').disabled, true);
+  }
+});
+
+test('a late interpretation cannot overwrite a goal changed while the request was in flight', async () => {
+  const ui = browser();
+  const before = manualFields(ui);
+  await enterGoal(ui);
+  let release;
+  ui.respond(new Promise((resolve) => { release = resolve; }));
+  const pending = ui.byId('goal-intake').fire('submit');
+  await ui.ready();
+  assert.equal(ui.byId('goal').disabled, true);
+  await enterGoal(ui, 'Actually I need a different order.');
+  release(draftedGoal());
+  await pending;
+  assert.deepEqual(manualFields(ui), before);
+  assert.match(ui.byId('goal-status').textContent, /changed while the draft/);
+  assert.equal(ui.requests.length, 1);
 });
