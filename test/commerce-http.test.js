@@ -5,7 +5,9 @@ import { createProcurementHttp } from '../src/procurement-http.js';
 const id = 'f2cb7591-bbd0-48d8-84f5-67acb8754f88';
 const plan = { id, mode: { suppliers: 'mcp', payments: 'paypal-sandbox' }, status: 'awaiting_approval',
   request: { quantity: 1, budgetCents: 100 }, quotes: [{ quoteId: 'quote1' }], timeline: [],
-  comparison: { savingsCents: 10 }, proposal: { termsHash: 'a'.repeat(64), confirmationToken: 'b'.repeat(64), expiresAt: '2030-01-01T00:00:00Z', allocations: [] } };
+  comparison: { savingsCents: 10 }, negotiationTrace: { version: 1, supplierRounds: [{ supplierId: 'synthetic-supplier',
+    counteroffer: { unitPriceCents: 90, rationale: 'budget', source: 'anthropic' }, acceptedQuoteId: 'quote1' }] },
+  proposal: { termsHash: 'a'.repeat(64), confirmationToken: 'b'.repeat(64), expiresAt: '2030-01-01T00:00:00Z', allocations: [] } };
 
 function fixture() {
   let durable = null, writes = false;
@@ -45,6 +47,7 @@ test('network approval binds exact terms and persists session authority before a
   assert.equal(approved.body.state.status, 'awaiting_checkout');
   assert.equal(approved.body.state.quotes[0].quoteId, 'quote1');
   assert.equal(approved.body.state.comparison.savingsCents, 10);
+  assert.deepEqual(approved.body.state.negotiationTrace, plan.negotiationTrace);
   assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0][0], 'start');
   assert.match(f.calls[0][1].sessionSecretHash, /^[0-9a-f]{64}$/);
@@ -59,6 +62,7 @@ test('durable capability restores after HTTP-process replacement and another ses
   const restored = await f.request('/api/procurement/' + id, { secret });
   assert.equal(restored.status, 200);
   assert.equal(restored.body.state.proposal.confirmationToken, undefined);
+  assert.deepEqual(restored.body.state.negotiationTrace, plan.negotiationTrace);
   const other = await f.request('/api/procurement/' + id + '/capture', { method: 'POST', secret: 'another-session', body: { legId: 'leg1' } });
   assert.equal(other.status, 401);
   assert.equal(f.calls.filter((item) => item[0] === 'capture').length, 0);

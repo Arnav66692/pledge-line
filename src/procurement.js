@@ -5,6 +5,21 @@ import { createMockSuppliers, PROCUREMENT_SCENARIOS } from './supplier-mock.js';
 
 const MAX_QUANTITY = 500;
 const MAX_CENTS = 100000000;
+const COUNTEROFFER_REASONS = new Set(['volume', 'split_order', 'deadline', 'budget']);
+const QUOTE_REJECTION_CODES = new Map([
+  ['Supplier returned no usable quote.', 'quote_missing'],
+  ['Supplier identity changed.', 'supplier_identity_mismatch'],
+  ['Supplier payee does not match the registered payee.', 'payee_mismatch'],
+  ['Supplier currency does not match the request.', 'currency_mismatch'],
+  ['Supplier specification does not match the request.', 'specification_mismatch'],
+  ['Supplier quote identity is invalid.', 'quote_identity_invalid'],
+  ['Supplier reused a quote identity with changed commercial terms.', 'quote_identity_changed'],
+  ['Supplier stock or minimum quantity is invalid.', 'quantity_bounds_invalid'],
+  ['Supplier prices must be bounded whole cents and tax basis points.', 'price_invalid'],
+  ['Supplier quote has expired.', 'quote_expired'],
+  ['Supplier cannot meet the delivery deadline.', 'delivery_deadline_missed'],
+  ['Supplier quote is outside the supported amount range.', 'amount_out_of_range'],
+]);
 const copy = (value) => structuredClone(value);
 const hash = (value) => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 const has = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -66,6 +81,40 @@ function readQuote(raw, supplier, request, at) {
 
 export { readQuote as validateProcurementQuote };
 
+// Retain only validated commercial evidence. Rejected payloads and provider error text never enter the trace.
+function traceQuote(quote) {
+  return Object.fromEntries(['supplierId', 'payeeId', 'quoteId', 'specificationHash', 'currency', 'minQuantity', 'maxQuantity',
+    'unitPriceCents', 'setupCents', 'shippingCents', 'taxBps', 'deliveryAt', 'expiresAt', 'totalCents'].map((key) => [key, quote[key]]));
+}
+
+function quoteRejection(supplier, error) {
+  const reasonCode = error instanceof ProcurementError ? QUOTE_REJECTION_CODES.get(error.message) : null;
+  return { supplierId: supplier.id, reasonCode: reasonCode ?? 'supplier_unavailable',
+    reason: reasonCode ? error.message : 'Supplier quote was unavailable.' };
+}
+
+function counteroffersOf(offers, initialQuotes) {
+  if (!Array.isArray(offers) || offers.length < 1 || offers.length > initialQuotes.length) throw new ProcurementError('The main agent returned invalid counteroffers.', 503);
+  const seen = new Set();
+  for (const offer of offers) {
+    const initial = initialQuotes.find((quote) => quote.supplierId === offer?.supplierId);
+    if (!initial || seen.has(offer.supplierId) || !integer(offer.unitPriceCents, 1, initial.unitPriceCents) ||
+      !COUNTEROFFER_REASONS.has(offer.rationale) || Object.keys(offer).some((key) => !['supplierId', 'unitPriceCents', 'rationale'].includes(key))) {
+      throw new ProcurementError('The main agent returned invalid counteroffers.', 503);
+    }
+    seen.add(offer.supplierId);
+  }
+  return copy(offers);
+}
+
+function supplierRound(supplier, initial = null, rejection = null) {
+  return { supplierId: supplier.id,
+    supplierName: supplier.name.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 100),
+    initialQuote: initial ? traceQuote(initial) : null, baselineQuote: null, baselineReasonCode: null,
+    counteroffer: null, responseQuote: null, responseReasonCode: null, acceptedQuoteId: null,
+    outcome: 'rejected', reasonCode: rejection?.reasonCode ?? 'supplier_unavailable', selectedForAllocation: false };
+}
+
 function allocation(quote, quantity) {
   return { supplierId: quote.supplierId, supplierName: quote.supplierName, payeeId: quote.payeeId,
     quoteId: quote.quoteId, unitPriceCents: quote.unitPriceCents, currency: quote.currency, taxBps: quote.taxBps,
@@ -73,14 +122,25 @@ function allocation(quote, quantity) {
     ...costs(quote, quantity), deliveryAt: quote.deliveryAt, expiresAt: quote.expiresAt };
 }
 
+function matchesAllocation(quote, leg) {
+  if (!quote || !leg || leg.quantity < quote.minQuantity || leg.quantity > quote.maxQuantity) return false;
+  const candidate = allocation(quote, leg.quantity);
+  return Object.keys(candidate).every((key) => candidate[key] === leg[key]);
+}
+
 function selectPlan(quotes, request) {
-  // Dynamic programming enforces exact complete quantity, including the fixed fees incurred by each used supplier.
-  let states = new Map([[0, { totalCents: 0, allocations: [] }]]);
+  // Each supplier is consumed once, even when initial and negotiated alternatives have different stock or fees.
+  const supplierOptions = new Map();
   for (const quote of [...quotes].sort((a, b) => a.supplierId.localeCompare(b.supplierId))) {
+    const options = supplierOptions.get(quote.supplierId) ?? [];
+    options.push(quote); supplierOptions.set(quote.supplierId, options);
+  }
+  let states = new Map([[0, { totalCents: 0, allocations: [] }]]);
+  for (const options of supplierOptions.values()) {
     const next = new Map(states);
     for (const [have, state] of states) {
       if (!request.allowSplit && state.allocations.length) continue;
-      for (let qty = quote.minQuantity; qty <= Math.min(quote.maxQuantity, request.quantity - have); qty += 1) {
+      for (const quote of options) for (let qty = quote.minQuantity; qty <= Math.min(quote.maxQuantity, request.quantity - have); qty += 1) {
         const leg = allocation(quote, qty);
         const totalCents = state.totalCents + leg.totalCents;
         if (totalCents > request.budgetCents) continue;
@@ -99,6 +159,13 @@ function selectPlan(quotes, request) {
 const quoteBinding = (quote) => [quote.supplierId, quote.payeeId, quote.quoteId, quote.specificationHash, quote.currency,
   quote.minQuantity, quote.maxQuantity, quote.unitPriceCents, quote.setupCents, quote.shippingCents, quote.taxBps, quote.deliveryAt, quote.expiresAt];
 const sameQuote = (a, b) => JSON.stringify(quoteBinding(a)) === JSON.stringify(quoteBinding(b));
+
+function readBoundQuote(raw, supplier, request, at, knownQuotes) {
+  const quote = readQuote(raw, supplier, request, at);
+  const previous = knownQuotes.find((known) => known.quoteId === quote.quoteId);
+  if (previous && !sameQuote(previous, quote)) throw new ProcurementError('Supplier reused a quote identity with changed commercial terms.');
+  return quote;
+}
 
 /**
  * request(raw) -> state, approve(id, { confirmationToken, termsHash }) -> state,
@@ -127,8 +194,8 @@ export function createProcurementService({ suppliers = null, now = () => new Dat
     const supplier = session.registry.get(leg.supplierId);
     const raw = await supplier.getQuote(leg.quoteId);
     const fresh = readQuote(raw, supplier, session.state.request, time());
-    const original = session.state.quotes.find((q) => q.quoteId === leg.quoteId);
-    return sameQuote(original, fresh) && fresh.maxQuantity >= leg.quantity && costs(fresh, leg.quantity).totalCents === leg.totalCents;
+    const original = session.state.quotes.find((quote) => matchesAllocation(quote, leg));
+    return Boolean(original && sameQuote(original, fresh) && fresh.maxQuantity >= leg.quantity && costs(fresh, leg.quantity).totalCents === leg.totalCents);
   }
 
   async function record(session, leg, outcome, providerId = null) {
@@ -219,55 +286,127 @@ export function createProcurementService({ suppliers = null, now = () => new Dat
       const registry = new Map();
       for (const supplier of adapters) {
         if (!supplier || supplier.mode !== (network ? 'mcp-sandbox' : 'simulated') || !/^[a-z0-9-]{1,48}$/.test(supplier.id) || registry.has(supplier.id) ||
-            typeof supplier.name !== 'string' || supplier.name.length > 100 || typeof supplier.payeeId !== 'string' ||
+            typeof supplier.name !== 'string' || supplier.name.length > 100 || typeof supplier.payeeId !== 'string' || supplier.payeeId.length < 1 || supplier.payeeId.length > 120 ||
             !(network ? ['quote', 'negotiate', 'getQuote'] : ['quote', 'negotiate', 'getQuote', 'settle', 'getSettlement']).every((name) => typeof supplier[name] === 'function')) {
           throw new ProcurementError('A supplier adapter is invalid or mixes network and mock authority.');
         }
         registry.set(supplier.id, supplier);
       }
       const state = { id: randomUUID(), status: 'collecting_quotes', mode: { suppliers: network ? 'mcp' : 'simulated', payments: network ? 'paypal-sandbox' : 'mock' }, request,
-        quotes: [], rejections: [], proposal: null, settlements: [], timeline: [] };
+        quotes: [], rejections: [], proposal: null, settlements: [], timeline: [],
+        negotiationTrace: { version: 1, supplierRounds: [], allocation: null } };
       const session = { state, registry, approved: false, operation: null };
       sessions.set(state.id, session);
       event(session, 'request', network ? 'Contacting registered MCP supplier endpoints and checking the exact specification, complete quantity, all-in budget and deadline.' : 'Comparing simulated suppliers for the exact specification, complete quantity, all-in budget and deadline.');
       const initialResults = await Promise.all([...registry.values()].map(async (supplier) => {
         try {
           const initial = readQuote(await supplier.quote(copy(request)), supplier, request, time());
-          return { supplier, initial };
+          return { supplier, initial, round: supplierRound(supplier, initial) };
         } catch (error) {
-          return { rejection: { supplierId: supplier.id, reason: error instanceof ProcurementError ? error.message : 'Supplier quote was unavailable.' } };
+          const rejection = quoteRejection(supplier, error);
+          return { rejection, round: supplierRound(supplier, null, rejection) };
         }
       }));
       const initialQuotes = initialResults.filter((item) => item.initial).map((item) => item.initial);
       let offers = [];
       if (agent && initialQuotes.length) {
-        try { offers = await agent.planNegotiation({ request: copy(request), quotes: copy(initialQuotes) }); }
+        try { offers = counteroffersOf(await agent.planNegotiation({ request: copy(request), quotes: copy(initialQuotes) }), initialQuotes); }
         catch { throw new ProcurementError('The main agent could not verify a negotiation plan. No purchase was approved.', 503); }
         event(session, 'agent_counteroffers', 'Anthropic proposed bounded counteroffers. Supplier prices and every order constraint are checked by code.');
       }
+      if (agent) {
+        await Promise.all(initialResults.map(async (item) => {
+          if (!item.initial) return;
+          const { supplier, initial, round } = item;
+          try {
+            const { supplierName, ...quote } = copy(initial);
+            item.baseline = readBoundQuote(await supplier.negotiate({ request: copy(request), quote }), supplier, request, time(), [initial]);
+            round.baselineQuote = traceQuote(item.baseline);
+            round.baselineReasonCode = 'baseline_verified';
+          } catch (error) {
+            round.baselineReasonCode = quoteRejection(supplier, error).reasonCode;
+          }
+        }));
+      }
       const results = await Promise.all(initialResults.map(async (item) => {
         if (item.rejection) return item;
-        const { supplier, initial } = item;
+        const { supplier, initial, round } = item;
         try {
           const offer = offers.find((candidate) => candidate.supplierId === supplier.id);
+          round.counteroffer = offer ? { unitPriceCents: offer.unitPriceCents, rationale: offer.rationale,
+            source: agent?.mode === 'anthropic' ? 'anthropic' : 'main_agent' } : null;
           // The registered display name belongs to our UI, not to the supplier's strict commercial quote schema.
           const { supplierName, ...supplierQuote } = copy(initial);
-          const negotiated = readQuote(await supplier.negotiate({ request: copy(request), quote: supplierQuote, ...(offer ? { counterOffer: { unitPriceCents: offer.unitPriceCents } } : {}) }), supplier, request, time());
+          // A supplier omitted from the model's offers uses its already checked policy quote, without a retry.
+          const negotiated = agent && !offer ? item.baseline
+            : readBoundQuote(await supplier.negotiate({ request: copy(request), quote: supplierQuote, ...(offer ? { counterOffer: { unitPriceCents: offer.unitPriceCents } } : {}) }), supplier, request, time(), [initial, ...(item.baseline ? [item.baseline] : [])]);
+          if (!negotiated) throw new ProcurementError('Supplier returned no usable quote.');
           const cheaper = negotiated.maxQuantity === initial.maxQuantity && negotiated.minQuantity === initial.minQuantity &&
             negotiated.unitPriceCents <= initial.unitPriceCents && negotiated.setupCents <= initial.setupCents &&
             negotiated.shippingCents <= initial.shippingCents && negotiated.taxBps <= initial.taxBps;
-          return { quote: { ...(cheaper ? negotiated : initial), negotiated: cheaper && negotiated.totalCents < initial.totalCents,
+          const selectedQuote = cheaper && !sameQuote(initial, negotiated) ? negotiated : initial;
+          round.responseQuote = traceQuote(negotiated);
+          round.acceptedQuoteId = selectedQuote.quoteId;
+          round.outcome = selectedQuote === initial ? 'kept_initial' : 'accepted_response';
+          round.reasonCode = cheaper ? negotiated.totalCents < initial.totalCents ? 'discount_verified' : 'no_discount' : 'terms_not_improved';
+          round.responseReasonCode = round.reasonCode;
+          return { round, response: negotiated, quote: { ...selectedQuote, negotiated: cheaper && negotiated.totalCents < initial.totalCents,
             initialTotalCents: initial.totalCents, initialUnitPriceCents: initial.unitPriceCents,
             counterOfferCents: offer?.unitPriceCents ?? null, counterOfferReason: offer?.rationale ?? null } };
         } catch (error) {
-          return { rejection: { supplierId: supplier.id, reason: error instanceof ProcurementError ? error.message : 'Supplier quote was unavailable.' } };
+          const rejection = quoteRejection(supplier, error);
+          round.reasonCode = rejection.reasonCode;
+          round.responseReasonCode = rejection.reasonCode;
+          return { rejection, round };
         }
       }));
       for (const result of results) {
+        state.negotiationTrace.supplierRounds.push(result.round);
         if (result.quote) state.quotes.push(result.quote);
         else state.rejections.push(result.rejection);
       }
-      const plan = selectPlan(state.quotes, request);
+      let plan = selectPlan(state.quotes, request);
+      if (agent) {
+        const baselineOptions = [...initialQuotes, ...initialResults.filter((item) => item.baseline).map((item) => item.baseline)];
+        const agentOptions = [...initialQuotes, ...results.filter((item) => item.response).map((item) => item.response)];
+        const baselinePlan = selectPlan(baselineOptions, request), agentPlan = selectPlan(agentOptions, request);
+        const unionOptions = [...baselineOptions, ...results.filter((item) => item.response).map((item) => item.response)];
+        const unionPlan = selectPlan(unionOptions, request);
+        const chooseBaseline = baselinePlan && baselinePlan.totalCents === unionPlan?.totalCents;
+        const chooseAgent = !chooseBaseline && agentPlan && agentPlan.totalCents === unionPlan?.totalCents;
+        plan = chooseBaseline ? baselinePlan : chooseAgent ? agentPlan : unionPlan;
+        const selectedSource = plan ? chooseBaseline ? 'baseline' : chooseAgent ? 'agent' : 'hybrid' : 'none';
+        const comparisonComplete = Boolean(baselinePlan && agentPlan);
+        state.negotiationTrace.priceGuard = { version: 1, baselineTotalCents: baselinePlan?.totalCents ?? null,
+          agentTotalCents: agentPlan?.totalCents ?? null, selectedTotalCents: plan?.totalCents ?? null, selectedSource,
+          comparisonComplete, avoidedCents: agentPlan ? Math.max(0, agentPlan.totalCents - plan.totalCents) : null };
+        const selectedOptions = chooseBaseline ? baselineOptions : chooseAgent ? agentOptions : unionOptions;
+        state.quotes = initialResults.filter((item) => item.initial).map((item) => {
+          const leg = plan?.allocations.find((allocation) => allocation.supplierId === item.supplier.id);
+          const chosen = leg ? selectedOptions.find((quote) => matchesAllocation(quote, leg))
+            : chooseBaseline ? item.baseline ?? item.initial : results.find((result) => result.round.supplierId === item.supplier.id)?.response ?? item.initial;
+          const { round, initial } = item;
+          round.acceptedQuoteId = chosen.quoteId;
+          if (sameQuote(chosen, initial)) { round.outcome = 'kept_initial'; round.reasonCode = 'initial_terms_selected'; }
+          else if (round.baselineQuote && sameQuote(chosen, round.baselineQuote)) { round.outcome = 'accepted_baseline'; round.reasonCode = 'baseline_price_guard'; }
+          else if (round.responseQuote && sameQuote(chosen, round.responseQuote)) { round.outcome = 'accepted_response'; round.reasonCode = 'allocation_constraints_verified'; }
+          else throw new ProcurementError('The selected allocation has no matching validated quote.', 503);
+          return { ...chosen, negotiated: chosen.unitPriceCents < initial.unitPriceCents || chosen.setupCents < initial.setupCents || chosen.shippingCents < initial.shippingCents || chosen.taxBps < initial.taxBps,
+            initialTotalCents: initial.totalCents, initialUnitPriceCents: initial.unitPriceCents,
+            counterOfferCents: round.counteroffer?.unitPriceCents ?? null, counterOfferReason: round.counteroffer?.rationale ?? null };
+        });
+        event(session, 'price_guard', chooseBaseline
+          ? 'The complete code-policy allocation was no more expensive than the agent allocation. Its exact validated quotes were retained for review.'
+          : chooseAgent ? 'The complete agent allocation was cheaper or satisfied constraints the checked code-policy allocation could not meet.'
+            : plan ? 'Combining validated quote alternatives produced a cheaper complete allocation or satisfied constraints neither separate portfolio could meet.'
+              : 'No combination of the checked quotes could satisfy the complete request. No purchase was approved.');
+      }
+      state.negotiationTrace.allocation = { status: plan ? 'feasible' : 'no_feasible_quote', totalCents: plan?.totalCents ?? null,
+        allocations: (plan?.allocations ?? []).map(({ supplierId, quoteId, quantity, totalCents }) => ({ supplierId, quoteId, quantity, totalCents })),
+        rejections: state.rejections.map(({ supplierId, reasonCode }) => ({ supplierId, reasonCode })) };
+      for (const round of state.negotiationTrace.supplierRounds) {
+        round.selectedForAllocation = Boolean(plan?.allocations.some((leg) => matchesAllocation(state.quotes.find((quote) => quote.supplierId === round.supplierId), leg)));
+      }
       const baseline = selectPlan(initialQuotes, { ...request, budgetCents: MAX_CENTS });
       state.comparison = { method: 'Same complete-quantity solver using initial quotes, without negotiation.', baselineTotalCents: baseline?.totalCents ?? null,
         baselineWithinBudget: Boolean(baseline && baseline.totalCents <= request.budgetCents), negotiatedTotalCents: plan?.totalCents ?? null,
@@ -288,7 +427,7 @@ export function createProcurementService({ suppliers = null, now = () => new Dat
       session.terms = terms;
       if (agent) {
         const reviewed = copy(state.proposal); delete reviewed.confirmationToken;
-        try { state.review = await agent.reviewProposal({ request: copy(request), proposal: reviewed, quotes: copy(state.quotes) }); }
+        try { state.review = await agent.reviewProposal({ request: copy(request), proposal: reviewed, quotes: copy(state.quotes), reviewedAt: time() }); }
         catch { throw new ProcurementError('The reviewer is unavailable. No purchase was approved.', 503); }
         event(session, 'advisory_review', state.review.decision === 'within_limits' ? 'Jev returned an advisory constraint review. It grants no payment permission.' : 'Jev flagged the plan for closer review. Exact terms and payment permissions remain enforced by code.');
       }

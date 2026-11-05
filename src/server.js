@@ -52,6 +52,8 @@ const STATIC_TYPES = Object.freeze({
   '.glb': 'model/gltf-binary',
   '.webp': 'image/webp',
   '.txt': 'text/plain; charset=utf-8',
+  '.mp4': 'video/mp4',
+  '.vtt': 'text/vtt; charset=utf-8',
 });
 const SECURITY_HEADERS = Object.freeze({
   'Content-Security-Policy': "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'",
@@ -473,6 +475,10 @@ function createApi(deps) {
   }
 
   return async function route(req, res, pathname, ip) {
+    if (pathname === '/demo') {
+      if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+      return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'demo.html'));
+    }
     if (pathname === '/procurement') {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
       return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'procurement.html'), { paymentMode: deps.commerceStatus?.().payments ?? 'mock' });

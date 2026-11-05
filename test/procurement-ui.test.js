@@ -710,3 +710,112 @@ test('a lost closure answer keeps the old checkout until a read confirms closure
   assert.equal(checkoutLinks(restored).length, 0);
   assert.ok(restored.requests.every((request) => request.method === 'GET'));
 });
+
+test('advisory review explains low confidence separately from the independent constraint checks', async () => {
+  const ui = browser();
+  await ui.create(state({ review: { decision: 'needs_review', summary: 'Code checks match; Jev is uncertain.',
+    reasons: [{ code: 'JEV_LOW_CONFIDENCE', message: 'This is uncertainty, not a confirmed violation.', evidence: { confidence: 0.76 } }],
+    checks: [{ code: 'BUDGET', label: 'All-in budget', status: 'pass' }, { code: 'DEADLINE', label: 'Delivery deadline', status: 'fail' }] } }));
+  assert.equal(ui.byId('review-reasons').hidden, false);
+  assert.match(ui.byId('review-reasons').textContent, /JEV LOW CONFIDENCE/);
+  assert.match(ui.byId('review-reasons').textContent, /confidence: 76%/);
+  assert.match(ui.byId('review-checks').textContent, /All-in budget: Matches supplied evidence/);
+  assert.match(ui.byId('review-checks').textContent, /Delivery deadline: Mismatch found/);
+  assert.equal(ui.byId('approve').disabled, true, 'An explanation never supplies buyer consent.');
+});
+
+test('negotiation evidence separates proposed price from supplier commitment in restored state', async () => {
+  const base = networkState();
+  const quote = { ...base.quotes[0], unitPriceCents: 600, totalCents: 40000, maxQuantity: 60, taxBps: 500 };
+  const negotiationTrace = { version: 1, supplierRounds: [{ supplierId: 'campus-print', supplierName: '<img src=x onerror=alert(1)>',
+    initialQuote: quote, counteroffer: { unitPriceCents: 500, rationale: 'volume', source: 'anthropic' },
+    responseQuote: { ...quote, unitPriceCents: 550, totalCents: 37000 }, outcome: 'accepted_response',
+    acceptedQuoteId: quote.quoteId, reasonCode: 'discount_verified', selectedForAllocation: true }],
+    allocation: { status: 'feasible', totalCents: 65300, allocations: base.proposal.allocations } };
+  const ui = browser({ mode: 'paypal-sandbox', storage: savedCheckout(), initialResponses: [commerce(),
+    { state: networkState({ negotiationTrace, status: 'completed', checkout: { legs: checkoutLegs('confirmed') } }) }] });
+  await ui.ready();
+  assert.equal(ui.byId('negotiation-trace-panel').hidden, false);
+  const text = ui.byId('negotiation-trace-rounds').textContent;
+  assert.match(text, /Initial offer: \$6\.00 per unit/);
+  assert.match(text, /Anthropic counteroffer: \$5\.00 per unit/);
+  assert.match(text, /Response to model counteroffer: \$5\.50 per unit/);
+  assert.match(text, /60-unit maximum/);
+  assert.match(text, /not a supplier commitment/);
+  assert.match(text, /Reason: discount verified/);
+  assert.match(text, /<img src=x onerror=alert\(1\)>/);
+  assert.ok(!ui.createdTags.includes('img'), 'Supplier text never enters an HTML sink.');
+  assert.match(ui.byId('negotiation-trace-allocation').textContent, /All-in total \$653\.00/);
+  assert.ok(ui.requests.every((request) => request.method === 'GET'), 'Inspecting restored evidence does not retry a payment.');
+});
+
+function guardedTraceState({ baseline = 65300, agent = 67625, avoided = 2325, source = 'baseline' } = {}) {
+  const base = networkState();
+  const quote = { ...base.quotes[0], quoteId: 'initial-one', unitPriceCents: 600, totalCents: 40000, maxQuantity: 60, taxBps: 500 };
+  return networkState({ negotiationTrace: { version: 1,
+    supplierRounds: [{ supplierId: 'campus-print', supplierName: 'Campus Print', initialQuote: quote,
+      baselineQuote: { ...quote, quoteId: 'baseline-one', unitPriceCents: 525, totalCents: 35000 },
+      counteroffer: { unitPriceCents: 550, rationale: 'volume', source: 'anthropic' },
+      responseQuote: { ...quote, quoteId: 'model-one', unitPriceCents: 550, totalCents: 37000 },
+      acceptedQuoteId: 'baseline-one', outcome: 'accepted_baseline', reasonCode: 'baseline_price_guard', selectedForAllocation: true }],
+    priceGuard: { baselineTotalCents: baseline, agentTotalCents: agent, selectedSource: source, avoidedCents: avoided },
+    allocation: { status: 'feasible', totalCents: base.proposal.totalCents, allocations: base.proposal.allocations } } });
+}
+
+test('the price guard explains choosing the cheaper complete deterministic plan without claiming AI savings', async () => {
+  const ui = browser({ mode: 'paypal-sandbox', initialResponses: [commerce()] });
+  await ui.ready();
+  await ui.create(guardedTraceState());
+  assert.equal(ui.byId('price-guard').hidden, false);
+  assert.equal(ui.byId('price-guard-baseline').textContent, '$653.00');
+  assert.equal(ui.byId('price-guard-model').textContent, '$676.25');
+  assert.equal(ui.byId('price-guard-selected').textContent, '$653.00');
+  assert.match(ui.byId('price-guard-note').textContent, /deterministic negotiated plan costs \$23\.25 less than the AI alternative/);
+  assert.doesNotMatch(ui.byId('price-guard-note').textContent, /AI saved|AI-specific savings/);
+  const trace = ui.byId('negotiation-trace-rounds').textContent;
+  assert.match(trace, /Deterministic negotiation response: \$5\.25/);
+  assert.match(trace, /Response to model counteroffer: \$5\.50/);
+  assert.match(trace, /Retained quote reference: baseline-one/);
+  assert.match(trace, /Deterministic negotiated quote retained/);
+  assert.equal(ui.byId('approve').disabled, true, 'Price comparison does not supply consent.');
+});
+
+test('missing or inconsistent price-guard comparisons never display a savings claim', async () => {
+  for (const change of [{ baseline: null }, { agent: null }, { avoided: -10 }, { avoided: 99999 }, { source: 'none' }, { baseline: 66000 }]) {
+    const ui = browser();
+    await ui.create(state({ negotiationTrace: guardedTraceState(change).negotiationTrace }));
+    assert.equal(ui.byId('price-guard').hidden, true, JSON.stringify(change));
+  }
+});
+
+test('a validated mixed-quote plan can beat both whole portfolios without granting consent', async () => {
+  const ui = browser({ mode: 'paypal-sandbox', initialResponses: [commerce()] });
+  await ui.ready();
+  await ui.create(guardedTraceState({ baseline: 67625, agent: 68000, avoided: 2700, source: 'hybrid' }));
+  assert.equal(ui.byId('price-guard').hidden, false);
+  assert.equal(ui.byId('price-guard-selected').textContent, '$653.00');
+  assert.match(ui.byId('price-guard-note').textContent, /at most one quote per supplier/);
+  assert.match(ui.byId('price-guard-note').textContent, /not proof of AI-specific savings/);
+  assert.equal(ui.byId('approve').disabled, true);
+});
+
+test('an omitted model offer labels the reused default-policy response honestly', async () => {
+  const ui = browser({ mode: 'paypal-sandbox', initialResponses: [commerce()] });
+  await ui.ready();
+  const quoted = guardedTraceState();
+  const round = quoted.negotiationTrace.supplierRounds[0];
+  round.counteroffer = null;
+  round.responseQuote = structuredClone(round.baselineQuote);
+  await ui.create(quoted);
+  const text = ui.byId('negotiation-trace-rounds').textContent;
+  assert.match(text, /No model counteroffer was sent/);
+  assert.match(text, /Reused default-policy response: \$5\.25/);
+  assert.doesNotMatch(text, /Response to model counteroffer/);
+});
+
+test('mock negotiation history does not promise durable persistence', async () => {
+  const ui = browser();
+  await ui.create(state({ negotiationTrace: guardedTraceState().negotiationTrace }));
+  assert.match(ui.byId('negotiation-trace-summary').textContent, /simulated session remains in memory/);
+  assert.doesNotMatch(ui.byId('negotiation-trace-summary').textContent, /retains this evidence across restart/);
+});

@@ -1,0 +1,513 @@
+{
+  "version": 1,
+  "title": "Frozen synthetic negotiation comparison, November 5, 2026",
+  "frozenAt": "2026-11-05T20:45:39.258Z",
+  "finishedAt": "2026-11-05T20:46:33.250Z",
+  "fixtureSha256": "73a6c20a262505531d378da683c74e465d471678be5eb242f5638683a13c6231",
+  "sourceHashes": {
+    "scripts/negotiation-benchmark.js": "2df8ec44b3550b34f18a786787830b143c7bd6da87d868f58b948f55ccc4adbd",
+    "src/agent.js": "892434b3a59fc62958f69448baab38c56db2f0d8e22b9da0a99ec495b28155b4",
+    "src/ai-budget.js": "d41467e8d6902768c55646e3cf1e903132fa743b9d60c7e3e889640ca6dba04e",
+    "src/ai-gateway.js": "18a5953d9a2e6f238b4ffa0b6f88b2a9a893d06aa2bc9c994439e87eb9968c02",
+    "src/amount.js": "781da2c3ac41199820e3dc7f0d9c16fda765dc2aa40bc52948722f991be17dcd",
+    "src/call.js": "c1cd25ffdcb671a2c6016fcb1de98decc4ab36fdea341a0e22d0c645167853a9",
+    "src/check.js": "2c262388884137350d2038fbf5e216434a7eb3d45cb951946288289026aefcc5",
+    "src/checkout-recovery.js": "2e4f5073d8ff09df238c77f017934676591400eb5efbf40f0a68509c6ab23675",
+    "src/checkout-store.js": "5fe882f489c0dce128bdf3cf144ee99f8753ea6f55c729c9ead25ecd3eec3664",
+    "src/claim-arms.js": "4d515acd01c54f030d641f3712df5d69a025fa0ecada5592f628448e555d847a",
+    "src/claim-audit.js": "695fa1c55b019741a1b8e2ea9de67c018f0b0da4358b4ac29fc0ff5933105a1e",
+    "src/claim-fake-model.js": "27e8179491be23657e5f15e23a718f397c1c6a6df9962fa2dbc33ad007a80844",
+    "src/claim-gate.js": "ed07156b4773b259d9249cbd05f6fa4057ac33e02ee5055e1c17d19a6a4800c9",
+    "src/claim-verdicts.js": "661c4320dabd3b3d205fe43e7165b13c085a1a3a24210c386c23f05834fbea20",
+    "src/config.js": "4107add3dc5387559c7df96df66d866f3247235c428b74422ea1cd9f59d55608",
+    "src/cover.js": "7b6e52e2cf4f495e5ca61991d7acb7538364b93b9b01aa6b3722ed3eb0d02e78",
+    "src/database.js": "d85dcefd43c0c46b15a06cb39c10e6dad15f758e6c3e86f1de7bd7716a480ca2",
+    "src/donor-durability.js": "a8d2ea21fcc56fb4be9f9256bf0d9ccee8db5d91f83907a4a5be761754931de2",
+    "src/donor-store.js": "e0c81b779912d0618684834892964089162747111fdf82568f33dcd7ee02afd4",
+    "src/drill.js": "7df4af453cca69e24ce888bdc8b4eef50276ba2f3ddbee66d9c4eaf81e92fd04",
+    "src/durable-ledger.js": "2510b1eecedccb28b9ac101dad7b2cbffab4af7ca87bc3c8e26016b8b004be58",
+    "src/fault-drill.js": "5f938094ef263272b0b91223bd265c9a38699e25c4e83d10c069d996855796d4",
+    "src/gate.js": "40cffc34020871d869131c4704175a243f2778fbd68f4bc8397f67684d8a80bd",
+    "src/hosted-supplier-lab.js": "129e0e127256bf8eb924a899015e0d36aa1cbbf6279a0647abee54db7696e7d7",
+    "src/hours-log.js": "4d2779ddbbf506d28da9df0d0cc599f469aa4b9ef117af053ffcd1a3d5fc4834",
+    "src/intent-guards.js": "c591db4187d134d67d7550532f2a3ed6d4f146d84645d608d8083293188f3a95",
+    "src/ledger.js": "3a7614cca618086ef301a80c99ff6eb721df21c7df8d0e43a46616eb243836a4",
+    "src/numbers.js": "bd342f7c4afa5f8e78fd1d07afada6c5ca8976cc7aaf2ab1d2c379078213b7d6",
+    "src/paypal-mock.js": "99da441eb3e0e92cb714d6e1f060b6dfee0a8af66a3d3f0a3f7b5a6899f12af6",
+    "src/paypal-orders.js": "5a5ae2aa6038ac3b805a0c426336b3dc25788bca99669e51e8c47b38a8b0fdd5",
+    "src/paypal.js": "55a84097d7578028675ae5e15061dbabd6dbebcbee881fc73f138444a2045c2c",
+    "src/pilot-grade.js": "628483757eaf140ad6b7467706a9cd66544f57f74570b8c20b38572d4a0d8045",
+    "src/pilot-scripts.js": "a6417966e6ba999853d7da1b3f9535c357f3412069d31edc340b72b14372e5a4",
+    "src/procurement-http.js": "1824856d8cd301d628f2d44083f73b47cb2c6cd2c295f1c39b06bf50c1876313",
+    "src/procurement.js": "ed472ee1838204069c9c962f5231e24bea957275a00b811ad2d3ce422c6a358c",
+    "src/proposal-review.js": "c8ff466b297482f3e5891642196ca0d8a86bf5f31bae0d5e008aae61e4eaf799",
+    "src/receipt-file.js": "ee2e0320a97ce07960b43a266d6fa31f26cae821d14bc9cb8cd0cd174b75ac9a",
+    "src/receipt-seal.js": "ee0c96d38d2a21b200b018c5a8dc0d7b4af5f2839834bdfd810b7d1b4978ad2c",
+    "src/receipt.js": "dc27908157834083498709d533710fbd1c6c4fe9e2b1e6d4c1ff668ec7aba67c",
+    "src/recovery.js": "d51858f2e6542c7be9ce96c5dc3cdd051c76d0446c3e49e3c3d50f2764cffd48",
+    "src/refund-desk.js": "5aa93044aaa4f822258e2e6ad7c5c7fddb4fafc30128316f180ed205d97ecd76",
+    "src/router.js": "484bbeaff5e48bb3b1bb8572b1f02454719e637e3821d7b560839d4315c1b45e",
+    "src/runtime-services.js": "edd48e5f02981757adb3c0eb910e514b0659a2bdf358598f7de358d8ac5b8633",
+    "src/sandbox-checkout.js": "b2c2650881f3489618a11177d23516845e9838419de5f2015b8da63739f3ca5f",
+    "src/say.js": "92905587c2b82867a5eed456347456233fc4b5f67e2674dc239cb53c3bd4243d",
+    "src/server.js": "62fa4a1feb749a4eabb8a104513dda80223aa4ccf3972bf01b8f09eb25d921cd",
+    "src/staff.js": "19d6ca8bea91f797486d1172f23879c56c033cdf9421f570874cff1be08938f9",
+    "src/storage/postgres-ledger.js": "e8953398352a437fed9c4077a78fe1d96ccf64e46ef32829d835dea08b3b8eb0",
+    "src/supplier-mcp.js": "97aba5ba7b096a1d2c38ca0c6deb337f37b8ed2b985b2a16334fe9f305342019",
+    "src/supplier-mock.js": "d98222ebc141c70f17b7e8dc18d17030ba243562eda63c348b2366defbca47a0",
+    "src/supplier-protocol.js": "c42dcb46f91e809b163ee1a776d36770fc591573e04ab325aeee2fab2c6c7644",
+    "src/supplier-quote-store.js": "04ebaa7b1444ef3e3f19c7dd7a7e6188755ea7885be671068f213cdf583a67be",
+    "src/template-history.js": "f1e0a82ce980fce8f44ffb38ac0c014beafe17dc0bf1305977d989fcc919a10b",
+    "src/template-words.js": "ed33539d9fddf5ac83f062f2d6635c8fecd9c77c9d43c4489413676dbd95bbbe",
+    "src/vocabulary.js": "3e19a92638c351ad3e968e620a45f32bab9918dca31deb4fd0b9cdc706a37b8b"
+  },
+  "method": {
+    "caseCount": 6,
+    "modelRuns": 1,
+    "sourceAndFixtureHashCheckedBeforeDispatch": true,
+    "locallyGeneratedSyntheticCases": true,
+    "externallyHeldOut": false,
+    "targetUserStudy": false,
+    "exactInputsPublished": false,
+    "model": "claude-sonnet-5-5",
+    "reviewer": "jev-1.14.0",
+    "arms": [
+      "initial_quotes",
+      "deterministic_negotiation",
+      "main_agent"
+    ],
+    "sameSupplierPoliciesAndCompleteQuantitySolver": true,
+    "baselinePolicy": "Current deterministic no-counteroffer negotiation receives the configured supplier floor. Model offers use the identical policy.",
+    "supplierNetworkCalls": false,
+    "payPalCalls": false,
+    "paymentCalls": 0,
+    "approvalCalls": 0,
+    "reruns": 0
+  },
+  "completed": true,
+  "modelInterrupted": false,
+  "summary": {
+    "initial_quotes": {
+      "cases": 6,
+      "completeOrders": 5,
+      "noFeasibleOrders": 1,
+      "errorsOrNotRun": 0,
+      "constraintViolations": 0,
+      "paymentCalls": 0,
+      "measuredLatencyCases": 6,
+      "meanLatencyMs": 7
+    },
+    "deterministic_negotiation": {
+      "cases": 6,
+      "completeOrders": 5,
+      "noFeasibleOrders": 1,
+      "errorsOrNotRun": 0,
+      "constraintViolations": 0,
+      "paymentCalls": 0,
+      "measuredLatencyCases": 6,
+      "meanLatencyMs": 3
+    },
+    "main_agent": {
+      "cases": 6,
+      "completeOrders": 5,
+      "noFeasibleOrders": 1,
+      "errorsOrNotRun": 0,
+      "constraintViolations": 0,
+      "paymentCalls": 0,
+      "measuredLatencyCases": 6,
+      "meanLatencyMs": 6338
+    }
+  },
+  "cases": [
+    {
+      "id": "N-01",
+      "arms": {
+        "initial_quotes": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 25893,
+          "violations": [],
+          "latencyMs": 24,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        },
+        "deterministic_negotiation": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 22729,
+          "violations": [],
+          "latencyMs": 7,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        },
+        "main_agent": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 23590,
+          "violations": [],
+          "latencyMs": 8049,
+          "apiCostNanos": {
+            "anthropic": 5298000,
+            "jev": 102690
+          },
+          "advisoryReview": {
+            "decision": "needs_review",
+            "confidence": 0.22
+          },
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        }
+      },
+      "expectedFeasibleBySupplierFloorBaseline": true,
+      "modelComparison": {
+        "correctFeasibility": true,
+        "modelMinusDeterministicCents": 861
+      }
+    },
+    {
+      "id": "N-02",
+      "arms": {
+        "initial_quotes": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 18170,
+          "violations": [],
+          "latencyMs": 1,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 1,
+          "paymentCalls": 0
+        },
+        "deterministic_negotiation": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 15571,
+          "violations": [],
+          "latencyMs": 0,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 1,
+          "paymentCalls": 0
+        },
+        "main_agent": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 16375,
+          "violations": [],
+          "latencyMs": 5809,
+          "apiCostNanos": {
+            "anthropic": 3428000,
+            "jev": 57540
+          },
+          "advisoryReview": {
+            "decision": "needs_review",
+            "confidence": 0.7
+          },
+          "quoteCalls": 3,
+          "negotiationCalls": 1,
+          "paymentCalls": 0
+        }
+      },
+      "expectedFeasibleBySupplierFloorBaseline": true,
+      "modelComparison": {
+        "correctFeasibility": true,
+        "modelMinusDeterministicCents": 804
+      }
+    },
+    {
+      "id": "N-03",
+      "arms": {
+        "initial_quotes": {
+          "status": "no_feasible_quote",
+          "complete": false,
+          "totalCents": null,
+          "violations": [],
+          "latencyMs": 3,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        },
+        "deterministic_negotiation": {
+          "status": "no_feasible_quote",
+          "complete": false,
+          "totalCents": null,
+          "violations": [],
+          "latencyMs": 3,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        },
+        "main_agent": {
+          "status": "no_feasible_quote",
+          "complete": false,
+          "totalCents": null,
+          "violations": [],
+          "latencyMs": 5785,
+          "apiCostNanos": {
+            "anthropic": 5792000,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        }
+      },
+      "expectedFeasibleBySupplierFloorBaseline": false,
+      "modelComparison": {
+        "correctFeasibility": true,
+        "modelMinusDeterministicCents": null
+      }
+    },
+    {
+      "id": "N-04",
+      "arms": {
+        "initial_quotes": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 22721,
+          "violations": [],
+          "latencyMs": 2,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 2,
+          "paymentCalls": 0
+        },
+        "deterministic_negotiation": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 19660,
+          "violations": [],
+          "latencyMs": 2,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 2,
+          "paymentCalls": 0
+        },
+        "main_agent": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 21572,
+          "violations": [],
+          "latencyMs": 6095,
+          "apiCostNanos": {
+            "anthropic": 4346000,
+            "jev": 74004
+          },
+          "advisoryReview": {
+            "decision": "needs_review",
+            "confidence": 0.76
+          },
+          "quoteCalls": 3,
+          "negotiationCalls": 2,
+          "paymentCalls": 0
+        }
+      },
+      "expectedFeasibleBySupplierFloorBaseline": true,
+      "modelComparison": {
+        "correctFeasibility": true,
+        "modelMinusDeterministicCents": 1912
+      }
+    },
+    {
+      "id": "N-05",
+      "arms": {
+        "initial_quotes": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 35071,
+          "violations": [],
+          "latencyMs": 1,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        },
+        "deterministic_negotiation": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 31198,
+          "violations": [],
+          "latencyMs": 1,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        },
+        "main_agent": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 31526,
+          "violations": [],
+          "latencyMs": 5548,
+          "apiCostNanos": {
+            "anthropic": 5430000,
+            "jev": 89628
+          },
+          "advisoryReview": {
+            "decision": "needs_review",
+            "confidence": 0.68
+          },
+          "quoteCalls": 3,
+          "negotiationCalls": 3,
+          "paymentCalls": 0
+        }
+      },
+      "expectedFeasibleBySupplierFloorBaseline": true,
+      "modelComparison": {
+        "correctFeasibility": true,
+        "modelMinusDeterministicCents": 328
+      }
+    },
+    {
+      "id": "N-06",
+      "arms": {
+        "initial_quotes": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 51175,
+          "violations": [],
+          "latencyMs": 8,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 2,
+          "paymentCalls": 0
+        },
+        "deterministic_negotiation": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 47878,
+          "violations": [],
+          "latencyMs": 6,
+          "apiCostNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "advisoryReview": null,
+          "quoteCalls": 3,
+          "negotiationCalls": 2,
+          "paymentCalls": 0
+        },
+        "main_agent": {
+          "status": "awaiting_approval",
+          "complete": true,
+          "totalCents": 47878,
+          "violations": [],
+          "latencyMs": 6744,
+          "apiCostNanos": {
+            "anthropic": 4486000,
+            "jev": 73752
+          },
+          "advisoryReview": {
+            "decision": "needs_review",
+            "confidence": 0.6
+          },
+          "quoteCalls": 3,
+          "negotiationCalls": 2,
+          "paymentCalls": 0
+        }
+      },
+      "expectedFeasibleBySupplierFloorBaseline": true,
+      "modelComparison": {
+        "correctFeasibility": true,
+        "modelMinusDeterministicCents": 0
+      }
+    }
+  ],
+  "aggregateComparableOrders": {
+    "count": 5,
+    "initialQuotesCents": 153030,
+    "deterministicNegotiationCents": 137036,
+    "mainAgentCents": 140941,
+    "modelSavingVsInitialCents": 12089,
+    "modelExtraCostVsDeterministicCents": 3905,
+    "modelWinsAgainstDeterministic": 0,
+    "tiesAgainstDeterministic": 1,
+    "lossesAgainstDeterministic": 4,
+    "correctFeasibilityCases": 6
+  },
+  "apiBudget": {
+    "scope": "pledge-line-functional-20261105",
+    "apiKeyOnly": true,
+    "capUsd": {
+      "anthropic": 3,
+      "jev": 0.1
+    },
+    "observedSharedScopeDeltaNanos": {
+      "anthropic": 28780000,
+      "jev": 397614
+    },
+    "observedSharedScopeDeltaUsd": {
+      "anthropic": 0.02878,
+      "jev": 0.000397614
+    },
+    "exclusiveInferenceWindowEstablished": false,
+    "costAttribution": "Shared-scope deltas may include concurrent app inference. Root made no other test inference; absence of all external app usage was not independently established.",
+    "stoppedAfter": false,
+    "pendingRequestsAfter": 0,
+    "providerBalanceVerified": false,
+    "scopeReset": false
+  },
+  "reviewObservations": {
+    "reviewedFeasiblePlans": 5,
+    "needsReview": 5,
+    "specificReasonAccuracyMeasured": false,
+    "note": "Harness retains decision/confidence, not full reviewer evidence. All selected plans passed independent constraints. A needs_review advisory is not counted as a detected violation or payment authority."
+  },
+  "conclusion": {
+    "modelAdvantageEstablished": false,
+    "initialQuoteSavingsAreNotAIAdvantage": true,
+    "statement": "The model matched feasibility and kept every selected plan within constraints, but cost more than the current deterministic supplier-floor negotiator on four orders and tied on one. This run does not establish model-specific economic value, user benefit, fulfillment or a hackathon score."
+  }
+}

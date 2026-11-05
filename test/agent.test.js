@@ -229,8 +229,22 @@ test('negotiation code rejects invalid offer counts, prices, duplicates and extr
 test('Jev proposal review is bounded evidence, never a payment or consent authorization', async () => {
   const { agent, calls } = fixture();
   const result = await agent.reviewProposal({ request: { quantity: 100 }, proposal: { totalCents: 67415 }, quotes: [] });
-  assert.equal(result.decision, 'within_limits');
+  assert.equal(result.decision, 'needs_review');
+  assert.ok(result.reasons.some((reason) => reason.code === 'EVIDENCE_INCOMPLETE'));
   assert.equal(result.advisory, true);
   assert.equal(result.authorizesPayment, false);
   assert.deepEqual(calls.map((c) => c[0]), ['jev']);
+});
+
+test('proposal review uses the service clock so frozen supplier evidence is evaluated consistently', async () => {
+  const { agent, calls } = fixture();
+  const result = await agent.reviewProposal({ reviewedAt: Date.parse('2000-01-01T00:00:00Z'),
+    request: { deadline: '2000-01-06T00:00:00Z' }, quotes: [],
+    proposal: { expiresAt: '2000-01-02T00:00:00Z', allocations: [{ deliveryAt: '2000-01-05T00:00:00Z', expiresAt: '2000-01-02T00:00:00Z' }] } });
+  assert.equal(result.checks.find((check) => check.code === 'QUOTE_FRESHNESS').status, 'pass');
+  assert.equal(result.checks.find((check) => check.code === 'DEADLINE').status, 'pass');
+  assert.equal(calls[0][1].state.reviewedAt, '2000-01-01T00:00:00.000Z');
+  const invalid = fixture();
+  await assert.rejects(invalid.agent.reviewProposal({ reviewedAt: NaN }), /AI_RESPONSE_INVALID/);
+  assert.equal(invalid.calls.length, 0);
 });

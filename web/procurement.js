@@ -8,7 +8,9 @@
     'approval-form', 'approval-check', 'approval-consent', 'approve', 'settlement', 'settlement-title', 'settlement-list', 'settlement-note',
     'checkout-legs', 'checkout-blocked', 'prepare-checkout', 'reconcile', 'close-unpaid', 'timeline-empty', 'timeline', 'timeline-label', 'demo-disclosure',
     'demo-controls', 'commerce-panel', 'commerce-status', 'refresh-commerce', 'comparison', 'comparison-baseline', 'comparison-negotiated',
-    'comparison-saving', 'comparison-scope', 'review-panel', 'review-note']
+    'comparison-saving', 'comparison-scope', 'price-guard', 'price-guard-baseline', 'price-guard-model', 'price-guard-selected', 'price-guard-note',
+    'review-panel', 'review-note', 'review-reasons', 'review-check-details', 'review-checks',
+    'negotiation-trace-panel', 'negotiation-trace-summary', 'negotiation-trace-rounds', 'negotiation-trace-allocation']
     .map((id) => [id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), byId(id)]));
   const configuredMode = document.body?.dataset?.payments || 'mock';
   const storageKey = 'pledge-line.procurement.sandbox.v1';
@@ -281,6 +283,94 @@
         : review?.decision === 'needs_review' ? 'The advisory model flagged this plan for closer review. Inspect its exact terms before deciding whether to approve.' : '');
     els.reviewPanel.hidden = typeof reviewText !== 'string' || !reviewText;
     els.reviewNote.textContent = typeof reviewText === 'string' ? reviewText : '';
+    const reasons = list(review?.reasons).slice(0, 12);
+    els.reviewReasons.hidden = !reasons.length;
+    els.reviewReasons.replaceChildren();
+    for (const reason of reasons) {
+      const code = typeof reason?.code === 'string' && /^[A-Z_]{1,48}$/.test(reason.code) ? reason.code : 'REVIEW_DETAIL_UNAVAILABLE';
+      const message = typeof reason?.message === 'string' ? reason.message.slice(0, 300) : 'Inspect the exact plan evidence.';
+      const item = node('li');
+      item.append(node('strong', code.replaceAll('_', ' ')), node('span', message));
+      if (code === 'JEV_LOW_CONFIDENCE' && Number.isFinite(reason.evidence?.confidence) && reason.evidence.confidence >= 0 && reason.evidence.confidence <= 1) {
+        item.append(node('span', `Reported confidence: ${Math.round(reason.evidence.confidence * 100)}%.`, 'field-hint'));
+      }
+      els.reviewReasons.append(item);
+    }
+    const checks = list(review?.checks).slice(0, 9);
+    els.reviewCheckDetails.hidden = !checks.length;
+    els.reviewChecks.replaceChildren();
+    for (const check of checks) {
+      const label = typeof check?.label === 'string' ? check.label.slice(0, 80) : 'Evidence check';
+      const status = check?.status === 'pass' ? 'Matches supplied evidence' : check?.status === 'fail' ? 'Mismatch found' : 'Evidence incomplete';
+      const item = node('li', `${label}: ${status}.`);
+      item.dataset.status = ['pass', 'fail'].includes(check?.status) ? check.status : 'unverified';
+      els.reviewChecks.append(item);
+    }
+  }
+
+  function renderNegotiationTrace(state) {
+    const trace = state?.negotiationTrace;
+    const rounds = trace?.version === 1 ? list(trace.supplierRounds).filter((round) => round && typeof round === 'object' && !Array.isArray(round)).slice(0, 5) : [];
+    const guard = trace?.priceGuard;
+    const guardAmount = (value) => Number.isSafeInteger(value) && value > 0 && value <= 100000000;
+    const selectedTotal = trace?.allocation?.totalCents;
+    const guardLegs = list(trace?.allocation?.allocations);
+    const completeAllocation = trace?.version === 1 && trace.allocation?.status === 'feasible' && guardLegs.length > 0 && guardLegs.length <= 5 &&
+      guardLegs.every((leg) => Number.isSafeInteger(leg?.quantity) && leg.quantity > 0 && leg.quantity <= 500 && guardAmount(leg.totalCents)) &&
+      guardLegs.reduce((sum, leg) => sum + leg.quantity, 0) === state?.request?.quantity &&
+      guardLegs.reduce((sum, leg) => sum + leg.totalCents, 0) === selectedTotal;
+    const completeComparison = completeAllocation && guard && guardAmount(guard.baselineTotalCents) && guardAmount(guard.agentTotalCents) && guardAmount(selectedTotal) &&
+      selectedTotal === state?.proposal?.totalCents && Number.isSafeInteger(guard.avoidedCents) && guard.avoidedCents >= 0 &&
+      guard.avoidedCents === guard.agentTotalCents - selectedTotal &&
+      (guard.selectedSource === 'baseline' && selectedTotal === guard.baselineTotalCents && guard.baselineTotalCents <= guard.agentTotalCents ||
+        guard.selectedSource === 'agent' && selectedTotal === guard.agentTotalCents && guard.agentTotalCents < guard.baselineTotalCents ||
+        guard.selectedSource === 'hybrid' && selectedTotal < guard.baselineTotalCents && selectedTotal < guard.agentTotalCents);
+    els.priceGuard.hidden = !completeComparison;
+    if (completeComparison) {
+      els.priceGuardBaseline.textContent = money(guard.baselineTotalCents);
+      els.priceGuardModel.textContent = money(guard.agentTotalCents);
+      els.priceGuardSelected.textContent = money(selectedTotal);
+      els.priceGuardNote.textContent = guard.selectedSource === 'baseline'
+        ? guard.avoidedCents > 0
+          ? `The verified deterministic negotiated plan costs ${money(guard.avoidedCents)} less than the AI alternative, so it was selected. No extra purchase was created by this comparison.`
+          : 'Both verified portfolios have the same complete-order total. The deterministic negotiated plan was retained on the tie.'
+        : guard.selectedSource === 'hybrid'
+          ? 'Combining validated quotes from both portfolios produced a lower complete-order total. The solver uses at most one quote per supplier. This is a code-selected combination, not proof of AI-specific savings.'
+          : 'The verified AI negotiated portfolio has the lower complete-order total for these supplied quotes, so it was selected. This result applies only to this request.';
+    }
+    els.negotiationTracePanel.hidden = !rounds.length;
+    els.negotiationTraceRounds.replaceChildren();
+    if (!rounds.length) return;
+    els.negotiationTraceSummary.textContent = 'Compare the initial offer, the proposed counteroffer and the supplier response. Only accepted quote terms can enter the exact plan. ' +
+      (networkMode() ? 'Approving a sandbox checkout retains this evidence across restart.' : 'This simulated session remains in memory.');
+    const rationales = { volume: 'Volume discount', split_order: 'Split-order price', deadline: 'Delivery timing', budget: 'All-in budget' };
+    const outcomes = { accepted_response: 'Model-negotiated response retained', accepted_baseline: 'Deterministic negotiated quote retained', kept_initial: 'Initial quote retained', rejected: 'Quote rejected' };
+    for (const round of rounds) {
+      const item = node('li');
+      const name = typeof round?.supplierName === 'string' ? round.supplierName.slice(0, 100) : String(round?.supplierId || 'Supplier').slice(0, 48);
+      item.append(node('h3', name));
+      const quoteLine = (label, quote) => {
+        if (!quote) return `${label}: no valid quote retained.`;
+        const reference = typeof quote.quoteId === 'string' ? quote.quoteId.slice(0, 120) : 'unavailable';
+        return `${label}: ${money(quote.unitPriceCents)} per unit; setup ${money(quote.setupCents)}, shipping ${money(quote.shippingCents)}, tax ${Number.isInteger(quote.taxBps) ? quote.taxBps / 100 : 'unavailable'}%. ${Number.isSafeInteger(quote.maxQuantity) ? `All-in for this quote's ${quote.maxQuantity}-unit maximum: ${money(quote.totalCents)}. ` : ''}Delivery ${date(quote.deliveryAt)}. Quote ${reference}.`;
+      };
+      item.append(node('p', quoteLine('Initial offer', round.initialQuote)));
+      if (round.baselineQuote) item.append(node('p', quoteLine('Deterministic negotiation response', round.baselineQuote)));
+      item.append(node('p', round.counteroffer
+        ? `${round.counteroffer.source === 'anthropic' ? 'Anthropic' : 'Main agent'} counteroffer: ${money(round.counteroffer.unitPriceCents)} per unit. Rationale: ${rationales[round.counteroffer.rationale] || 'Not provided'}. This suggestion is not a supplier commitment.`
+        : 'No model counteroffer was sent for this supplier.'));
+      item.append(node('p', quoteLine(round.counteroffer ? 'Response to model counteroffer' : 'Reused default-policy response', round.responseQuote)));
+      if (typeof round.acceptedQuoteId === 'string' && /^[A-Za-z0-9-]{1,120}$/.test(round.acceptedQuoteId)) {
+        item.append(node('p', `Retained quote reference: ${round.acceptedQuoteId}.`, 'field-hint'));
+      }
+      const reason = typeof round.reasonCode === 'string' && /^[A-Za-z_]{1,60}$/.test(round.reasonCode) ? round.reasonCode.replaceAll('_', ' ').toLowerCase() : 'See the quote terms';
+      item.append(node('p', `${outcomes[round.outcome] || 'Outcome unavailable'}. ${round.selectedForAllocation === true ? 'Selected for the complete allocation.' : 'Not selected for the complete allocation.'} Reason: ${reason}.`, 'field-hint'));
+      els.negotiationTraceRounds.append(item);
+    }
+    const selected = list(trace.allocation?.allocations).filter((leg) => leg && typeof leg === 'object' && !Array.isArray(leg)).slice(0, 5);
+    els.negotiationTraceAllocation.textContent = trace.allocation?.status === 'feasible'
+      ? `Complete allocation: ${selected.map((leg) => `${Number.isSafeInteger(leg.quantity) ? leg.quantity : '?'} units from ${String(leg.supplierId || 'supplier').slice(0, 48)}`).join('; ')}. All-in total ${money(trace.allocation.totalCents)}.`
+      : 'No complete allocation met the request. No purchase is authorized by this trace.';
   }
 
   function renderCheckout(state) {
@@ -371,7 +461,7 @@
     const events = list(state?.timeline);
     els.timelineEmpty.hidden = events.length > 0;
     els.timelineEmpty.textContent = state?.proposal && networkMode()
-      ? 'The approved plan and provider records are retained. Earlier negotiation events may be unavailable after a server restart.'
+      ? 'The approved plan and provider records are retained. This older record has no activity timeline; inspect the retained quotes and exact terms.'
       : 'The negotiation, checks and settlement attempts will appear here.';
     els.timeline.replaceChildren();
     for (const event of events) {
@@ -386,6 +476,7 @@
   function render(state) {
     session.state = state;
     renderQuotes(state);
+    renderNegotiationTrace(state);
     renderPlan(state);
     renderSettlement(state);
     renderTimeline(state);

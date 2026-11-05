@@ -15,7 +15,8 @@ export function createProcurementHttp({ createService, send, readJson, limiter, 
   function success(res, status, body) {
     const state = body.state;
     const evidence = state?.proposal?.quoteEvidence;
-    const restored = evidence ? { ...state, quotes: evidence.quotes, comparison: evidence.comparison, review: evidence.review, timeline: evidence.timeline } : state;
+    const restored = evidence ? { ...state, quotes: evidence.quotes, comparison: evidence.comparison, review: evidence.review, timeline: evidence.timeline,
+      negotiationTrace: evidence.negotiationTrace ?? null } : state;
     send(res, status, { ...body, ...(state ? { state: restored } : {}), commerce: commerceStatus() });
   }
 
@@ -68,7 +69,8 @@ export function createProcurementHttp({ createService, send, readJson, limiter, 
           if (!proposal || planned.status !== 'awaiting_approval' || Date.parse(proposal.expiresAt) <= now() ||
             typeof body.confirmationToken !== 'string' || typeof body.termsHash !== 'string' ||
             !timingSafeEqual(digest(body.confirmationToken), digest(proposal.confirmationToken)) || !timingSafeEqual(digest(body.termsHash), digest(proposal.termsHash))) return error(res, 409, 'Approval does not match the current exact plan.');
-          const retainedProposal = { ...proposal, quoteEvidence: { quotes: planned.quotes, comparison: planned.comparison ?? null, review: planned.review ?? null, timeline: planned.timeline } };
+          const retainedProposal = { ...proposal, quoteEvidence: { quotes: planned.quotes, comparison: planned.comparison ?? null, review: planned.review ?? null,
+            timeline: planned.timeline, negotiationTrace: planned.negotiationTrace ?? null } };
           state = await checkout.start({ id, rfq: planned.request, proposal: retainedProposal, sessionSecretHash: session.secretHash.toString('hex') });
           if (commerceStatus().sandboxWritesEnabled) state = await checkout.prepare({ id });
         } else {
