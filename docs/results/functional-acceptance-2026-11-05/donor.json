@@ -54,11 +54,12 @@
       ],
       "invoice": {
         "id": "INV2-UWF7-EA8Y-UCFQ-CLW2",
-        "status": "SENT",
+        "status": "PAID",
         "amount": {
           "value": "50.00",
           "currency_code": "USD"
-        }
+        },
+        "paymentId": "7WC09285F8772294X"
       }
     }
   },

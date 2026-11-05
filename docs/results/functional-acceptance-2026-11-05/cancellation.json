@@ -1,0 +1,44 @@
+{
+  "at": "2026-11-05T19:10:12.850Z",
+  "paypalMode": "sandbox",
+  "case": "Disposable subscription cancellation through browser",
+  "disposableSubscription": {
+    "id": "I-BM80EY89RAG6",
+    "status": "CANCELLED",
+    "debugId": "ca55e28376bdc"
+  },
+  "mainSubscription": {
+    "id": "I-NU77VVYWD173",
+    "status": "ACTIVE",
+    "debugId": "ca55e2839bb48"
+  },
+  "callId": "bc7da974-33a9-47cf-8c8d-a14fe43d1aae",
+  "browserObservedByRoot": {
+    "pinKeypad": true,
+    "typedGiftRead": true,
+    "reloadPreservedCall": true,
+    "cancelFlow": [
+      "Requested cancellation",
+      "Declined offered pause",
+      "Explicitly approved cancellation",
+      "UI confirmed cancelled"
+    ]
+  },
+  "actions": [
+    {
+      "callId": "bc7da974-33a9-47cf-8c8d-a14fe43d1aae",
+      "kind": "cancel",
+      "targetId": "I-BM80EY89RAG6",
+      "state": "confirmed",
+      "providerId": "I-BM80EY89RAG6",
+      "attemptCount": 1
+    }
+  ],
+  "assertions": {
+    "disposableCancelled": true,
+    "mainRemainsActive": true,
+    "oneProviderWriteAttempt": true,
+    "neonClaimConfirmed": true
+  },
+  "scope": "Controlled sandbox buyer and merchant; no real-money subscription cancelled."
+}

@@ -1,7 +1,7 @@
 {
-  "at": "2026-11-05T09:56:19.147Z",
-  "total": 732,
-  "passed": 725,
+  "at": "2026-11-05T18:25:09.081Z",
+  "total": 737,
+  "passed": 730,
   "failed": 0,
   "skipped": 7,
   "hostedEnabled": [
@@ -18,5 +18,43 @@
     "procurement dispatch awaits the hosted journal and preserves exact completed and unknown legs"
   ],
   "serial": true,
-  "nodeHeapLimitMiB": 128
+  "nodeHeapLimitMiB": 128,
+  "additionalHostedRun": {
+    "at": "2026-11-05T19:11:02.742Z",
+    "scope": "Three previously optional hosted runtime cases, selected without schema migration or provider/model calls",
+    "databaseRole": "existing restricted runtime role",
+    "isolation": "random test organization IDs; production namespace unchanged",
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "serial": true,
+    "nodeHeapLimitMiB": 128,
+    "tests": [
+      "authenticated MCP and hosted runtime journal recover a sandbox workflow with simulated PayPal responses",
+      "actual PostgreSQL recovery filtering and transaction lease contention",
+      "procurement dispatch awaits the hosted journal and preserves exact completed and unknown legs"
+    ],
+    "notRun": [
+      {
+        "test": "hosted PostgreSQL enforces atomic AI claims and latched stops across independent clients",
+        "reason": "Calls migrate and attempts updates to shared migration rows; outside runtime-only no-migration scope"
+      },
+      {
+        "test": "actual PostgreSQL keeps reservations, consent and unknown outcomes across clients",
+        "reason": "Calls migrate and attempts deletion of shared migration row; outside runtime-only no-migration scope"
+      },
+      {
+        "test": "actual PostgreSQL keeps expired unpaid closure terminal without a schema change",
+        "reason": "Calls migrate; not run under no-migration restriction"
+      },
+      {
+        "test": "actual PostgreSQL preserves checkout creation/capture identities and unknown states across clients",
+        "reason": "Calls migrate; not run under no-migration restriction"
+      }
+    ],
+    "productionChanges": false,
+    "externalProviderCalls": false,
+    "modelCalls": false
+  }
 }

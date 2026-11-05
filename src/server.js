@@ -21,7 +21,7 @@ import { createProcurementService } from './procurement.js';
 import { createProcurementHttp } from './procurement-http.js';
 import { connectDatabase } from './database.js';
 import { configureRuntimeServices } from './runtime-services.js';
-import { wrapDurableCalls, observeMockPayPal } from './donor-durability.js';
+import { wrapDurableCalls, observeMockPayPal, DonorDurabilityError } from './donor-durability.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -524,6 +524,8 @@ export function createServer(deps) {
       if (res.headersSent) return;
       if (error instanceof HttpError) return send(res, error.status, { error: error.message }, undefined, error.headers);
       if (error instanceof CallNotFound) return send(res, 404, { error: 'That call was not found. Please start a new call.' });
+      if (error instanceof DonorDurabilityError) return send(res, 503,
+        { error: 'The call could not safely complete this step. Please wait for the current reply and try again.' }, undefined, { 'Retry-After': '1' });
       log.error(`500 ${error?.name ?? 'Error'} ${error?.message ?? ''}`);
       send(res, 500, { error: 'Something went wrong on our side.' });
     }

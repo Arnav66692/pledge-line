@@ -1,0 +1,60 @@
+{
+  "at": "2026-11-05T19:11:45.713Z",
+  "paypalMode": "sandbox",
+  "invoice": {
+    "id": "INV2-UWF7-EA8Y-UCFQ-CLW2",
+    "status": "PAID",
+    "paidAmount": {
+      "currency_code": "USD",
+      "value": "50.00"
+    },
+    "paymentTransactionCount": 1,
+    "transactions": [
+      {
+        "paymentId": "7WC09285F8772294X",
+        "status": "SUCCESS",
+        "amount": {
+          "currency_code": "USD",
+          "value": "50.00"
+        },
+        "method": "PAYPAL"
+      }
+    ]
+  },
+  "event": {
+    "id": "WH-2ET217543L972721N-7ML97454FY361641A",
+    "type": "INVOICING.INVOICE.PAID",
+    "createdAt": "2026-11-05T18:52:47.865Z",
+    "resourceId": "INV2-UWF7-EA8Y-UCFQ-CLW2",
+    "verified": true,
+    "verifyStatus": "SUCCESS",
+    "acceptedHttpStatus": 200
+  },
+  "persistence": {
+    "journalRowCount": 1,
+    "journalReceivedAt": "2026-11-05T19:02:54.565Z",
+    "ledgerRowCount": 1,
+    "ledgerVerifiedAt": "2026-11-05T19:02:54.868Z",
+    "durableBeforeAcknowledgment": "Enforced by reviewed webhook handler: journal acceptance and ledger flush are awaited before the HTTP200 response."
+  },
+  "duplicateDelivery": {
+    "resendAcceptedHttpStatus": 202,
+    "verifiedDuplicateObserved": true,
+    "checkedAt": "2026-11-05T19:11:45.713Z",
+    "acceptedHttpStatus": 200,
+    "journalRowCountAfter": 1,
+    "ledgerRowCountAfter": 1,
+    "invoicePaymentTransactionCountAfter": 1
+  },
+  "assertions": {
+    "actualSandboxInvoicePaid": true,
+    "genuineProviderEvent": true,
+    "signatureVerified": true,
+    "oneJournalRow": true,
+    "oneVerifiedLedgerRow": true,
+    "singlePayPalInvoicePayment": true,
+    "duplicateDeliveryDidNotAddJournalOrLedgerRow": true,
+    "duplicateDeliveryDidNotAddInvoicePayment": true
+  },
+  "scope": "Actual sandbox PayPal buyer payment and verified PayPal event; no real money, fabricated paid payload, or manual paid marking."
+}

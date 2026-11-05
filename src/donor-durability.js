@@ -220,12 +220,40 @@ export function createDonorDurability({ store, ledger, now = () => new Date() } 
 }
 
 /** Async HTTP-facing service. Default call service remains synchronous when this wrapper is absent. */
-export function wrapDurableCalls({ calls, store, ledger, durability, paypal = null, now = () => new Date(), sessionTtlMs = DAY_MS } = {}) {
-  if (!calls || !store || !ledger || !durability || !Number.isSafeInteger(sessionTtlMs) || sessionTtlMs < 1000 || sessionTtlMs > 30 * DAY_MS) refuse('DONOR_DURABILITY_REQUIRED');
+export function wrapDurableCalls({ calls, store, ledger, durability, paypal = null, now = () => new Date(), sessionTtlMs = DAY_MS,
+  queueWaitMs = 15000, maxPendingPerCall = 8 } = {}) {
+  if (!calls || !store || !ledger || !durability || !Number.isSafeInteger(sessionTtlMs) || sessionTtlMs < 1000 || sessionTtlMs > 30 * DAY_MS ||
+    !Number.isInteger(queueWaitMs) || queueWaitMs < 1 || queueWaitMs > 60000 ||
+    !Number.isInteger(maxPendingPerCall) || maxPendingPerCall < 1 || maxPendingPerCall > 64) refuse('DONOR_DURABILITY_REQUIRED');
   durability.bindService(calls);
-  const revisions = new Map();
+  const revisions = new Map(), queues = new Map();
   let lastRecoveryAt = 0, recoveryCursor = null, lastDiscoveryAt = 0;
   const expiresAt = () => new Date(now().getTime() + sessionTtlMs).toISOString();
+  function enqueue(id, work) {
+    let queue = queues.get(id);
+    if (!queue) { queue = { tail: Promise.resolve(), pending: 0 }; queues.set(id, queue); }
+    if (queue.pending >= maxPendingPerCall) refuse('DONOR_CALL_BUSY');
+    queue.pending += 1;
+    let started = false, expired = false, timer;
+    const operation = queue.tail.then(() => {
+      if (expired) refuse('DONOR_CALL_BUSY');
+      started = true; clearTimeout(timer);
+      return work();
+    });
+    const drained = () => {
+      queue.pending -= 1;
+      if (queue.pending === 0 && queues.get(id) === queue) queues.delete(id);
+    };
+    queue.tail = operation.then(drained, drained);
+    // Only admission waits expire. Once started, the existing database lease owns cancellation.
+    // An expired closure stays in the bounded queue until drained and can never dispatch later.
+    return new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
+        if (!started) { expired = true; reject(new DonorDurabilityError('DONOR_CALL_BUSY')); }
+      }, queueWaitMs);
+      operation.then(resolve, reject);
+    });
+  }
   async function load(id, allowExpired = false) {
     const record = await store.loadCall({ id });
     if (!record || (!allowExpired && Date.parse(record.expiresAt) <= now().getTime())) refuse('DONOR_CALL_EXPIRED');
@@ -235,7 +263,7 @@ export function wrapDurableCalls({ calls, store, ledger, durability, paypal = nu
     }
     return record;
   }
-  async function run(id, fn, { allowExpired = false } = {}) {
+  async function runLeased(id, fn, { allowExpired = false, replyReady = false } = {}) {
     const leased = await store.withCallLease({ id }, async (signal) => {
       await ledger.reload();
       await ledger.ensureCapacity();
@@ -259,8 +287,10 @@ export function wrapDurableCalls({ calls, store, ledger, durability, paypal = nu
       });
     });
     if (!leased.acquired) refuse('DONOR_CALL_BUSY');
+    if (replyReady) calls.markDurableReplyReady?.(id);
     return leased.value;
   }
+  const run = async (id, fn, options) => enqueue(id, () => runLeased(id, fn, options));
   async function recover() {
     if (!paypal || now().getTime() - lastRecoveryAt < 30000) return 0;
     lastRecoveryAt = now().getTime();
@@ -301,11 +331,7 @@ export function wrapDurableCalls({ calls, store, ledger, durability, paypal = nu
       return actual.length > 0 && actual.length <= 200 && expected.length === 32 && timingSafeEqual(hashed, expected);
     },
     get: (id) => run(id, () => calls.get(id)),
-    async turn(id, input, arrival) {
-      const result = await run(id, () => calls.turn(id, input, arrival));
-      calls.markDurableReplyReady?.(id);
-      return result;
-    },
+    turn: (id, input, arrival) => run(id, () => calls.turn(id, input, arrival), { replyReady: true }),
     logGap: (id, input) => run(id, () => calls.logGap(id, input)),
     end: (id, reason) => run(id, () => calls.end(id, reason)),
     async sweep() {

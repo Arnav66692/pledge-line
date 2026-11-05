@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-05T19:10:40.906Z",
+  "paypalMode": "sandbox",
+  "callId": "bc7da974-33a9-47cf-8c8d-a14fe43d1aae",
+  "checks": {
+    "privateKeypadPin": true,
+    "typedGiftStatusRead": true,
+    "browserReloadRestoresCall": true,
+    "explicitCancelConsent": true,
+    "declinedPauseBeforeCancellation": true,
+    "processRestartRestoresCall": true,
+    "restoredCallRequiresFreshPin": true
+  },
+  "newMicrophoneInputVerified": false
+}

@@ -54,7 +54,7 @@ function memoryStore() {
   };
   return store;
 }
-async function stack({ store = memoryStore(), clock = makeClock(), modify = null } = {}) {
+async function stack({ store = memoryStore(), clock = makeClock(), modify = null, wrapOptions = {} } = {}) {
   const config = loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'rules' });
   const ledger = createDurableLedger({ store, now: clock.now }); await ledger.ready();
   const tokens = createTokens({ now: clock.now, ttlMs: config.limits.tokenTtlMs });
@@ -64,7 +64,7 @@ async function stack({ store = memoryStore(), clock = makeClock(), modify = null
   const gate = createGate({ ledger, tokens, now: clock.now, pendingTtlMs: config.limits.pendingTtlMs, durability });
   const raw = createCallService({ config, ledger, paypal, router: createRouter({ mode: 'rules' }), gate, now: clock.now,
     sleep: async () => {}, desk: createRefundDesk({ ledger, tokens }), durability });
-  const calls = wrapDurableCalls({ calls: raw, store, ledger, durability, paypal, now: clock.now });
+  const calls = wrapDurableCalls({ calls: raw, store, ledger, durability, paypal, now: clock.now, ...wrapOptions });
   const answered = new Map();
   const say = async (id, text, source = 'typed') => { const result = await calls.turn(id, { text, source, answering: answered.get(id) ?? 0 }); answered.set(id, result.turn); return result; };
   return { store, ledger, config, tokens, paypal, durability, raw, calls, say, clock, answered };
@@ -261,4 +261,81 @@ test('restart cleanup refuses to delete a known invoice that PayPal now shows as
   }) });
   const ended = await second.calls.end(started.callId); assert.equal(ended.state.ended, true);
   assert.equal([...first.store.actions.values()].filter((a) => a.kind === 'delete_draft').length, 0);
+});
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+test('a browser gap waits behind the same call read and commits exactly once', async () => {
+  const s = await stack(); const { callId } = await verify(s);
+  const entered = deferred(), release = deferred(), get = s.raw.get;
+  s.raw.get = async (id) => { entered.resolve(); await release.promise; return get(id); };
+  const reading = s.calls.get(callId); await entered.promise;
+  let settled = false;
+  const gap = s.calls.logGap(callId, { turn: 1, gapMs: 80, source: 'typed', muted: true })
+    .then((value) => { settled = true; return { value }; }, (error) => { settled = true; return { error }; });
+  await new Promise((resolve) => setImmediate(resolve));
+  const wasSettled = settled;
+  release.resolve(); await reading;
+  const result = await gap;
+  assert.equal(wasSettled, false, 'local overlap waits rather than returning lease busy');
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.value, { ok: true });
+  assert.equal(s.ledger.byCall(callId).filter((event) => event.type === 'gap').length, 1);
+  assert.equal(s.store.actions.size, 0);
+});
+
+test('an operation whose queue wait expires is never dispatched after the holder drains', async () => {
+  const s = await stack({ wrapOptions: { queueWaitMs: 10 } }); const { callId } = await verify(s);
+  await pauseOffer(s, callId);
+  const entered = deferred(), release = deferred(), get = s.raw.get, turn = s.raw.turn;
+  s.raw.get = async (id) => { entered.resolve(); await release.promise; return get(id); };
+  let turns = 0;
+  s.raw.turn = (...args) => { turns += 1; return turn(...args); };
+  const reading = s.calls.get(callId); await entered.promise;
+  await assert.rejects(s.calls.turn(callId, { text: 'yes', source: 'typed', answering: 2 }), /DONOR_CALL_BUSY/);
+  release.resolve(); await reading;
+  await s.calls.get(callId);
+  assert.equal(turns, 0, 'a timed-out yes must not execute later');
+  assert.equal(s.store.actions.size, 0);
+  assert.equal((await s.paypal.getSubscription(s.config.demoSubscriptionId)).data.status, 'ACTIVE');
+});
+
+test('the per-call queue bounds admitted work and releases its capacity after draining', async () => {
+  const s = await stack({ wrapOptions: { maxPendingPerCall: 2 } }); const { callId } = await verify(s);
+  const entered = deferred(), release = deferred(), get = s.raw.get;
+  s.raw.get = async (id) => { entered.resolve(); await release.promise; return get(id); };
+  const reading = s.calls.get(callId); await entered.promise;
+  const gap = s.calls.logGap(callId, { turn: 1, gapMs: 80, source: 'typed', muted: true }).then((value) => ({ value }), (error) => ({ error }));
+  await assert.rejects(s.calls.get(callId), /DONOR_CALL_BUSY/);
+  release.resolve(); await reading;
+  assert.deepEqual(await gap, { value: { ok: true } });
+  assert.equal((await s.calls.get(callId)).verified, true);
+});
+
+test('a queued early yes retains its original arrival and cannot cross the durable reply barrier', async () => {
+  const s = await stack(); const { callId } = await verify(s);
+  const entered = deferred(), release = deferred(), save = s.store.saveCall;
+  let delayed = false;
+  s.store.saveCall = async (input) => {
+    if (!delayed && input.snapshot.pending?.kind === 'suspend') {
+      delayed = true; entered.resolve(); await release.promise;
+    }
+    return save(input);
+  };
+  const asking = pauseOffer(s, callId); await entered.promise;
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const receivedAt = performance.now();
+  const yes = s.calls.turn(callId, { text: 'yes', source: 'typed', answering: 2 }, { receivedAt })
+    .then((value) => ({ value }), (error) => ({ error }));
+  release.resolve(); await asking;
+  const result = await yes;
+  assert.equal(result.error, undefined, 'the overlap should wait without becoming valid approval');
+  assert.equal(result.value.state.pending.kind, 'suspend');
+  assert.equal(s.store.actions.size, 0);
+  const heard = s.ledger.byCall(callId).find((event) => event.type === 'heard' && event.turn === 3);
+  assert.ok(heard.afterReplyMs <= 0, 'arrival remains before the durable asking reply was ready');
 });

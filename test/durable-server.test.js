@@ -4,6 +4,7 @@ import { loadConfig } from '../src/config.js';
 import { buildDeps, createServer, createWebhookHandler } from '../src/server.js';
 import { configureRuntimeServices } from '../src/runtime-services.js';
 import { tempLedgerPath } from './helpers.js';
+import { DonorDurabilityError } from '../src/donor-durability.js';
 
 const quiet = { info() {}, error() {} };
 
@@ -68,4 +69,20 @@ test('verified webhook cannot be acknowledged before the durable ledger barrier'
 test('durable donor startup requires PostgreSQL and never silently selects a local ledger', async () => {
   const config = { port: 3159, router: { mode: 'rules' }, paypal: {}, publicBaseUrl: 'http://127.0.0.1:3159' };
   await assert.rejects(configureRuntimeServices({ config, env: { DONOR_DURABILITY_ENABLED: 'true' } }), /DONOR_DATABASE_REQUIRED/);
+});
+
+test('a refused durable call returns a retriable service response without internal details', async () => {
+  const config = loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'rules', PILOT_PIN: '482613' });
+  const deps = buildDeps(config, { ledgerPath: tempLedgerPath(), log: quiet });
+  deps.calls = { authenticate: async () => true, get: async () => { throw new DonorDurabilityError('DONOR_CALL_BUSY'); } };
+  const server = createServer(deps);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/calls/00000000-0000-4000-8000-000000000001`, { headers: { 'x-call-secret': 'synthetic' } });
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('retry-after'), '1');
+    const body = await response.json();
+    assert.match(body.error, /wait for the current reply/);
+    assert.doesNotMatch(body.error, /DONOR_CALL_BUSY|DonorDurabilityError/);
+  } finally { await new Promise((resolve) => server.close(resolve)); }
 });

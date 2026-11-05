@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-05T18:53:17.943Z",
+  "paypalMode": "sandbox",
+  "invoiceId": "INV2-UWF7-EA8Y-UCFQ-CLW2",
+  "status": "PAID",
+  "amount": {
+    "currency": "USD",
+    "value": "50.00"
+  },
+  "paymentId": "7WC09285F8772294X",
+  "paymentType": "PAYPAL",
+  "paymentStatus": "SUCCESS",
+  "manualPaymentRecording": false
+}
