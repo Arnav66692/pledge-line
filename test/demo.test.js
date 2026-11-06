@@ -16,7 +16,7 @@ test('guided evidence page is available without a PIN and cannot start a payment
   try {
     const page = await fetch(base + '/demo');
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /retained PayPal sandbox outcomes/);
+    assert.match(await page.text(), /retained sandbox receipt evidence/);
     assert.equal((await fetch(base + '/demo', { method: 'POST' })).status, 405);
     const receipt = JSON.parse(await (await fetch(base + '/demo-assets/covered-month-receipt.txt')).text());
     assert.equal(receipt.call.paypal, 'sandbox');
@@ -44,6 +44,10 @@ test('guided evidence page is available without a PIN and cannot start a payment
     const captions = await fetch(base + '/demo-assets/relief-demo-20261106.vtt');
     assert.equal(captions.status, 200);
     assert.equal(createHash('sha256').update(await captions.text()).digest('hex'), filmProof.captionsSha256);
+    const poster = await fetch(base + '/demo-assets/' + filmProof.poster.file);
+    assert.equal(poster.status, 200);
+    assert.equal(poster.headers.get('content-type'), 'image/webp');
+    assert.equal(createHash('sha256').update(Buffer.from(await poster.arrayBuffer())).digest('hex'), filmProof.poster.sha256);
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
 
@@ -73,6 +77,7 @@ function browser({ originalValid = true, source = JSON.stringify({ sentences: [{
 test('a receipt deep link opens its proof chapter without performing a verification or payment', () => {
   const page = browser({ hash: '#verify' });
   assert.deepEqual(page.chapters.map((chapter) => chapter.hidden), [true, true, true, false]);
+  assert.equal(page.element('evidence-archive').open, true);
   assert.equal(page.calls.length, 0);
   page.location.hash = '#purchase';
   page.windowEvents.hashchange();

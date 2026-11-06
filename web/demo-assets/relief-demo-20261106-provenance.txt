@@ -53,5 +53,10 @@
       "narration": "Now change the receipt amount. The original signature cannot vouch for edited content. This proves receipt integrity under the app's key, not PayPal certification.",
       "narrationDurationSeconds": 9.491973
     }
-  ]
+  ],
+  "poster": {
+    "file": "relief-demo-20261106-poster.webp",
+    "sha256": "0881dd76b2d139cfcf23d28a2b497fad1fb3aeeeff79649572a538b8b39ff111",
+    "source": "Frame at22seconds of this exact delivered movie, exported toWebP; no invented UI."
+  }
 }

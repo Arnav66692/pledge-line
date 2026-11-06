@@ -71,7 +71,11 @@
   original.addEventListener('click', () => verify(false)); edited.addEventListener('click', () => verify(true));
   function showHash() {
     const index = chapters.findIndex((chapter) => `#${chapter.id}` === window.location?.hash);
-    if (index >= 0) { stop(); show(index); }
+    if (index >= 0) {
+      const archive = document.getElementById('evidence-archive');
+      if (archive) archive.open = true;
+      stop(); show(index);
+    }
     return index;
   }
   window.addEventListener('hashchange', showHash);

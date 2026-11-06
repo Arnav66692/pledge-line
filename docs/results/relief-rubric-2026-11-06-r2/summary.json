@@ -1,0 +1,29 @@
+{
+  "method": "Three fresh separate Codex reviewer contexts. Same fixed packet; six original-resolution UI/movie frames inspected. No desired score or earlier subjective grades supplied. Not actual Claude API/human/official assessments; full movie/audio not watched. Same five equally weighted1..10halfpoint criteria mappedlinearly1.8to90.",
+  "sourceCommit": "e5ec65efe881bf42080502367ee0a962ac448e59",
+  "evidenceSha256": "25c7d2cd57d1e9f2bfaeb0ad8fc9f1e0f7c5e5e32b9475e9a08f6af97b16bf14",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "totalOutOf50": 41.0,
+      "linearOutOf90": 73.8
+    },
+    {
+      "reviewer": "b",
+      "totalOutOf50": 40.5,
+      "linearOutOf90": 72.9
+    },
+    {
+      "reviewer": "c",
+      "totalOutOf50": 41.5,
+      "linearOutOf90": 74.7
+    }
+  ],
+  "medianOutOf90": 73.8,
+  "rangeOutOf90": [
+    72.9,
+    74.7
+  ],
+  "exactFrozenSourceAndImagesArchivedPrivately": true,
+  "controlledBeforeAfterStudy": false
+}

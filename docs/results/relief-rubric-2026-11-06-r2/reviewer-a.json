@@ -1,0 +1,121 @@
+{
+  "assessment": "Independent prototype assessment A; not an official Devpost result",
+  "date": "2026-11-06",
+  "rubric": {
+    "criteria": ["Technological Implementation", "Design", "Potential Impact", "Innovation/Idea", "Presentation"],
+    "scale": "1 to 10 in half-point increments",
+    "weighting": "equal",
+    "conversionTo90": "sum of five scores multiplied by 1.8",
+    "conventionLimit": "Numeric scale, equal weights and conversion are internal review conventions, not asserted Devpost rules."
+  },
+  "verifiedPacketSha256": "25c7d2cd57d1e9f2bfaeb0ad8fc9f1e0f7c5e5e32b9475e9a08f6af97b16bf14",
+  "manifestVerification": {
+    "file": ".acceptance/relief-review-r2-manifest-20261106.json",
+    "checkedEntries": 74,
+    "matchingEntries": 74,
+    "mismatches": [],
+    "method": "Read each listed file and compute SHA-256 locally; no source execution or provider access. Hash verification is integrity checking, not substantive inspection of every listed module."
+  },
+  "criteria": [
+    {
+      "name": "Technological Implementation",
+      "score": 8.5,
+      "reasons": [
+        "Substantial working sandbox integration: retained provider records establish pause/resume, sponsor capture before donor refund, active subscription, paid invoice, verified duplicate-safe webhook, and signed receipt preservation. Procurement records separately establish two completed sandbox captures and an earlier between-leg restart.",
+        "Inspected call code freshly revalidates the exact offered charge and sponsor hold; sponsor capture is independently read as completed before refund. Lost responses reconcile the same identity and unresolved refunds remain open. The rehearsal invokes existing call/gate/checker/receipt modules with fresh mock dependencies, rather than presenting fabricated payment success.",
+        "Read tests cover six bounded relief situations, concurrency isolation, forbidden dependency injection, separate consent and cancellation-policy repair. The packet reports 1016 passing tests and 9 optional integration skips; this review did not rerun them.",
+        "Fresh routing evidence is 11/12 versus rules 6/12 but its zero-wrong-mutation gate failed; the exposed-case policy repair does not establish a newly passing model. Purchase drafting and AI-specific price advantage remain unproven."
+      ],
+      "deductionReferences": ["D1"]
+    },
+    {
+      "name": "Design",
+      "score": 8.5,
+      "reasons": [
+        "Original-resolution completed desktop and phone views show consistent typography, restrained color, clear hierarchy and a readable three-part money result. The 390-by-844 view displays captured sponsor funds, Unresolved donor refund and Active gift together, with the conversation available as a disclosure.",
+        "Source supplies labeled controls, a native phone situation selector, explicit status announcements, visible focus styles, minimum-size navigation targets and result focus/scroll behavior. The evidence chapter deep link is supported by behavioral tests.",
+        "The demo page and detailed result still require substantial reading and disclosure navigation to connect the donor story, simulator, historical provider proof and optional purchasing material. This limits immediacy for a first-time judge or donor despite the strong visual execution."
+      ],
+      "deductionReferences": ["D3"]
+    },
+    {
+      "name": "Potential Impact",
+      "score": 7.5,
+      "reasons": [
+        "After-hours donor care and temporary hardship are coherent needs. Sponsor-first reimbursement while preserving an active recurring gift is a concrete mechanism, and the packet's cited fundraising context supports the importance of recurring giving without establishing this app's effect.",
+        "The implemented mechanism supports plausible relief and reduced staff handling, but the evidence does not establish target-user understanding, completed independent use, time saved, retention, sponsor participation or sustainable fee economics. These are uncertainties in the size and likelihood of benefit, not mandatory production features for a hackathon.",
+        "The public bounded rehearsal makes the mechanism inspectable; controlled suppliers and sandbox payment confirmations do not establish actual goods fulfillment or nonprofit outcomes."
+      ],
+      "deductionReferences": ["D2"]
+    },
+    {
+      "name": "Innovation/Idea",
+      "score": 8.0,
+      "reasons": [
+        "The combination of conversational supported-action completion, sponsor-funded hardship relief, separate exact consent, authoritative readback, sentence evidence and a checkable signed receipt is a specific and compelling prototype idea.",
+        "Conventional recurring-gift management and receipts already exist, as the packet acknowledges. The defensible distinction is the integrated relief-and-evidence workflow; first-ever novelty or competitor absence is not established.",
+        "AI contributes semantic routing and bounded purchasing proposals, while code owns authority. Fresh routing improves on its keyword baseline on this small synthetic set, but failed safety and purchase-drafting gates plus the deterministic price guard mean an exceptional AI-specific innovation claim is not yet supported."
+      ],
+      "deductionReferences": ["D1"]
+    },
+    {
+      "name": "Presentation",
+      "score": 8.5,
+      "reasons": [
+        "The 73-second lead film has a clear donor-care sequence: relief, absent consent, changed charge, unresolved refund, then original and tampered historical receipt verification. Inspected frames and exact captions consistently distinguish simulation from retained actual sandbox evidence and app-key integrity from PayPal certification.",
+        "A credential-free rehearsal and direct receipt chapter let judges inspect the claims. Provenance, captions and local matching video hash materially support credibility; the packet preserves failed evaluations and earlier recording limitations rather than implying a new transaction or model win.",
+        "The demo page includes several historical recordings, multiple checkout totals and a separate staff purchasing narrative. Accurate scope labels help, but this creates a dense evidence path and a less singular pitch. Presentation scoring is limited to inspected images, source and transcript; full motion and audio quality were not directly assessed."
+      ],
+      "deductionReferences": ["D3"]
+    }
+  ],
+  "materialDeductions": [
+    {
+      "id": "D1",
+      "criteria": ["Technological Implementation", "Innovation/Idea"],
+      "finding": "The most valuable AI claims remain narrower than the overall integration strength. The fresh donor classifier failed its registered zero-wrong-mutation gate, purchase drafting lost to rules in the latest fresh comparison, and successful pricing uses a deterministic guard rather than demonstrating AI savings.",
+      "evidence": ["docs/results/donor-route-fresh-2026-11-06.json summary.passed=false, correct=11, baselineCorrect=6, wrongMutations=1", "docs/DONOR-ROUTING-2026-11-06.md", "docs/results/guarded-checkout-2026-11-05.json selectedPlan", ".acceptance/relief-review-packet-20261106-r2.md AI role and mixed evaluation results"],
+      "improvement": "Keep the successful financial mechanism and limited routing gain explicit, and support any broader AI reliability or purchasing-value claim with a fresh frozen evaluation rather than exposed-case repairs."
+    },
+    {
+      "id": "D2",
+      "criteria": ["Potential Impact"],
+      "finding": "Mechanism evidence is strong, but the magnitude and adoption of the proposed benefit remain assumptions: no independent donor/nonprofit use or sponsor economic validation is established.",
+      "evidence": [".acceptance/relief-review-packet-20261106-r2.md Impact and alternatives", "web/rehearsal.html What remains to measure", "docs/results/guarded-checkout-2026-11-05.json independentFulfillment=false"],
+      "improvement": "Substantiate the existing audience and relief workflow with observed target-user completion and sponsor-fee economics before asserting retention, time-saving or adoption benefits."
+    },
+    {
+      "id": "D3",
+      "criteria": ["Design", "Presentation"],
+      "finding": "The primary donor-care story is legible and visually polished, but the evidence page remains dense: several historical videos, distinct purchase totals and an optional staff desk compete with the short lead demo and receipt proof.",
+      "evidence": ["web/demo.html lead recording, earlier donor/supplier recording, checkout evidence, historical walkthrough and four-chapter player", ".acceptance/rehearsal-evidence/final-demo-native.png", ".acceptance/rehearsal-evidence/final-desktop-complete-native.png"],
+      "improvement": "Tighten the first-time explanation of the existing donor-care path and make its relationship to the simulator and retained receipt unmistakable before inviting the optional procurement evidence."
+    }
+  ],
+  "totals": {
+    "sumOutOf50": 41.0,
+    "meanOutOf10": 8.2,
+    "linearScoreOutOf90": 73.8
+  },
+  "imagesInspected": [
+    {"file": ".acceptance/rehearsal-evidence/final-desktop-complete-native.png", "resolution": "1440x900", "detail": "original"},
+    {"file": ".acceptance/rehearsal-evidence/final-mobile-complete-native.png", "resolution": "390x844", "detail": "original"},
+    {"file": ".acceptance/rehearsal-evidence/final-demo-native.png", "resolution": "1440x900", "detail": "original"},
+    {"file": ".acceptance/relief-film/covered-final.png", "resolution": "1280x900", "detail": "original"},
+    {"file": ".acceptance/relief-film/unknown-final.png", "resolution": "1280x900", "detail": "original"},
+    {"file": ".acceptance/relief-film/edited-final.png", "resolution": "1280x900", "detail": "original"}
+  ],
+  "evidenceSeparation": {
+    "simulation": "Six bounded situations use current application logic with mock PayPal, rules routing, fixed virtual time and an in-memory ledger; no model, payment, persistence or microphone validation follows from these runs.",
+    "actualProviderRecords": "Retained JSON records describe prior sandbox donor actions, invoice payment/webhook, receipt preservation and procurement captures. This review inspected records only and made no fresh authenticated provider read. Earlier restart acceptance and later lower-price checkout are separate runs.",
+    "failedEvaluations": "Fresh donor routing gate remains failed despite 11/12 versus 6/12 classification; later policy repair is distinct. Purchase-drafting failure and lack of AI-specific price superiority remain material. No failed result was relabeled as a win."
+  },
+  "viewLimits": [
+    "Inspected six images at original resolution, film captions/provenance and matching MP4 bytes; did not watch full motion or hear audio. No claim of directly verified narration quality, timing smoothness or complete playback.",
+    "Read only the fixed packet, its manifest and allowed current source/test/document/evidence paths. No earlier score report or assessment packet was opened.",
+    "No app execution, test rerun, browser access, credentials, runtime state, real donor interaction, provider query, external payment or API credit spend. Suite and deployment outcomes are packet/document reports, supported by inspected tests and records, not independently rerun outcomes.",
+    "Manifest entries beyond the allowed substantive inspection list were hash-verified only. Historical JSON artifacts and current documentation are not all covered by this manifest; do not infer their cryptographic verification from the 74 matches.",
+    "Sandbox is an appropriate hackathon setting. No deduction was made merely for absent production funds, SLA, real donor authentication, independent fulfillment, public YouTube upload or unverified contest eligibility. Official submission and compliance remain separate from this prototype assessment.",
+    "The default evaluator skill path was absent; used the supplied five-criterion prototype rubric directly. One assessment was made without reroll."
+  ]
+}
