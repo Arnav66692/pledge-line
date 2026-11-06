@@ -1,4 +1,4 @@
-import { budgetIsGrounded, canonicalZone, groundedDelivery, latestSourceIssues, projectSpecification, quantityIsGrounded, sourceClauses, splitPolicy, strictIsoInstant } from './goal-grounding.js';
+import { budgetIsGrounded, canonicalZone, groundedDelivery, latestSourceIssues, projectSpecification, quantityIsGrounded, sourceClauses, splitPolicy, strictIsoInstant, verifyQuantityProof } from './goal-grounding.js';
 
 const EVIDENCE_FIELDS = ['quantity', 'budget', 'specification', 'delivery', 'split'];
 const DELIVERY_FIELDS = ['date', 'time', 'timeZone', 'offset'];
@@ -87,11 +87,12 @@ export function normalizeGoalDraft(input, context) {
   const delivery = strictIsoInstant(input.deadline);
   if (!delivery || Date.parse(delivery) <= now || Date.parse(delivery) - now > 366 * DAY_MS) invalid();
   const missing = [];
-  if (clauses.quantity?.length !== 1 || !quantityIsGrounded(input.quantity, clauses.quantity.join('\n'), turns)) missing.push('quantity');
+  const quantityProof = clauses.quantity?.length === 1 ? verifyQuantityProof(input.quantity, clauses.quantity[0], turns) : null;
+  if (clauses.quantity?.length !== 1 || !quantityProof && !quantityIsGrounded(input.quantity, clauses.quantity.join('\n'), turns)) missing.push('quantity');
   if (clauses.budget?.length !== 1 || !budgetIsGrounded(input.budgetCents, clauses.budget.join('\n'), turns)) missing.push('budget');
   const specification = projectSpecification(clauses.specification?.join(' ') ?? '', turns) ?? '';
   if (specification.length < 8 || specification.length > 1000) missing.push('specification');
-  const activeSource = latestSourceIssues(result.sourceEvidence, turns, specification, input.localDelivery);
+  const activeSource = latestSourceIssues(result.sourceEvidence, turns, specification, input.localDelivery, quantityProof);
   missing.push(...activeSource.missingFields);
   if (activeSource.currency.currency !== 'USD') return { ...refuse(['budget'], 'This desk supports USD only. Please confirm the final all-in USD budget.'),
     assumptions: result.assumptions.filter((code) => code !== 'currency_usd') };

@@ -476,8 +476,10 @@ export function projectSpecification(specification, turns) {
 }
 
 /** Require current proof for every recognized updated field; unknown associations remain review-only clarification. */
-export function latestSourceIssues(evidence, turns, specification, localDelivery = null) {
+export function latestSourceIssues(evidence, turns, specification, localDelivery = null, quantityProof = null) {
   const latest = {}, missing = [], context = numericFieldContext(turns);
+  const proofValue = quantityProofRecords.get(quantityProof)?.value;
+  const verifiedQuantity = quantityProofMatches(quantityProof, proofValue, evidence.quantity, turns);
   let previous = '';
   for (const [index, text] of turns.entries()) {
     const clauses = intentClauses(text), row = context[index];
@@ -501,6 +503,7 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
     specification: (text) => SPEC_FEATURE.test(text) || new RegExp(`\\b${ITEM_WORDS}\\b`, 'i').test(text),
     delivery_date: (text) => DATE_ANCHOR.test(text), delivery_time: (text) => CLOCK_ANCHOR.test(text), time_zone: (text) => hasZoneAnchor(text) };
   for (const [field, index] of Object.entries(latest)) {
+    if (field === 'quantity' && verifiedQuantity) continue;
     const clauses = String(evidence[sourceField[field]] ?? '').split('\n').filter(Boolean);
     // A later explicit restatement can prove an unchanged numeric value. It must still
     // ground the current value, and cannot predate the last recognized field update.
@@ -518,6 +521,95 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
   }
   if (latestDeliveryZonePolicy(turns)?.unresolved) missing.push('time_zone');
   return { missingFields: [...new Set(missing)], currency: goalCurrencyContext(turns) };
+}
+
+const quantityProofRecords = new WeakMap();
+
+function quantityProofNumber(token) {
+  if (/^(?:\d{1,3}(?:,\d{3})+|\d+)$/.test(token)) return numberWords(token);
+  const units = '(?:one|two|three|four|five|six|seven|eight|nine)';
+  const belowHundred = `(?:${units}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:\\s+${units})?)`;
+  const cardinal = new RegExp(`^(?:${belowHundred}|(?:one|two|three|four|five)\\s+hundred(?:\\s+(?:and\\s+)?${belowHundred})?)$`, 'i');
+  return cardinal.test(token.replaceAll('-', ' ')) ? numberWords(token) : NaN;
+}
+
+function quantityProofHasMeasurementUnit(goods) {
+  const unit = /^(?:mm|cm|km|kg|mg|ml|cl|oz|ft|m|g|l|inch(?:es)?|foot|feet|yards?|meters?|metres?|centimeters?|centimetres?|millimeters?|millimetres?|kilometers?|kilometres?|liters?|litres?|milliliters?|millilitres?|kilograms?|grams?|milligrams?|ounces?|pounds?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|degrees?|celsius|fahrenheit)\b/i.exec(goods);
+  if (!unit) return false;
+  // Uppercase M/L before apparel is a size descriptor; lowercase or other units remain measurements.
+  return !/^[ML]$/.test(unit[0]) || !/^(?:[a-z]+(?:[-'][a-z]+)*\s+){0,6}(?:t[- ]?shirts?|shirts?|tees|jackets?)$/i.test(goods.slice(unit[0].length).trimStart());
+}
+
+function quantityProofClauses(text) {
+  const clauses = [];
+  let start = 0;
+  const add = (end) => {
+    const raw = text.slice(start, end), leading = raw.search(/\S/);
+    if (leading >= 0) clauses.push({ start: start + leading, end: start + raw.trimEnd().length, text: raw.trim() });
+  };
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (/[!?]/.test(character)) return null;
+    if (/[;\n]/.test(character) || character === '.' && !(/\d/.test(text[index - 1] ?? '') && /\d/.test(text[index + 1] ?? ''))) {
+      add(index); start = index + 1;
+    }
+  }
+  add(text.length);
+  return clauses.length > 0 && clauses.length <= 8 ? clauses : null;
+}
+
+/** Closed quantity-only proof lane. It verifies original source context, not a model-declared role. */
+export function verifyQuantityProof(value, evidence, turns) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 500 || typeof evidence !== 'string' || !evidence || evidence.length > 500 || /[\n!?]/.test(evidence) ||
+    !Array.isArray(turns) || turns.length !== 1 || typeof turns[0] !== 'string' || turns[0].length > 1000) return null;
+  const text = turns[0], clauses = quantityProofClauses(text);
+  if (!clauses) return null;
+  const occurrences = [];
+  for (let at = text.indexOf(evidence); at >= 0; at = text.indexOf(evidence, at + 1)) occurrences.push(at);
+  if (occurrences.length !== 1) return null;
+  const concreteUnit = '(?:t[- ]?shirts?|shirts?|tees|mugs?|tote bags?|bags?|posters?|flyers?|badges?|bottles?|meals?|blankets?|jackets?)';
+  const descriptor = "[a-z]+(?:[-'][a-z]+)*", goods = `(?:${descriptor}\\s+){0,24}?${concreteUnit}`;
+  const purchase = new RegExp(`^((?:please\\s+)?buy\\s+)(?:(${NUMBER_PATTERN})\\s+)?(${goods})$`, 'i');
+  const scoped = new RegExp(`^the\\s+complete\\s+quantity\\s+for\\s+this\\s+(?:order|purchase)\\s+is\\s+(${NUMBER_PATTERN})$`, 'i');
+  const budget = new RegExp(`^(?:the\\s+)?(?:budget|total budget|all[- ]in budget|total cap|cap)\\s+(?:(?:is|of)\\s+)?(?:USD\\s*|\\$\\s*)${NUMBER_PATTERN}(?:\\s+(?:total|all[- ]in))?$`, 'i');
+  const aliases = [...new Set([...Object.keys(ZONES), ...Object.keys(ZONE_OFFSETS)])].sort((first, second) => second.length - first.length).map((alias) => alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const zone = `(?:${aliases}|(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)/[A-Za-z_]+(?:/[A-Za-z_]+)?|(?:UTC|GMT)?[+-]\\d{2}:\\d{2})`;
+  const clock = '(?:\\d{1,2}:\\d{2}(?:\\s*[ap]m)?|\\d{1,2}\\s*[ap]m)';
+  const delivery = new RegExp(`^deliver(?:\\s+by)?\\s+\\d{4}-\\d{2}-\\d{2}\\s+at\\s+${clock}(?:\\s+${zone}(?:\\s+time)?)?$`, 'i');
+  const policy = /^(?:use\s+(?:one|a single|multiple)\s+(?:supplier|suppliers|vendor|vendors)|do not split(?:\s+(?:the|this)\s+order)?|splitting is (?:allowed|not allowed))$/i;
+  const events = [];
+  for (const clause of clauses) {
+    const item = purchase.exec(clause.text), count = scoped.exec(clause.text);
+    if (item) {
+      const words = item[3].split(/\s+/);
+      if (numberMatches(item[3]).length || words.some((word) => QUANTITY_ROLE_WORD.test(word) || /^(?:no|not|never|if|when|unless|provided|assuming|more|less|fewer|extra|additional|another|spares?|half|halve|double|triple|at least|up to|available|stock|capacity|invoice|quote|quoted|previous|prior|historical|old|original)$/i.test(word))) return null;
+      if (item[2]) {
+        const numberStart = clause.start + item[1].length, numberEnd = numberStart + item[2].length;
+        if (/\bdozen\b/i.test(item[2]) || quantityProofHasMeasurementUnit(item[3]) || !numericRoleAllowed(text, numberStart, numberEnd) || numericRoleSpans(text).some((span) => numberStart < span.end && span.start < numberEnd)) return null;
+      }
+      events.push({ ...clause, role: 'purchase', value: item[2] ? quantityProofNumber(item[2]) : null, body: clause.text.slice(item[1].length) });
+    } else if (count) {
+      if (/\bdozen\b/i.test(count[1])) return null;
+      events.push({ ...clause, role: 'quantity', value: quantityProofNumber(count[1]) });
+    } else if (budget.test(clause.text)) events.push({ ...clause, role: 'budget' });
+    else if (delivery.test(clause.text)) events.push({ ...clause, role: 'delivery' });
+    else if (policy.test(clause.text)) events.push({ ...clause, role: 'policy' });
+    else return null; // A recognized field prefix cannot hide an unclassified edit or suffix.
+  }
+  const purchases = events.filter((event) => event.role === 'purchase'), assertions = events.filter((event) => event.role === 'quantity' || event.role === 'purchase' && event.value !== null);
+  if (purchases.length !== 1 || assertions.length !== 1 || events.filter((event) => event.role === 'budget').length !== 1 || events.filter((event) => event.role === 'delivery').length !== 1) return null;
+  const assertion = assertions[0], quote = evidence.endsWith('.') ? evidence.slice(0, -1) : evidence;
+  if (assertion.value !== value || quote !== assertion.text && !(assertion.role === 'purchase' && quote === assertion.body) ||
+    occurrences[0] < assertion.start || occurrences[0] + evidence.length > assertion.end + (text[assertion.end] === '.' ? 1 : 0)) return null;
+  const proof = Object.freeze({ kind: 'quantity_source_proof' });
+  quantityProofRecords.set(proof, Object.freeze({ value, evidence, turns: Object.freeze([...turns]), start: assertion.start, end: assertion.end,
+    coverage: Object.freeze(events.map(({ start, end, role }) => Object.freeze({ start, end, role }))) }));
+  return proof;
+}
+
+export function quantityProofMatches(proof, value, evidence, turns) {
+  const record = quantityProofRecords.get(proof);
+  return !!record && record.value === value && record.evidence === evidence && Array.isArray(turns) && record.turns.length === turns.length && record.turns.every((turn, index) => turn === turns[index]);
 }
 
 export function quantityIsGrounded(value, evidence, turns = [evidence]) {
