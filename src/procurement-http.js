@@ -27,12 +27,15 @@ export function createProcurementHttp({ createService, send, readJson, limiter, 
       if (pathname === '/api/procurement/interpret') {
         if (req.method !== 'POST') return error(res, 405, 'Method not allowed.');
         const body = await readJson(req);
-        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 1 ||
-          typeof body.goal !== 'string' || !body.goal.trim() || body.goal.length > 1000) {
-          return error(res, 400, 'Write one buying goal in 1 to 1000 characters.');
+        const prior = body?.priorGoals === undefined ? [] : body.priorGoals;
+        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !['goal', 'priorGoals'].includes(key)) ||
+          typeof body.goal !== 'string' || !body.goal.trim() || body.goal.length > 1000 || !Array.isArray(prior) || prior.length > 3 ||
+          prior.some((item) => typeof item !== 'string' || !item.trim() || item.length > 1000) ||
+          body.goal.length + prior.reduce((sum, item) => sum + item.length, 0) > 4000) {
+          return error(res, 400, 'Write a buying goal in 1 to 1000 characters, with at most three prior buyer messages.');
         }
         if (typeof interpretGoal !== 'function') return error(res, 503, 'Goal drafting is unavailable. You can still fill in the order brief yourself.');
-        return send(res, 200, await interpretGoal(body.goal));
+        return send(res, 200, await interpretGoal(body.goal, prior));
       }
       if (pathname === '/api/procurement') {
         if (req.method !== 'POST') return error(res, 405, 'Method not allowed.');

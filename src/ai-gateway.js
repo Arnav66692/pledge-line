@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 const BODY_LIMIT = 64 * 1024;
 const MODELS = Object.freeze({ anthropic: { model: 'claude-sonnet-5-5', input: 2_000, output: 10_000 }, jev: { model: 'jev-1.14.0', input: 42, output: 0 } });
+const VISUAL_REVIEW = Object.freeze({ ...MODELS.anthropic, bodyLimit: 96 * 1024 });
+const VISUAL_REVIEW_CAP_NANOS = 1_000_000_000;
 // Published Haiku 5.5 short-prompt price is $0.10/$0.50 per million input/output tokens.
 // Reserve at the higher $0.50/$2.50 tier even though this fixed smoke cannot approach 100k input tokens.
 // https://platform.claude.com/docs/en/models/haiku-5-5/overview, checked November 4, 2026.
@@ -12,7 +14,7 @@ export class AiGatewayError extends Error {
   constructor(code, provider = null) { super(code); this.name = 'AiGatewayError'; this.code = code; this.provider = provider; }
 }
 const fail = (code, provider) => { throw new AiGatewayError(code, provider); };
-function encode(value) {
+function encode(value, maximum = BODY_LIMIT) {
   let encoded;
   try {
     encoded = JSON.stringify(value, (_key, item) => {
@@ -20,19 +22,52 @@ function encode(value) {
       return item;
     });
   } catch { fail('AI_INVALID_INPUT'); }
-  if (!encoded || Buffer.byteLength(encoded) > BODY_LIMIT) fail('AI_INPUT_TOO_LARGE');
+  if (!encoded || Buffer.byteLength(encoded) > maximum) fail('AI_INPUT_TOO_LARGE');
   return encoded;
 }
-function validateAnthropic(body) {
+function reviewImage(source) {
+  if (!source || source.type !== 'base64' || source.media_type !== 'image/jpeg' || typeof source.data !== 'string' ||
+    Object.keys(source).some((key) => !['type', 'media_type', 'data'].includes(key)) || source.data.length > 32768) fail('AI_INVALID_INPUT');
+  const bytes = Buffer.from(source.data, 'base64');
+  if (bytes.length > 24 * 1024 || bytes.toString('base64') !== source.data || bytes[0] !== 255 || bytes[1] !== 216 ||
+    bytes.at(-2) !== 255 || bytes.at(-1) !== 217) fail('AI_INVALID_INPUT');
+  let offset = 2;
+  while (offset + 3 < bytes.length) {
+    if (bytes[offset++] !== 255) fail('AI_INVALID_INPUT');
+    while (bytes[offset] === 255) offset += 1;
+    const marker = bytes[offset++];
+    if (marker === 218 || marker === 217) break;
+    if (marker === 1 || marker >= 208 && marker <= 215) continue;
+    if (offset + 2 > bytes.length) fail('AI_INVALID_INPUT');
+    const length = bytes.readUInt16BE(offset);
+    if (length < 2 || offset + length > bytes.length) fail('AI_INVALID_INPUT');
+    if ([192, 194].includes(marker)) {
+      if (length < 8) fail('AI_INVALID_INPUT');
+      const height = bytes.readUInt16BE(offset + 3), width = bytes.readUInt16BE(offset + 5);
+      if (!width || !height || width > 1280 || height > 1280 || width * height > 1_000_000) fail('AI_INVALID_INPUT');
+      return bytes.length;
+    }
+    offset += length;
+  }
+  fail('AI_INVALID_INPUT');
+}
+
+function validateAnthropic(body, visual = false) {
   if (typeof body.system !== 'string' || !body.system.trim() || !Array.isArray(body.messages) || !body.messages.length || body.messages.length > 20) fail('AI_INVALID_INPUT');
   if (!Number.isInteger(body.max_tokens) || body.max_tokens < 1 || body.max_tokens > 2048) fail('AI_INVALID_INPUT');
+  let images = 0, imageBytes = 0;
   for (const message of body.messages) {
     if (!message || !['user', 'assistant'].includes(message.role)) fail('AI_INVALID_INPUT');
     if (typeof message.content === 'string') continue;
     if (!Array.isArray(message.content) || !message.content.length) fail('AI_INVALID_INPUT');
     for (const block of message.content) {
       if (block?.type === 'text' && typeof block.text === 'string' && Object.keys(block).every((key) => ['type', 'text'].includes(key))) continue;
-      // No remote documents, images, prompt caching or billable server tools are exposed by this gateway.
+      if (visual && message.role === 'user' && block?.type === 'image' && Object.keys(block).every((key) => ['type', 'source'].includes(key))) {
+        imageBytes += reviewImage(block.source); images += 1;
+        if (images > 3 || imageBytes > 48 * 1024) fail('AI_INVALID_INPUT');
+        continue;
+      }
+      // Normal application requests remain text/tool-only. No remote media or server tools.
       if (block?.type === 'tool_use' && typeof block.id === 'string' && typeof block.name === 'string' && block.input && typeof block.input === 'object' && Object.keys(block).every((key) => ['type', 'id', 'name', 'input'].includes(key))) continue;
       if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && typeof block.content === 'string' && Object.keys(block).every((key) => ['type', 'tool_use_id', 'content', 'is_error'].includes(key))) continue;
       fail('AI_INVALID_INPUT');
@@ -41,7 +76,8 @@ function validateAnthropic(body) {
   if (body.tools !== undefined && (!Array.isArray(body.tools) || body.tools.length > 8 || body.tools.some((tool) => !tool || typeof tool.name !== 'string' || !tool.input_schema || (tool.type !== undefined && tool.type !== 'custom') || 'cache_control' in tool))) fail('AI_INVALID_INPUT');
   if (body.tool_choice && (body.tool_choice.type !== 'auto' || Object.keys(body.tool_choice).some((key) => !['type', 'disable_parallel_tool_use'].includes(key)))) fail('AI_INVALID_INPUT');
   // A cache_control hidden in a nested schema/message cannot silently alter the cost contract.
-  if (/"cache_control"\s*:/.test(encode(body))) fail('AI_INVALID_INPUT');
+  if (/"cache_control"\s*:/.test(encode(body, visual ? VISUAL_REVIEW.bodyLimit : BODY_LIMIT))) fail('AI_INVALID_INPUT');
+  if (visual && images < 1) fail('AI_INVALID_INPUT');
 }
 async function boundedText(response) {
   if (Number(response.headers?.get?.('content-length')) > BODY_LIMIT) fail('AI_RESPONSE_TOO_LARGE');
@@ -76,7 +112,11 @@ function usageCost(provider, payload, inputBound, outputBound, rate = MODELS[pro
 }
 
 function reservation(provider, body, rate) {
-  const inputBound = Buffer.byteLength(encode(body)) * 4 + 8192;
+  // Visual review is a separate bounded path. Its conservative reservation includes
+  // encoded bytes plus an extra 8192 input tokens per dimension-limited JPEG.
+  const images = rate === VISUAL_REVIEW ? body.messages.reduce((count, message) => count +
+    (Array.isArray(message.content) ? message.content.filter((block) => block.type === 'image').length : 0), 0) : 0;
+  const inputBound = Buffer.byteLength(encode(body, rate.bodyLimit ?? BODY_LIMIT)) * 4 + 8192 + images * 8192;
   const outputBound = provider === 'anthropic' ? body.max_tokens : 0;
   if (rate.inputCeiling && inputBound > rate.inputCeiling) fail('AI_SMOKE_CAP_EXCEEDED', provider);
   const maxCostNanos = inputBound * (rate.reserveInput ?? rate.input) + outputBound * (rate.reserveOutput ?? rate.output);
@@ -85,7 +125,7 @@ function reservation(provider, body, rate) {
 
 /** Only explicit API keys and fixed API hosts are accepted. No SDK credential chain, OAuth, cookies or retry exists. */
 export function createAiGateway({ budget, anthropicApiKey, jevApiKey, fetchImpl = globalThis.fetch,
-  anthropicModel = MODELS.anthropic.model, jevModel = MODELS.jev.model, timeoutMs = 12000 } = {}) {
+  anthropicModel = MODELS.anthropic.model, jevModel = MODELS.jev.model, timeoutMs = 30000 } = {}) {
   if (!budget || ['reserve', 'checkDispatch', 'settle', 'trip', 'status'].some((method) => typeof budget[method] !== 'function')) fail('AI_STORAGE_REQUIRED');
   if (typeof fetchImpl !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) fail('AI_INVALID_INPUT');
   const keys = { anthropic: anthropicApiKey, jev: jevApiKey };
@@ -103,11 +143,13 @@ export function createAiGateway({ budget, anthropicApiKey, jevApiKey, fetchImpl 
     if (locallyStopped) fail('AI_STOPPED', provider);
     const key = keys[provider];
     if (typeof key !== 'string' || !key.trim() || /\s/.test(key) || (provider === 'anthropic' && key.startsWith('sk-ant-oat'))) fail('AI_API_KEY_REQUIRED', provider);
-    if (rate === MODELS[provider] ? models[provider] !== rate.model : provider !== 'anthropic' || rate !== HAIKU_SMOKE) fail('AI_UNPRICED_MODEL', provider);
+    const priced = rate === MODELS[provider] ? models[provider] === rate.model : provider === 'anthropic' &&
+      (rate === HAIKU_SMOKE || rate === VISUAL_REVIEW && models[provider] === rate.model);
+    if (!priced) fail('AI_UNPRICED_MODEL', provider);
     if (body.model !== rate.model) fail('AI_UNPRICED_MODEL', provider);
-    const encoded = encode(body);
+    const encoded = encode(body, rate.bodyLimit ?? BODY_LIMIT);
     const { inputBound, outputBound, maxCostNanos } = reservation(provider, body, rate);
-    if (capNanos !== null && maxCostNanos > capNanos) fail('AI_SMOKE_CAP_EXCEEDED', provider);
+    if (capNanos !== null && maxCostNanos > capNanos) fail(rate === VISUAL_REVIEW ? 'AI_VISUAL_CAP_EXCEEDED' : 'AI_SMOKE_CAP_EXCEEDED', provider);
     const requestId = randomUUID();
     let permission;
     try { permission = await budget.reserve({ provider, requestId, maxCostNanos }); }
@@ -193,6 +235,13 @@ export function createAiGateway({ budget, anthropicApiKey, jevApiKey, fetchImpl 
         ...(tools !== undefined ? { tools } : {}), ...(tool_choice !== undefined ? { tool_choice } : {}) }));
       validateAnthropic(body);
       return enqueue('anthropic', body);
+    },
+    anthropicVisualReview({ system, messages, tools, tool_choice, max_tokens = 1024 } = {}) {
+      const body = JSON.parse(encode({ model: anthropicModel, system, messages, max_tokens,
+        thinking: { type: 'between_tools' }, output_config: { effort: 'low' },
+        ...(tools !== undefined ? { tools } : {}), ...(tool_choice !== undefined ? { tool_choice } : {}) }, VISUAL_REVIEW.bodyLimit));
+      validateAnthropic(body, true);
+      return enqueue('anthropic', body, VISUAL_REVIEW, VISUAL_REVIEW_CAP_NANOS);
     },
     jev({ state, questions } = {}) {
       if ((typeof state !== 'string' && (!state || typeof state !== 'object' || Array.isArray(state))) || !questions || typeof questions !== 'object' || Array.isArray(questions) || !Object.keys(questions).length || Object.keys(questions).length > 8) fail('AI_INVALID_INPUT');

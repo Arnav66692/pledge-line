@@ -3,7 +3,8 @@
 
   const byId = (id) => document.getElementById(id);
   const els = Object.fromEntries(['request', 'specification', 'quantity', 'budget', 'deadline', 'allow-split', 'scenario', 'find-plan', 'request-status', 'error',
-    'goal-intake', 'goal', 'draft-goal', 'goal-status', 'goal-assumptions',
+    'goal-intake', 'goal', 'draft-goal', 'new-goal', 'goal-status', 'goal-assumptions', 'goal-history', 'goal-history-list',
+    'goal-reference', 'goal-evidence', 'goal-evidence-list', 'deadline-choice', 'deadline-occurrence',
     'quotes-summary', 'quotes-caption', 'empty-quotes', 'quote-results', 'quotes', 'rejections', 'rejection-list', 'plan-panel', 'state-label', 'plan-empty',
     'plan-details', 'plan-total', 'plan-budget', 'allocations', 'plan-expiry', 'terms-specification', 'terms-request', 'terms-disclosure', 'terms-hash',
     'approval-form', 'approval-check', 'approval-consent', 'approve', 'settlement', 'settlement-title', 'settlement-list', 'settlement-note',
@@ -18,12 +19,49 @@
   const session = { id: null, secret: null, state: null, busy: false, briefChanged: false, approvalUnknown: false,
     restoreBlocked: false, restoreRetryable: false, commerce: { payments: configuredMode, sandboxWritesEnabled: false }, legControls: [] };
   let briefRevision = 0;
+  const goalConversation = [];
+  const sourceFields = ['quantity', 'budget', 'specification', 'delivery', 'split'];
+  const missingFields = ['quantity', 'budget', 'specification', 'delivery_date', 'delivery_time', 'time_zone', 'split_policy', 'source_evidence'];
+  let deadlineChoicesFor = '';
   const networkMode = () => configuredMode === 'paypal-sandbox';
   const list = (value) => Array.isArray(value) ? value : [];
   function localDeadlineValue(deadline) {
     const pad = (value, length = 2) => String(value).padStart(length, '0');
     return `${deadline.getFullYear()}-${pad(deadline.getMonth() + 1)}-${pad(deadline.getDate())}T${pad(deadline.getHours())}:${pad(deadline.getMinutes())}:${pad(deadline.getSeconds())}${deadline.getMilliseconds() ? `.${pad(deadline.getMilliseconds(), 3)}` : ''}`;
   }
+  function localDeadlineChoices(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(value);
+    if (!match) return [];
+    const [, year, month, day, hour, minute, second = '0', fraction = '0'] = match;
+    const fields = [+year, +month - 1, +day, +hour, +minute, +second, +fraction.padEnd(3, '0')];
+    const calendar = new Date(Date.UTC(...fields));
+    if (calendar.getUTCFullYear() !== fields[0] || calendar.getUTCMonth() !== fields[1] || calendar.getUTCDate() !== fields[2] ||
+      calendar.getUTCHours() !== fields[3] || calendar.getUTCMinutes() !== fields[4] || calendar.getUTCSeconds() !== fields[5]) return [];
+    const same = (date) => date.getFullYear() === fields[0] && date.getMonth() === fields[1] && date.getDate() === fields[2] &&
+      date.getHours() === fields[3] && date.getMinutes() === fields[4] && date.getSeconds() === fields[5] && date.getMilliseconds() === fields[6];
+    // A local clock can skip or repeat. Try the offsets around this date without letting Date silently pick one.
+    const offsets = new Set();
+    for (const days of [-2, -1, 0, 1, 2]) offsets.add(new Date(calendar.getTime() + days * 86400000).getTimezoneOffset());
+    return [...offsets].map((offset) => new Date(calendar.getTime() + offset * 60000)).filter(same)
+      .sort((first, secondDate) => first.getTime() - secondDate.getTime());
+  }
+  function updateDeadlineChoices(exactInstant = null) {
+    const value = els.deadline.value;
+    const choices = localDeadlineChoices(value);
+    if (deadlineChoicesFor !== value) els.deadlineOccurrence.value = '';
+    deadlineChoicesFor = value;
+    els.deadlineChoice.hidden = choices.length < 2;
+    if (choices.length < 2) els.deadlineOccurrence.value = '';
+    else if (exactInstant !== null) {
+      const selected = choices.findIndex((candidate) => candidate.getTime() === exactInstant);
+      els.deadlineOccurrence.value = selected === 0 ? 'earlier' : selected === choices.length - 1 ? 'later' : '';
+    }
+    return choices;
+  }
+  const sanitizedGoal = (value) => value.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim();
+  const priorBuyerGoals = (goal) => goalConversation.at(-1)?.goal === goal
+    ? goalConversation.slice(0, -1).map((entry) => entry.goal) : goalConversation.map((entry) => entry.goal);
   const money = (cents, currency = 'USD') => Number.isSafeInteger(cents)
     ? new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(cents / 100) : 'Not provided';
   const date = (value, timeZone) => {
@@ -155,9 +193,11 @@
     // Keep this order in view until an uncertain payment is reconciled. Starting another session must not become
     // an accidental way to repeat a purchase whose first answer was lost.
     els.findPlan.disabled = newPlanBlocked();
-    for (const field of [els.specification, els.quantity, els.budget, els.deadline, els.allowSplit, els.scenario]) field.disabled = session.busy || (networkMode() && unfinishedPurchase());
+    for (const field of [els.specification, els.quantity, els.budget, els.deadline, els.deadlineOccurrence, els.allowSplit, els.scenario]) field.disabled = session.busy || (networkMode() && unfinishedPurchase());
     els.goal.disabled = newPlanBlocked();
-    els.draftGoal.disabled = newPlanBlocked() || !els.goal.value.trim() || els.goal.value.length > 1000;
+    els.draftGoal.disabled = newPlanBlocked() || !els.goal.value.trim() || els.goal.value.length > 1000 || priorBuyerGoals(els.goal.value.trim()).length > 3;
+    els.newGoal.disabled = newPlanBlocked() || (!goalConversation.length && !els.goal.value.trim());
+    els.draftGoal.textContent = goalConversation.at(-1)?.clarification ? 'Answer clarification' : goalConversation.length ? 'Update the limits' : 'Draft the limits';
     els.draftGoal.setAttribute('aria-busy', String(session.busy));
     els.findPlan.setAttribute('aria-busy', String(session.busy));
     els.approvalCheck.disabled = !canApprove;
@@ -496,7 +536,11 @@
     const budget = els.budget.value.trim();
     const quantity = Number(els.quantity.value);
     const budgetCents = Math.round(Number(budget) * 100);
-    const deadline = new Date(els.deadline.value);
+    const choices = updateDeadlineChoices();
+    const occurrence = els.deadlineOccurrence.value;
+    if (!choices.length) throw new Error('This delivery date and time does not exist in your device timezone. Choose another time.');
+    if (choices.length > 1 && !['earlier', 'later'].includes(occurrence)) throw new Error('This local delivery time occurs twice. Choose its first or second occurrence explicitly.');
+    const deadline = choices.length === 1 ? choices[0] : occurrence === 'earlier' ? choices[0] : choices.at(-1);
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 500) throw new Error('Enter a whole quantity from 1 to 500.');
     if (!/^\d+(?:\.\d{1,2})?$/.test(budget) || !Number.isSafeInteger(budgetCents) || budgetCents < 100 || budgetCents > 10000000) throw new Error('Enter a budget from $1 to $100,000, with no more than two decimal places.');
     if (!Number.isFinite(deadline.getTime()) || deadline.getTime() <= Date.now()) throw new Error('Choose a delivery deadline in the future.');
@@ -513,15 +557,69 @@
     updateControls();
   }
 
-  function draftedLimits(result) {
+  function draftMetadata(result, buyerGoals) {
+    const supplied = ['reference', 'sourceEvidence', 'missingFields'].filter((key) => Object.hasOwn(result, key));
+    if (!supplied.length && !result.ready) return null;
+    const reference = result.reference, evidence = result.sourceEvidence;
+    if (supplied.length !== 3 || !reference || typeof reference !== 'object' || Array.isArray(reference) ||
+      Object.keys(reference).length !== 2 || typeof reference.now !== 'string' || reference.now.length > 80 || !Number.isFinite(Date.parse(reference.now)) ||
+      typeof reference.timeZone !== 'string' || reference.timeZone.length < 1 || reference.timeZone.length > 80 ||
+      !evidence || typeof evidence !== 'object' || Array.isArray(evidence) || Object.keys(evidence).length !== sourceFields.length ||
+      sourceFields.some((key) => typeof evidence[key] !== 'string' || evidence[key].length > 500) ||
+      !Array.isArray(result.missingFields) || result.missingFields.length > missingFields.length ||
+      new Set(result.missingFields).size !== result.missingFields.length || result.missingFields.some((key) => !missingFields.includes(key))) {
+      throw new Error('The source and timezone for this draft could not be checked. Enter or edit the limits below yourself.');
+    }
+    try { new Intl.DateTimeFormat(undefined, { timeZone: reference.timeZone }).format(new Date(reference.now)); }
+    catch { throw new Error('The draft reference timezone is invalid. Enter or edit the limits below yourself.'); }
+    const sources = buyerGoals.map(sanitizedGoal);
+    for (const key of sourceFields) {
+      const clauses = evidence[key].split('\n').filter((clause) => clause.trim());
+      if (clauses.length > (['specification', 'delivery'].includes(key) ? 4 : 1) ||
+        clauses.some((clause) => !sources.some((source) => source.includes(clause)))) {
+        throw new Error('A cited limit does not match this buying conversation. Enter or edit the limits below yourself.');
+      }
+    }
+    if (result.ready && (result.missingFields.length || ['quantity', 'budget', 'specification', 'delivery'].some((key) => !evidence[key].trim()) ||
+      result.rfq?.allowSplit && !evidence.split.trim())) throw new Error('The draft is missing source evidence for its limits. Enter or edit the limits below yourself.');
+    return { reference, evidence };
+  }
+
+  function renderGoalContext() {
+    els.goalHistoryList.replaceChildren();
+    for (const [index, entry] of goalConversation.entries()) {
+      const row = node('li');
+      row.append(node('strong', index === 0 ? 'Original goal' : `Your reply ${index}`), node('p', entry.goal));
+      if (entry.clarification) row.append(node('p', `Clarification: ${entry.clarification}`, 'field-hint'));
+      els.goalHistoryList.append(row);
+    }
+    els.goalHistory.hidden = goalConversation.length === 0;
+  }
+
+  function renderGoalEvidence(metadata) {
+    els.goalEvidenceList.replaceChildren();
+    els.goalReference.hidden = !metadata;
+    els.goalEvidence.hidden = !metadata || !Object.values(metadata.evidence).some((value) => value.trim());
+    if (!metadata) { els.goalReference.textContent = ''; return; }
+    const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const referenceTime = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short', timeZone: metadata.reference.timeZone }).format(new Date(metadata.reference.now));
+    els.goalReference.textContent = `Organization default timezone: ${metadata.reference.timeZone}. Relative dates use reference time ${referenceTime}. The delivery field uses your device timezone: ${deviceZone}. An explicit timezone in your request takes precedence over the organization default.`;
+    const labels = { quantity: 'Quantity', budget: 'USD budget', specification: 'Goods and quality', delivery: 'Delivery', split: 'Split permission' };
+    for (const key of sourceFields) if (metadata.evidence[key].trim()) {
+      els.goalEvidenceList.append(node('dt', labels[key]), node('dd', metadata.evidence[key]));
+    }
+  }
+
+  function draftedLimits(result, buyerGoals) {
     if (!result || typeof result !== 'object' || Array.isArray(result) || typeof result.ready !== 'boolean' ||
       result.requiresReview !== true || result.authorizesPayment !== false || typeof result.clarification !== 'string' ||
       result.clarification.length > 500 || !Array.isArray(result.assumptions) || result.assumptions.length > 2 ||
       result.assumptions.some((value) => !['currency_usd', 'single_supplier_default'].includes(value)) ||
       new Set(result.assumptions).size !== result.assumptions.length) throw new Error('The drafted limits could not be checked. Enter or edit the limits below yourself.');
+    const metadata = draftMetadata(result, buyerGoals);
     if (!result.ready) {
       if (result.rfq !== null || !result.clarification.trim()) throw new Error('The draft is incomplete. Enter the limits below yourself.');
-      return null;
+      return { rfq: null, metadata };
     }
     const rfq = result.rfq;
     const keys = ['quantity', 'budgetCents', 'currency', 'deadline', 'specification', 'allowSplit'];
@@ -536,8 +634,8 @@
     }
     if (result.assumptions.includes('single_supplier_default') && rfq.allowSplit) throw new Error('The draft gives conflicting split-order limits. Enter or edit the limits below yourself.');
     const localDeadline = localDeadlineValue(deadline);
-    if (new Date(localDeadline).getTime() !== deadline.getTime()) throw new Error('The drafted deadline is ambiguous in your local timezone. Enter the intended delivery deadline below yourself.');
-    return { ...rfq, localDeadline };
+    if (!localDeadlineChoices(localDeadline).some((candidate) => candidate.getTime() === deadline.getTime())) throw new Error('The drafted deadline is unavailable in your local timezone. Enter the intended delivery deadline below yourself.');
+    return { rfq: { ...rfq, localDeadline }, metadata };
   }
 
   els.goal.addEventListener('input', () => {
@@ -546,13 +644,32 @@
     els.goalStatus.textContent = 'Draft the limits, then review and edit every field before requesting quotes.';
     els.goalAssumptions.hidden = true;
     els.goalAssumptions.replaceChildren();
+    renderGoalEvidence(null);
+    if (priorBuyerGoals(els.goal.value.trim()).length > 3) els.goalStatus.textContent = 'This conversation has four buyer messages. Start a new buying goal with the confirmed limits, or edit the limits below yourself.';
   });
+
+  els.newGoal.addEventListener('click', () => {
+    if (newPlanBlocked()) return;
+    goalConversation.length = 0;
+    els.goal.value = '';
+    els.goalAssumptions.hidden = true;
+    els.goalAssumptions.replaceChildren();
+    renderGoalContext();
+    renderGoalEvidence(null);
+    invalidateBrief('A new buying goal needs fresh quotes and separate exact-plan approval.');
+    els.goalStatus.textContent = 'New buying goal started. Describe it above, or keep editing the visible limits below. The previous purchase record stays retained.';
+    els.goal.focus();
+  });
+
+  els.deadline.addEventListener('input', () => updateDeadlineChoices());
 
   els.goalIntake.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (newPlanBlocked()) return;
     const goal = els.goal.value.trim();
     if (!goal || goal.length > 1000) { els.goalStatus.textContent = 'Describe the buying goal in up to 1000 characters, or enter the limits below yourself.'; return; }
+    const priorGoals = priorBuyerGoals(goal);
+    if (priorGoals.length > 3) { els.goalStatus.textContent = 'This conversation has four buyer messages. Start a new buying goal with the confirmed limits, or edit the limits below yourself.'; return; }
     invalidateBrief('A new buying goal is being drafted. The existing plan is not approved by this request.');
     const revision = briefRevision;
     session.busy = true;
@@ -561,14 +678,26 @@
     els.goalAssumptions.hidden = true;
     els.goalAssumptions.replaceChildren();
     try {
-      const result = await api('/api/procurement/interpret', { method: 'POST', body: { goal } });
+      const result = await api('/api/procurement/interpret', { method: 'POST', body: { goal, ...(priorGoals.length ? { priorGoals } : {}) } });
       if (revision !== briefRevision || els.goal.value.trim() !== goal) throw new Error('Your brief changed while the draft was being prepared. Draft it again to use the latest wording.');
-      const rfq = draftedLimits(result);
-      if (!rfq) { els.goalStatus.textContent = result.clarification; return; }
+      const { rfq, metadata } = draftedLimits(result, [...priorGoals, goal]);
+      goalConversation.splice(0, goalConversation.length, ...priorGoals.map((previous, index) => ({
+        goal: previous, clarification: goalConversation[index]?.clarification || '',
+      })), { goal, clarification: rfq ? '' : result.clarification });
+      renderGoalContext();
+      renderGoalEvidence(metadata);
+      if (!rfq) {
+        els.goalStatus.textContent = result.clarification + (goalConversation.length === 4 ? ' The four-message limit is reached; start a new buying goal with the confirmed details or enter the limits below.' : ' Reply above; your earlier buying details stay in the conversation.');
+        els.goal.value = '';
+        els.goalHistory.open = true;
+        els.goal.focus();
+        return;
+      }
       els.specification.value = rfq.specification;
       els.quantity.value = String(rfq.quantity);
       els.budget.value = (rfq.budgetCents / 100).toFixed(2);
       els.deadline.value = rfq.localDeadline;
+      updateDeadlineChoices(new Date(rfq.deadline).getTime());
       els.allowSplit.checked = rfq.allowSplit;
       const assumptions = { currency_usd: 'The budget was interpreted as USD. Check the currency and amount.',
         single_supplier_default: 'No split permission was supplied, so the draft requires one supplier.' };
@@ -832,8 +961,9 @@
           els.allowSplit.checked = request.allowSplit !== false;
           const deadline = new Date(request.deadline);
           const localDeadline = Number.isFinite(deadline.getTime()) ? localDeadlineValue(deadline) : '';
-          deadlineNeedsReview = !localDeadline || new Date(localDeadline).getTime() !== deadline.getTime();
+          deadlineNeedsReview = !localDeadline || !localDeadlineChoices(localDeadline).some((candidate) => candidate.getTime() === deadline.getTime());
           els.deadline.value = deadlineNeedsReview ? '' : localDeadline;
+          updateDeadlineChoices(deadlineNeedsReview ? null : deadline.getTime());
         }
         els.requestStatus.textContent = 'Restored this tab\'s original checkout from the server. The return URL granted no payment permission; no order creation or capture was attempted.' +
           (deadlineNeedsReview ? ' Choose an unambiguous delivery date and time before requesting another plan.' : '');

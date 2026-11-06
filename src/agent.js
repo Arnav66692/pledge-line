@@ -36,8 +36,8 @@ export function createMainAgent({ gateway }) {
     async interpretGoal(input) {
       const context = goalContext(input);
       const response = await gateway.anthropic({ system: GOAL_INTAKE_PROMPT,
-        messages: [{ role: 'user', content: JSON.stringify({ goal: context.goal, now: new Date(context.now).toISOString(), timeZone: context.timeZone }) }],
-        tools: [GOAL_INTAKE_TOOL], tool_choice: autoTool, max_tokens: 700 });
+        messages: [{ role: 'user', content: JSON.stringify({ goal: context.goal, priorGoals: context.priorGoals, now: new Date(context.now).toISOString(), timeZone: context.timeZone }) }],
+        tools: [GOAL_INTAKE_TOOL], tool_choice: autoTool, max_tokens: 1200 });
       return normalizeGoalDraft(toolInput(response, GOAL_INTAKE_TOOL.name), context);
     },
     async route({ text, state = {} }) {

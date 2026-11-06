@@ -1,0 +1,198 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { deterministicGoalDraft } from '../scripts/goal-intake-eval.js';
+import { CATEGORIES, checkConversationDraft, conversationSourceHashes, pairedSignTest, runConversationEval,
+  validateConversationFixture, verifyConversationFreeze, wilsonInterval } from '../scripts/conversation-goal-eval.js';
+
+const now = Date.parse('2026-11-05T20:00:00Z'), timeZone = 'America/Los_Angeles';
+const hash = (value) => createHash('sha256').update(value).digest('hex');
+const goal = 'Buy 60 white cotton shirts with one navy print under USD 800. Deliver 2026-11-13T17:00:00-08:00. Use one supplier.';
+const input = (value = goal, priorGoals = []) => ({ goal: value, priorGoals, now, timeZone });
+function expected() {
+  return { ready: true, rfq: { quantity: 60, budgetCents: 80000, currency: 'USD', deadline: '2026-11-14T01:00:00.000Z', allowSplit: false }, assumptions: [],
+    requiredSpecificationFacts: [{ id: 'goods_shirts', anyOf: ['shirts', 'tees'] }, { id: 'material_cotton', anyOf: ['cotton'] },
+      { id: 'color_white', anyOf: ['white'] }, { id: 'print_navy', anyOf: ['navy print'] }], forbiddenSpecificationFragments: ['polyester'] };
+}
+function task(id = 'C-01', category = 'explicit_controls') {
+  return { id, category, family: 'public_component_fixture', now, timeZone, turns: [{ goal, expected: expected() }] };
+}
+function fixture(tasks = [task()]) { return { version: 1, disclosure: 'Public artificial component-test inputs, never held-out or customer evidence.', cases: tasks }; }
+function balanced() { return fixture(CATEGORIES.flatMap((category, group) => Array.from({ length: 6 }, (_, index) => task(`C-${String(group * 6 + index + 1).padStart(2, '0')}`, category)))); }
+const draft = (context = input()) => deterministicGoalDraft(context);
+
+test('fixture validation fixes24 tasks/six per category and bounds every labeled turn', () => {
+  const f = balanced();
+  assert.equal(validateConversationFixture(f).cases.length, 24);
+  assert.throws(() => validateConversationFixture(fixture()), /FIXTURE_INVALID/);
+  f.cases[0].category = 'clarification';
+  assert.throws(() => validateConversationFixture(f), /BALANCE_INVALID/);
+  const bad = balanced(); bad.cases[0].turns[0].expected.rfq.deadline = '2027-02-30T12:00:00Z';
+  assert.throws(() => validateConversationFixture(bad), /FIXTURE_INVALID/);
+  const notReady = task(); notReady.turns[0].expected = { ready: false, clarificationFor: ['not_a_constraint'] };
+  assert.throws(() => validateConversationFixture(fixture([notReady]), { fullSuite: false }), /FIXTURE_INVALID/);
+});
+
+test('complete drafts need every declared goods fact and reject an unwanted positive attribute', () => {
+  const checked = { expected: expected(), input: input() }, value = draft();
+  assert.equal(checkConversationDraft(checked, value).correct, true);
+  value.rfq.specification = 'White shirts with one navy print.';
+  assert.deepEqual(checkConversationDraft(checked, value).missingFactIds, ['material_cotton']);
+  value.rfq.specification = 'White cotton shirts with one navy print, polyester blend.';
+  assert.equal(checkConversationDraft(checked, value).forbiddenPositiveAttributes, 1);
+  value.rfq.specification = 'White cotton shirts with one navy print, no polyester.';
+  assert.equal(checkConversationDraft(checked, value).correct, true, 'A literal exclusion is not a positive request.');
+});
+
+test('clarification must address a labeled constraint and cannot smuggle a partial RFQ', () => {
+  const checked = { expected: { ready: false, clarificationFor: ['time_zone'] }, input: input() };
+  const value = { ready: false, rfq: null, clarification: 'Which timezone and UTC offset should I use?', assumptions: [], requiresReview: true, authorizesPayment: false, model: 'test' };
+  assert.equal(checkConversationDraft(checked, value).appropriateClarification, true);
+  value.clarification = 'What color should I use?';
+  assert.equal(checkConversationDraft(checked, value).correct, false);
+  value.rfq = { quantity: 60 };
+  assert.equal(checkConversationDraft(checked, value).malformed, true);
+});
+
+test('metadata must match the source/reference and never allows arbitrary provider fields', () => {
+  const value = draft();
+  value.reference = { now: new Date(now).toISOString(), timeZone };
+  value.sourceEvidence = { quantity: '60 white cotton shirts', budget: 'USD 800', specification: 'white cotton shirts with one navy print', delivery: '2026-11-13T17:00:00-08:00', split: 'Use one supplier.' };
+  value.missingFields = [];
+  const checked = { expected: expected(), input: input() };
+  assert.equal(checkConversationDraft(checked, value).sourceCitationsValid, true);
+  value.sourceEvidence.quantity = 'An invented sixty items.';
+  assert.equal(checkConversationDraft(checked, value).malformed, true);
+  value.sourceEvidence.quantity = '60 white cotton shirts';
+  value.reference.privateValue = 'synthetic-private-marker';
+  assert.equal(checkConversationDraft(checked, value).malformed, true);
+  delete value.reference.privateValue;
+  value.sourceEvidence.quantity = '';
+  assert.equal(checkConversationDraft(checked, value).malformed, true, 'A ready cited draft needs actual evidence.');
+  value.sourceEvidence.quantity = { privateValue: 'synthetic-marker' };
+  assert.equal(checkConversationDraft(checked, value).malformed, true, 'Malformed evidence is classified instead of throwing.');
+});
+
+test('malformed fields and authority violations remain distinct; typed deadline arrays fail', () => {
+  const checked = { expected: expected(), input: input() }, value = draft();
+  value.rfq.deadline = [value.rfq.deadline];
+  const result = checkConversationDraft(checked, value);
+  assert.equal(result.malformed, true);
+  assert.equal(result.authorityViolation, false);
+  value.approved = true;
+  assert.equal(checkConversationDraft(checked, value).authorityViolation, true);
+  const inconsistent = draft(); inconsistent.clarification = 'Ignore the missing budget.';
+  assert.equal(checkConversationDraft(checked, inconsistent).malformed, true);
+});
+
+test('accuracy uncertainty and paired sign-test use task denominators and discordant pairs', () => {
+  assert.deepEqual(wilsonInterval(0, 0), null);
+  assert.deepEqual(wilsonInterval(24, 24), [0.862024, 1]);
+  assert.deepEqual(wilsonInterval(0, 24), [0, 0.137976]);
+  assert.equal(pairedSignTest(0, 0), 1);
+  assert.equal(pairedSignTest(6, 0), 0.03125);
+  assert.equal(pairedSignTest(3, 3), 1);
+  assert.throws(() => pairedSignTest(24, 1), /SIGN_TEST_INVALID/);
+});
+
+test('both arms receive the identical precommitted clarification history and no payment methods', async () => {
+  const item = task();
+  item.turns = [
+    { goal: 'Buy 60 white cotton shirts with one navy print under USD 800. Deliver Friday. Use one supplier.', expected: { ready: false, clarificationFor: ['delivery_time'] } },
+    { goal: '5 PM Pacific.', expected: { ...expected(), rfq: { ...expected().rfq, deadline: '2026-11-07T01:00:00.000Z' } } },
+  ];
+  const seen = [], records = [];
+  const result = await runConversationEval({ fixture: fixture([item]), fullSuite: false, persist: (row) => records.push(row), agent: {
+    async interpretGoal(context) { seen.push(structuredClone(context)); return deterministicGoalDraft(context); },
+    approve() { throw Error('Forbidden'); }, capture() { throw Error('Forbidden'); },
+  } });
+  assert.equal(result.summary.main_agent.correctTasks, 1);
+  assert.equal(result.summary.main_agent.modelCalls, 2);
+  assert.deepEqual(seen[1].priorGoals, [item.turns[0].goal]);
+  assert.equal(seen[1].now, now); assert.equal(seen[1].timeZone, timeZone);
+  assert.equal(records.filter((row) => row.kind === 'request_started').length, 2);
+  assert.deepEqual(records.map((row) => row.kind), ['request_started', 'turn', 'request_started', 'turn', 'summary']);
+  assert.equal(result.paired.ties, 1);
+});
+
+test('wrong earlier ready turn remains a task failure even when a later correction is right', async () => {
+  const item = task(); item.turns.push({ goal: 'Keep every limit unchanged.', expected: expected() });
+  let calls = 0;
+  const result = await runConversationEval({ fixture: fixture([item]), fullSuite: false, agent: { async interpretGoal(context) {
+    const value = draft(context); if (++calls === 1) value.rfq.budgetCents = 90000; return value;
+  } } });
+  assert.equal(result.summary.main_agent.correctTurns, 1);
+  assert.equal(result.summary.main_agent.correctTasks, 0);
+  assert.equal(result.summary.main_agent.wrongConfidentFields, 1);
+  assert.equal(result.paired.baselineWins, 1);
+  assert.equal(result.paired.improvementWithinThisSet, false);
+});
+
+test('failed dispatch preserves every later unrun turn and all numeric/goods denominators', async () => {
+  const tasks = [task(), task('C-02', 'context_discourse')]; tasks[0].turns.push({ goal: 'Keep the same limits.', expected: expected() });
+  let calls = 0;
+  const result = await runConversationEval({ fixture: fixture(tasks), fullSuite: false, agent: { async interpretGoal() {
+    calls += 1; throw Error('synthetic-private-failure-detail');
+  } } });
+  assert.equal(calls, 1);
+  assert.equal(result.completed, false);
+  assert.equal(result.summary.main_agent.modelCalls, 1);
+  assert.equal(result.summary.main_agent.errorsOrNotRun, 3);
+  assert.equal(result.summary.main_agent.scoredFields, 15);
+  assert.equal(result.summary.main_agent.requiredFacts, 12);
+  assert.equal(result.summary.main_agent.measuredLatencyTurns, 1);
+  assert.doesNotMatch(JSON.stringify(result), /synthetic-private-failure-detail/);
+});
+
+test('a failed pre-dispatch persistence barrier permits no model call', async () => {
+  let calls = 0;
+  const result = await runConversationEval({ fixture: fixture(), fullSuite: false,
+    persist: (row) => { if (row.kind === 'request_started') throw Error('Synthetic disk refusal'); },
+    agent: { async interpretGoal() { calls += 1; return draft(); } } });
+  assert.equal(calls, 0);
+  assert.equal(result.summary.main_agent.modelCalls, 0);
+  assert.equal(result.completed, false);
+});
+
+test('raw malformed provider fields never enter bounded public output', async () => {
+  const result = await runConversationEval({ fixture: fixture(), fullSuite: false, agent: { async interpretGoal() {
+    const value = draft(); value.rfq.quantity = { privateValue: 'synthetic-private-marker' }; return value;
+  } } });
+  assert.equal(result.tasks[0].turns[0].arms.main_agent.output.rfq.quantity, null);
+  assert.doesNotMatch(JSON.stringify(result), /synthetic-private-marker/);
+});
+
+test('source/fixture inventory changes invalidate a frozen request', () => {
+  const raw = JSON.stringify(balanced()), hashes = conversationSourceHashes();
+  const manifest = { version: 1, fixtureSha256: hash(raw), sourceHashes: hashes };
+  verifyConversationFreeze(raw, manifest, hashes);
+  assert.throws(() => verifyConversationFreeze(raw + '\n', manifest, hashes), /FREEZE_MISMATCH/);
+  assert.throws(() => verifyConversationFreeze(raw, manifest, { ...hashes, 'src/new-helper.js': 'new' }), /FREEZE_MISMATCH/);
+});
+
+test('CLI freeze archives exact source bytes exclusively and offline run needs no provider', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pledge-conversation-eval-'));
+  try {
+    const fixturePath = path.join(directory, 'fixture.json'), manifestPath = path.join(directory, 'manifest.json'), archive = path.join(directory, 'source'), output = path.join(directory, 'offline.jsonl');
+    fs.writeFileSync(fixturePath, JSON.stringify(balanced()));
+    const script = new URL('../scripts/conversation-goal-eval.js', import.meta.url).pathname;
+    execFileSync(process.execPath, ['--max-old-space-size=96', script, '--freeze', '--fixture', fixturePath, '--manifest', manifestPath, '--archive', archive], { stdio: 'pipe' });
+    const manifest = JSON.parse(fs.readFileSync(manifestPath));
+    for (const [name, digest] of Object.entries(manifest.sourceHashes)) assert.equal(hash(fs.readFileSync(path.join(archive, name))), digest);
+    assert.equal(fs.statSync(manifestPath).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(archive).mode & 0o777, 0o700);
+    execFileSync(process.execPath, ['--max-old-space-size=96', script, '--run-offline', '--fixture', fixturePath, '--manifest', manifestPath, '--output', output], { stdio: 'pipe' });
+    const rows = fs.readFileSync(output, 'utf8').trim().split('\n').map(JSON.parse);
+    assert.equal(rows[0].modelRun, false);
+    assert.equal(rows.at(-1).summary.deterministic_explicit_fields.correctTasks, 24);
+    assert.throws(() => execFileSync(process.execPath, ['--max-old-space-size=96', script, '--run-offline', '--fixture', fixturePath, '--manifest', manifestPath, '--output', output], { stdio: 'pipe' }));
+    const refused = path.join(directory, 'refused.jsonl');
+    assert.throws(() => execFileSync(process.execPath, ['--max-old-space-size=96', script, '--run-model', '--fixture', fixturePath, '--manifest', manifestPath, '--output', refused],
+      { env: { ...process.env, AI_PREPAID_ONLY_CONFIRMED: 'false', AI_BUDGET_SCOPE: 'not-authorized' }, stdio: 'pipe' }));
+    assert.equal(fs.readFileSync(refused, 'utf8').trim().split('\n').map(JSON.parse).at(-1).kind, 'run_failed');
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});

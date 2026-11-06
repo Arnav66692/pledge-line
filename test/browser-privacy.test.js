@@ -63,7 +63,7 @@ function browser() {
     throw Error(`Unexpected route ${path}`);
   };
   vm.runInNewContext(app, { window, document, navigator: { userAgent: 'test', vendor: '' }, fetch, HTMLElement: Element,
-    performance, URLSearchParams, Intl, Date, setTimeout, clearTimeout, Blob, console });
+    performance, URLSearchParams, Intl, Date, setTimeout, clearTimeout, AbortController, Blob, console });
   return { byId, getRecognition: () => recognition, respond: () => responses.shift()() };
 }
 

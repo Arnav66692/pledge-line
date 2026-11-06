@@ -2,6 +2,7 @@
 
 (() => {
   const FINAL_WAIT_MS = 1500;
+  const API_TIMEOUT_MS = 30000;
   const PIN_MAX = 6;
   const TEXT_INPUT_TYPES = new Set(['text', 'search', 'email', 'number', 'password', 'tel', 'url']);
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
@@ -11,7 +12,7 @@
 
   const $ = (id) => document.getElementById(id);
   const els = {
-    script: $('script'), lines: $('script-lines'), start: $('start'), mute: $('mute'), status: $('status'),
+    script: $('script'), lines: $('script-lines'), start: $('start'), recheckCall: $('recheck-call'), mute: $('mute'), status: $('status'),
     reply: $('reply'), transcript: $('transcript'), talk: $('talk'), speechError: $('speech-error'),
     pinDots: $('pin-dots'), pinClear: $('pin-clear'), pinSend: $('pin-send'), keys: document.querySelectorAll('.key[data-digit]'),
     typed: $('typed'), typedForm: $('typed-form'), typedText: $('typed-text'), typedSend: $('typed-send'),
@@ -115,22 +116,33 @@
   // lastTurn is the turn of the last reply this page received. Each turn says it answers that reply, so a yes only counts for a proposal the caller heard.
   // giftStatus is the status the gift card last showed in this call, so a change's read-back can be marked when it lands.
   // The original session and receipt keys stay in this tab's sessionStorage so a reload can resume the same call.
-  const state = { callId: null, sessionSecret: null, verified: false, ended: true, locked: false, busy: false, pin: '', scripts: [], drills: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false, receiptSecret: null };
+  const state = { callId: null, sessionSecret: null, verified: false, ended: true, locked: false, busy: false, needsRecheck: false, pin: '', scripts: [], drills: [], primed: false, voiceGaps: [], listening: null, lastTurn: 0, giftStatus: null, giftShown: false, receiptSecret: null };
 
   // Engine signals a user-agent override, such as Chrome's device toolbar, does not change. The line checks them against the agent.
   const engineSignals = () => ({ vendor: String(navigator.vendor || ''), chrome: typeof window.chrome !== 'undefined', uaData: 'userAgentData' in navigator });
 
   async function api(path, body) {
+    const controller = new AbortController();
+    let timer;
     const init = body === undefined ? { headers: {} } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+    init.signal = controller.signal;
     if (state.callId && path.startsWith(`/api/calls/${state.callId}`) && state.sessionSecret) init.headers['x-call-secret'] = state.sessionSecret;
-    const res = await fetch(path, init);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const error = new Error(data.error || 'The line didn\'t answer. Please try again.');
-      error.status = res.status;
-      throw error;
-    }
-    return data;
+    const request = (async () => {
+      const res = await fetch(path, init);
+      const data = await res.json();
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('The line returned an unreadable response.');
+      if (!res.ok) {
+        const error = new Error(data.error || 'The line did not answer.');
+        error.status = res.status;
+        throw error;
+      }
+      return data;
+    })();
+    try {
+      return await Promise.race([request, new Promise((_, reject) => {
+        timer = setTimeout(() => { controller.abort(); reject(new Error('The line took too long to answer. Recheck the saved call before continuing.')); }, API_TIMEOUT_MS);
+      })]);
+    } finally { clearTimeout(timer); }
   }
 
   function forgetStoredCall() {
@@ -162,9 +174,12 @@
     state.callId = saved.callId;
     state.sessionSecret = saved.sessionSecret;
     state.receiptSecret = saved.receiptSecret;
+    state.needsRecheck = true;
     try {
       const data = await api(`/api/calls/${saved.callId}`);
       if (state.callId !== saved.callId) return;
+      if (!validCallRead(data, saved.callId)) throw new Error('The saved call could not be verified. Recheck it before continuing.');
+      state.needsRecheck = false;
       applyState(data);
       if (Number.isSafeInteger(data.turn) && data.turn >= 0) state.lastTurn = data.turn;
       const previousReply = listOf(data.events).filter((event) => event.type === 'said' && typeof event.text === 'string').at(-1);
@@ -179,6 +194,7 @@
         state.callId = null;
         state.sessionSecret = null;
         state.receiptSecret = null;
+        state.needsRecheck = false;
       }
       els.status.textContent = error.message;
     } finally { setBusy(false); }
@@ -186,7 +202,7 @@
 
   const isMuted = () => els.mute.checked || !canSpeak;
   // A locked call still takes words, so the caller can hear that it is locked (Script 8).
-  const canSend = () => Boolean(state.callId) && (!state.ended || state.locked);
+  const canSend = () => Boolean(state.callId) && !state.needsRecheck && (!state.ended || state.locked);
   const seconds = (ms) => `${(ms / 1000).toFixed(1)} s`;
   const median = (values) => {
     const sorted = [...values].sort((a, b) => a - b);
@@ -629,10 +645,43 @@
     }
   }
 
+  function validCallRead(data, callId) {
+    return data?.callId === callId && Number.isSafeInteger(data.turn) && data.turn >= state.lastTurn &&
+      typeof data.verified === 'boolean' && typeof data.ended === 'boolean';
+  }
+
+  async function recheckCall() {
+    if (!state.callId || !state.needsRecheck) return false;
+    const callId = state.callId;
+    setBusy(true);
+    stopSpeaking();
+    discardListening();
+    try {
+      const data = await api(`/api/calls/${callId}`);
+      if (state.callId !== callId || !validCallRead(data, callId)) throw new Error('The saved call could not be verified.');
+      state.lastTurn = data.turn;
+      state.needsRecheck = false;
+      applyState(data);
+      renderEventView(data);
+      const said = listOf(data.events).filter((event) => event.type === 'said' && typeof event.text === 'string').at(-1);
+      els.reply.textContent = data.restored && !data.verified && !data.ended
+        ? 'Call restored. Enter your PIN, then make a new request.' : said?.text ?? 'Saved call state recovered. Review its current details before making another request.';
+      if (data.ended) forgetStoredCall();
+      els.status.textContent = data.ended ? 'The saved call has ended. No request was resent.'
+        : data.restored && !data.verified ? 'Call restored. Enter your PIN again, then make a new request. No request was resent.'
+          : 'Saved call checked. Review the recovered reply before continuing. No request was resent.';
+      return true;
+    } catch (error) {
+      state.needsRecheck = true;
+      els.status.textContent = `${error.message} Your saved call is retained. Recheck it before continuing.`;
+      return false;
+    } finally { setBusy(false); }
+  }
+
   // ---- Call state ----
 
   function setControls() {
-    const live = Boolean(state.callId) && !state.ended;
+    const live = Boolean(state.callId) && !state.ended && !state.needsRecheck;
     const open = canSend();
     els.talk.disabled = !open || state.busy || !SR;
     els.typedText.disabled = !open;
@@ -640,8 +689,10 @@
     els.pinSend.disabled = !live || state.busy;
     els.pinClear.disabled = !live;
     for (const key of els.keys) key.disabled = !live;
-    els.start.textContent = live ? 'End call' : 'Start call';
-    els.start.disabled = state.busy;
+    els.start.textContent = state.callId && !state.ended ? 'End call' : 'Start call';
+    els.start.disabled = state.busy || state.needsRecheck;
+    els.recheckCall.hidden = !state.needsRecheck || !state.callId;
+    els.recheckCall.disabled = state.busy;
     renderKeep();
   }
 
@@ -709,6 +760,7 @@
   }
 
   async function startCall() {
+    if (state.busy || state.needsRecheck) return;
     setBusy(true);
     hideError();
     try {
@@ -742,6 +794,7 @@
   }
 
   async function endCall() {
+    if (state.busy || state.needsRecheck) return;
     const callId = state.callId;
     setBusy(true);
     stopSpeaking();
@@ -752,6 +805,7 @@
       forgetStoredCall();
       await refreshEvents(callId);
     } catch (error) {
+      state.needsRecheck = true;
       els.status.textContent = error.message;
     } finally { setBusy(false); }
   }
@@ -771,8 +825,8 @@
       speak(data.reply, (played) => logGap(callId, data.turn, startedAt, source, muted, played));
       await refreshEvents(callId, data.turn);
     } catch (error) {
-      await refreshEvents(callId);
-      els.status.textContent = error.message;
+      state.needsRecheck = true;
+      if (!await recheckCall()) els.status.textContent = `${error.message} The request was not resent. Recheck the saved call before continuing.`;
     } finally {
       setBusy(false);
     }
@@ -900,6 +954,7 @@
     rememberDemo();
     els.script.addEventListener('change', () => renderLines());
     els.start.addEventListener('click', () => (state.callId && !state.ended ? endCall() : startCall()));
+    els.recheckCall.addEventListener('click', () => { if (!state.busy) void recheckCall(); });
     els.talk.addEventListener('pointerdown', (event) => { event.preventDefault(); startListening(); });
     for (const name of ['pointerup', 'pointercancel', 'pointerleave']) els.talk.addEventListener(name, stopListening);
     els.talk.addEventListener('contextmenu', (event) => event.preventDefault());

@@ -135,7 +135,7 @@
 
   const MESSAGES = {
     401: "This receipt link isn't right for the call. Open it from the line's page with the Keep a receipt of this call button.",
-    404: "The line no longer has this call. Its server forgets calls when it restarts. If you downloaded the receipt file, it still holds everything, and you can check it at /check.",
+    404: "This instance could not find the call. Check that you opened its original deployment. If you downloaded the signed receipt file, you can still verify it at /check.",
     409: 'This call is still going. Its receipt is ready once the call ends.',
     429: 'Too many requests from here. Please wait a minute and reload.',
   };

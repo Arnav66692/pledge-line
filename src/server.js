@@ -22,6 +22,7 @@ import { createProcurementHttp } from './procurement-http.js';
 import { connectDatabase } from './database.js';
 import { configureRuntimeServices } from './runtime-services.js';
 import { wrapDurableCalls, observeMockPayPal, DonorDurabilityError } from './donor-durability.js';
+import { createReadiness } from './readiness.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -221,13 +222,14 @@ export function buildDeps(config, overrides = {}) {
   const receiptSigner = config.receiptSigningKey ? createReceiptSigner(config.receiptSigningKey) : null;
   return { config, ledger, tokens, paypal, router, gate, calls, webhooks, log, now, receiptSigner, journal: overrides.journal ?? null,
     agent: overrides.agent ?? null, aiGateway: overrides.aiGateway ?? null, suppliers: overrides.suppliers ?? null,
-    checkout: overrides.checkout ?? null, checkoutStore: overrides.checkoutStore ?? null, commerceStatus: overrides.commerceStatus ?? null };
+    checkout: overrides.checkout ?? null, checkoutStore: overrides.checkoutStore ?? null, commerceStatus: overrides.commerceStatus ?? null,
+    checkReadiness: overrides.checkReadiness ?? null };
 }
 
 function send(res, status, body, type = 'application/json; charset=utf-8', headers = {}) {
   const payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
   res.writeHead(status, { ...SECURITY_HEADERS, ...headers, 'Content-Type': type, 'Cache-Control': 'no-store' });
-  res.end(payload);
+  res.end(res.headOnly ? undefined : payload);
 }
 
 function readBody(req, limit) {
@@ -356,6 +358,9 @@ function createApi(deps) {
   const scripts = PILOT_SCRIPTS.map((s) => ({ number: s.number, title: s.title, lines: displayLines(s), expected: s.expected }));
   const drills = Object.values(DRILLS).map(drillLines);
   const clock = deps.now ?? (() => new Date());
+  const checkReadiness = deps.checkReadiness ?? createReadiness({ requireDatabase: Boolean(deps.journal || deps.ledger.durable),
+    requireAi: config.router.mode === 'anthropic', aiStatus: deps.aiGateway ? () => deps.aiGateway.status() : null,
+    commerceStatus: deps.commerceStatus ?? (() => ({})), now: () => clock().getTime() });
   const staffRequests = createRateLimiter({ limit: config.limits.staffPerMinute, windowMs: MINUTE_MS });
   const receiptRequests = createRateLimiter({ limit: config.limits.receiptsPerMinute, windowMs: MINUTE_MS });
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
@@ -366,7 +371,7 @@ function createApi(deps) {
     },
     send, readJson, limiter: createRateLimiter({ limit: 60, windowMs: MINUTE_MS }), now: () => clock().getTime(),
     interpretGoal: typeof deps.agent?.interpretGoal === 'function'
-      ? (goal) => deps.agent.interpretGoal({ goal, now: clock().getTime(), timeZone: config.timeZone }) : null,
+      ? (goal, priorGoals = []) => deps.agent.interpretGoal({ goal, ...(priorGoals.length ? { priorGoals } : {}), now: clock().getTime(), timeZone: config.timeZone }) : null,
     checkout: deps.checkout, checkoutStore: deps.checkoutStore, commerceStatus: deps.commerceStatus ?? (() => ({})),
   });
 
@@ -494,6 +499,11 @@ function createApi(deps) {
       return receiptRoute(req, res, pathname, ip);
     }
     if (pathname === '/healthz' && req.method === 'GET') return send(res, 200, { ok: true, mode: { paypal: config.paypal.mode, router: config.router.mode } });
+    if (pathname === '/readyz') {
+      if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+      const readiness = await checkReadiness();
+      return send(res, readiness.ready ? 200 : 503, readiness, undefined, readiness.ready ? {} : { 'Retry-After': '1' });
+    }
     if (pathname === '/api/pilot-scripts' && req.method === 'GET') return send(res, 200, { scripts });
     // The fault drills, listed only while one may start: in mock mode, or on the sandbox after the deadline (A12).
     if (pathname === '/api/drills' && req.method === 'GET') return send(res, 200, { drills: drillOpen(config.paypal.mode, clock()) ? drills : [] });
@@ -525,7 +535,14 @@ export function createServer(deps) {
   return http.createServer(async (req, res) => {
     const started = performance.now();
     const pathname = req.url.split('?')[0];
-    res.on('finish', () => log.info(`${req.method} ${redactPath(pathname)} ${res.statusCode} ${Math.round(performance.now() - started)}ms`));
+    const method = req.method;
+    // HEAD is read-only and shares GET access checks. It never becomes a mutation route.
+    if (method === 'HEAD' && (['/healthz', '/readyz'].includes(pathname) ||
+      !pathname.startsWith('/api/') && !pathname.startsWith('/webhooks/'))) {
+      res.headOnly = true;
+      req.method = 'GET';
+    }
+    res.on('finish', () => log.info(`${method} ${redactPath(pathname)} ${res.statusCode} ${Math.round(performance.now() - started)}ms`));
     try {
       await route(req, res, pathname, clientIp(req, deps.config.trustProxy));
     } catch (error) {

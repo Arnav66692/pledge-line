@@ -153,6 +153,37 @@ test('holdCovers needs an open hold, the same currency, enough on it, and a time
   assert.equal(holdCovers(null, { amountValue: '25.00', currency: 'USD', nowMs }), false);
 });
 
+test('future charge times and unverifiable sponsor expiries cannot establish relief eligibility', () => {
+  const nowMs = Date.parse('2026-11-03T18:00:00Z');
+  const charge = { status: 'COMPLETED', amount_value: '25.00', amount_currency: 'USD', time: '2026-11-03T18:00:00Z' };
+  assert.equal(coverBlock(charge, { rule: COVER_DEFAULTS, nowMs, currency: 'USD' }), null);
+  assert.equal(coverBlock({ ...charge, time: '2026-11-03T18:00:00.001Z' }, { rule: COVER_DEFAULTS, nowMs, currency: 'USD' }), 'not_ready');
+  assert.equal(coverBlock({ ...charge, time: '2027-02-30T18:00:00Z' }, { rule: COVER_DEFAULTS, nowMs, currency: 'USD' }), 'too_old');
+  assert.equal(coverBlock(charge, { rule: COVER_DEFAULTS, nowMs: NaN, currency: 'USD' }), 'not_ready');
+  const hold = { status: 'CREATED', amount_value: '25.00', amount_currency: 'USD', expiration_time: '2026-11-03T18:00:00.001Z' };
+  assert.equal(holdCovers(hold, { amountValue: '25.00', currency: 'USD', nowMs }), true);
+  for (const expiration_time of [undefined, null, '', 'not-a-date', '2027-02-30T18:00:00Z', '2026-11-03T18:00:00Z']) {
+    assert.equal(holdCovers({ ...hold, expiration_time }, { amountValue: '25.00', currency: 'USD', nowMs }), false);
+  }
+  for (const amountValue of [null, '', 'not-money', '0.00', '-1.00']) {
+    assert.equal(holdCovers(hold, { amountValue, currency: 'USD', nowMs }), false);
+  }
+  assert.equal(holdCovers(hold, { amountValue: '25.00', currency: 'USD', nowMs: NaN }), false);
+});
+
+test('invalid sponsor expiry and a future completed charge cause no proposal or financial attempt', async () => {
+  const expired = buildStack();
+  expired.paypal.mockSetHold(HOLD, { expiration_time: 'not-a-date' });
+  const first = await offered(expired);
+  assert.deepEqual(eventsOf(expired, first.callId, 'proposed'), []);
+  assert.deepEqual(eventsOf(expired, first.callId, 'write'), []);
+  const future = buildStack();
+  future.paypal.mockSetCharges(SUB, [mockCharge({ time: '2030-01-01T00:00:00Z' })]);
+  const second = await offered(future);
+  assert.deepEqual(eventsOf(future, second.callId, 'proposed'), []);
+  assert.deepEqual(eventsOf(future, second.callId, 'write'), []);
+});
+
 test('a charge outside the staff rule, or no hold, gets no offer and an honest sentence, and every reply grades clean', async () => {
   const cases = [
     [{ value: '75.00', time: '2026-11-01T10:00:00.000Z' }, /more than the hardship fund can cover/],

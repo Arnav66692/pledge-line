@@ -22,11 +22,11 @@ class Element {
   focus() {}
 }
 
-function browser({ storage = new Map(), restored = false, getStatus = 200, endStatus = 200 } = {}) {
+function browser({ storage = new Map(), restored = false, getStatus = 200, endStatus = 200, lostTurn = false, hangGet = false } = {}) {
   const elements = new Map(), requests = [], pageEvents = {}, localWrites = [];
   const byId = (id) => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
   const document = { getElementById: byId, querySelectorAll: () => [], createElement: (tag) => new Element(tag.toUpperCase()), addEventListener() {} };
-  let recognition, turn = restored ? 7 : 0, ended = false;
+  let recognition, turn = restored ? 7 : 0, ended = false, acceptedReply = null;
   class SpeechRecognition {
     constructor() { recognition = this; }
     start() {}
@@ -41,9 +41,12 @@ function browser({ storage = new Map(), restored = false, getStatus = 200, endSt
     if (path === '/api/drills') return json({ drills: [] });
     if (path === '/api/calls') return json({ callId: ID, sessionSecret: SECRET, receiptSecret: RECEIPT, turn, reply: 'Enter your PIN.', state: state() });
     assert.equal(options.headers?.['x-call-secret'], SECRET);
-    if (path === `/api/calls/${ID}`) return json(getStatus === 200
-      ? { ...state(), events: [{ type: 'said', turn, text: 'An earlier request asked for yes.' }, ...(restored ? [{ type: 'session_restored' }] : [])] }
-      : { error: 'Call temporarily unavailable.' }, getStatus);
+    if (path === `/api/calls/${ID}`) {
+      if (hangGet) return new Promise(() => {});
+      return json(getStatus === 200
+        ? { ...state(), events: [{ type: 'said', turn, text: acceptedReply ?? 'An earlier request asked for yes.' }, ...(restored ? [{ type: 'session_restored' }] : [])] }
+        : { error: 'Call temporarily unavailable.' }, getStatus);
+    }
     if (path.endsWith('/end')) {
       if (endStatus !== 200) return json({ error: 'End was not saved.' }, endStatus);
       ended = true;
@@ -51,6 +54,7 @@ function browser({ storage = new Map(), restored = false, getStatus = 200, endSt
     }
     if (path.endsWith('/turn')) {
       turn += 1;
+      if (lostTurn) { acceptedReply = 'The saved request completed.'; return new Promise(() => {}); }
       return json({ reply: 'Enter your PIN.', turn, state: state() });
     }
     if (path.endsWith('/gap')) return json({ ok: true });
@@ -61,8 +65,10 @@ function browser({ storage = new Map(), restored = false, getStatus = 200, endSt
     localStorage: { getItem: () => null, setItem: (...args) => localWrites.push(args) },
     addEventListener: (name, handler) => { pageEvents[name] = handler; } };
   vm.runInNewContext(app, { window, document, navigator: { userAgent: 'test', vendor: '' }, fetch,
-    HTMLElement: Element, performance, URLSearchParams, Intl, Date, setTimeout, clearTimeout });
-  return { byId, requests, storage, localWrites, pageEvents, getRecognition: () => recognition };
+    HTMLElement: Element, performance, URLSearchParams, Intl, Date, AbortController,
+    setTimeout: (fn, ms) => setTimeout(fn, ms === 30000 ? 5 : ms), clearTimeout });
+  return { byId, requests, storage, localWrites, pageEvents, getRecognition: () => recognition,
+    setGetStatus: (value) => { getStatus = value; }, setHangGet: (value) => { hangGet = value; } };
 }
 
 test('tab reload keeps the original bearer, fetches the saved turn, and never replays an input or approval', async () => {
@@ -115,8 +121,48 @@ test('invalid saved credentials are removed but temporary restore failure preser
   await tick();
   assert.equal(unavailable.storage.has(KEY), true);
   assert.equal(unavailable.requests.filter(({ options }) => options.method === 'POST').length, 0);
+  assert.equal(unavailable.byId('start').disabled, true);
+  assert.equal(unavailable.byId('recheck-call').hidden, false);
+  await unavailable.byId('start').fire('click');
+  assert.equal(unavailable.requests.filter(({ options }) => options.method === 'POST').length, 0, 'temporary failure cannot replace the original call');
+  unavailable.setGetStatus(200);
+  unavailable.byId('recheck-call').fire('click');
+  await tick();
+  assert.equal(unavailable.byId('start').disabled, false);
+  assert.equal(unavailable.byId('recheck-call').hidden, true);
   const invalid = browser({ storage: new Map([[KEY, JSON.stringify({ callId: ID, sessionSecret: 'bad', receiptSecret: RECEIPT })]]) });
   await tick();
   assert.equal(invalid.storage.has(KEY), false);
   assert.ok(!invalid.requests.some(({ path }) => path === `/api/calls/${ID}`));
+});
+
+test('a lost successful turn response is bounded and recovers the saved reply without replaying the POST', async () => {
+  const ui = browser({ lostTurn: true });
+  await ui.byId('start').fire('click');
+  ui.byId('typed-text').value = 'Yes.';
+  await ui.byId('typed-form').fire('submit');
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(ui.requests.filter(({ path }) => path.endsWith('/turn')).length, 1);
+  assert.equal(ui.byId('reply').textContent, 'The saved request completed.');
+  assert.match(ui.byId('status').textContent, /No request was resent/);
+  assert.equal(ui.byId('start').disabled, false);
+  assert.equal(ui.byId('recheck-call').hidden, true);
+  const attempted = ui.requests.find(({ path }) => path.endsWith('/turn'));
+  assert.equal(attempted.options.signal.aborted, true);
+});
+
+test('an unanswered restore releases the busy state but blocks input until GET-only recovery succeeds', async () => {
+  const storage = new Map([[KEY, JSON.stringify({ callId: ID, sessionSecret: SECRET, receiptSecret: RECEIPT })]]);
+  const ui = browser({ storage, hangGet: true });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(storage.has(KEY), true);
+  assert.equal(ui.byId('start').disabled, true);
+  assert.equal(ui.byId('recheck-call').disabled, false);
+  assert.equal(ui.byId('typed-send').disabled, true);
+  assert.equal(ui.requests.filter(({ options }) => options.method === 'POST').length, 0);
+  ui.setHangGet(false);
+  ui.byId('recheck-call').fire('click');
+  await tick();
+  assert.equal(ui.byId('start').disabled, false);
+  assert.equal(ui.requests.filter(({ options }) => options.method === 'POST').length, 0);
 });

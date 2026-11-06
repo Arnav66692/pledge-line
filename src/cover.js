@@ -28,16 +28,27 @@ export const moneyBinding = (value, currency) => `${(toCents(value) ?? 0) / 100}
 
 export const isRefundedStatus = (status) => REFUNDED_STATUSES.includes(status);
 
+function evidenceTime(value) {
+  if (typeof value !== 'string' || value.length > 80) return NaN;
+  const parts = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  if (!parts || +parts[2] > 23 || +parts[3] > 59 || +parts[4] > 59 ||
+    parts[5] !== 'Z' && (+parts[6] > 14 || +parts[7] > 59 || +parts[6] === 14 && +parts[7] !== 0)) return NaN;
+  const date = new Date(`${parts[1]}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === parts[1] ? Date.parse(value) : NaN;
+}
+
 /**
  * Why the staff rule turns this charge down, or null when it passes. rule holds maxDollars, windowDays and perYear.
  * Refunds the charge list shows count toward perYear, so PayPal's own record keeps the count across restarts.
  */
 export function coverBlock(charge, { rule, nowMs, currency }) {
+  if (!charge || !Number.isFinite(nowMs)) return 'not_ready';
   if (isRefundedStatus(charge.status)) return 'used';
   if ((charge.refunded_count ?? 0) >= rule.perYear) return 'used';
   if (charge.status !== 'COMPLETED' || charge.amount_currency !== currency) return 'not_ready';
-  const at = Date.parse(charge.time);
-  if (Number.isNaN(at) || nowMs - at > rule.windowDays * DAY_MS) return 'too_old';
+  const at = evidenceTime(charge.time);
+  if (!Number.isFinite(at) || nowMs - at > rule.windowDays * DAY_MS) return 'too_old';
+  if (at > nowMs) return 'not_ready';
   const cents = toCents(charge.amount_value);
   if (cents === null || cents <= 0 || cents > Math.round(rule.maxDollars * 100)) return 'too_big';
   return null;
@@ -48,11 +59,14 @@ export function coverBlock(charge, { rule, nowMs, currency }) {
  * what is left of it, so a hold drawn down too far is caught by PayPal refusing the capture, which runs first.
  */
 export function holdCovers(hold, { amountValue, currency, nowMs }) {
-  if (!hold || !OPEN_HOLD.has(hold.status) || hold.amount_currency !== currency) return false;
+  if (!hold || !Number.isFinite(nowMs) || !OPEN_HOLD.has(hold.status) || hold.amount_currency !== currency) return false;
   const cents = toCents(hold.amount_value);
-  if (cents === null || cents < toCents(amountValue)) return false;
-  const until = Date.parse(hold.expiration_time);
-  return Number.isNaN(until) || nowMs < until;
+  const requested = toCents(amountValue);
+  if (cents === null || requested === null || requested <= 0 || cents < requested) return false;
+  // This app needs a verifiable expiry before proposing sponsor-funded relief.
+  // An omitted or malformed timestamp establishes no permission to capture.
+  const until = evidenceTime(hold.expiration_time);
+  return Number.isFinite(until) && nowMs < until;
 }
 
 // PayPal replays a request with the same PayPal-Request-Id instead of running it twice, so a retried or a double-submitted

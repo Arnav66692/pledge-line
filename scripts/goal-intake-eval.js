@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { canonicalZone, parseOffset, resolveLocalDelivery, splitPermission, strictIsoInstant } from '../src/goal-grounding.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SCOPE = 'pledge-line-functional-20261105';
@@ -14,7 +15,11 @@ const CLARIFICATION_FIELDS = Object.freeze({ quantity: /\b(?:quantity|quantities
   budget: /\b(?:budget|cap|maximum|limit|total cost|total amount|how much|spend)\b/i,
   delivery_date: /\b(?:date|day|when|deadline|deliver(?:y|ed|ing)?)\b/i,
   delivery_time: /\b(?:time|hour|when|deadline)\b/i,
-  currency: /\b(?:currency|USD|US dollars?|EUR|euros?|dollars?)\b/i });
+  currency: /\b(?:currency|USD|US dollars?|EUR|euros?|dollars?)\b/i,
+  time_zone: /\b(?:zone|offset|occurrence|first|second|earlier|later)\b/i,
+  split_policy: /\b(?:split|supplier)\b/i,
+  specification: /\b(?:goods|items|material|print|artwork|specification|quality)\b/i,
+  source_evidence: /\b(?:restate|source|evidence|confirm)\b/i });
 const hash = (value) => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 const fail = (code) => { throw Error(code); };
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
@@ -58,61 +63,140 @@ function localParts(timestamp, timeZone) {
 }
 
 function localInstant(year, month, day, hour, minute, timeZone) {
-  const wall = Date.UTC(year, month - 1, day, hour, minute);
-  const calendar = new Date(wall);
-  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() + 1 !== month || calendar.getUTCDate() !== day) return NaN;
-  let candidate = wall;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const parts = localParts(candidate, timeZone);
-    const represented = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
-    candidate += wall - represented;
+  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  const resolved = resolveLocalDelivery({ date: `${pad(year, 4)}-${pad(month)}-${pad(day)}`, time: `${pad(hour)}:${pad(minute)}`, timeZone });
+  return resolved.status === 'ok' ? Date.parse(resolved.instant) : NaN;
+}
+
+function validIso(value) {
+  const at = strictIsoInstant(value);
+  return at ? Date.parse(at) : NaN;
+}
+
+function namedZone(goal) {
+  const zones = [...goal.matchAll(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g)].map((match) => canonicalZone(match[0])).filter(Boolean);
+  for (const [pattern, zone] of [[/\b(?:UTC|GMT)\b(?!\s*(?:[+-]\d|offset))/i, 'UTC'], [/\b(?:Pacific|PST|PDT|Los Angeles)\b/i, 'America/Los_Angeles'],
+    [/\b(?:Eastern|EST|EDT|New York)\b/i, 'America/New_York'], [/\bCentral\b/i, 'America/Chicago'], [/\bMountain\b/i, 'America/Denver'],
+    [/\bTokyo\b/i, 'Asia/Tokyo'], [/\bLondon\b/i, 'Europe/London']]) if (pattern.test(goal)) zones.push(zone);
+  const unique = [...new Set(zones.map(canonicalZone))];
+  const offsets = [...goal.matchAll(/[+-]\d{2}:\d{2}\b/g)].map((match) => match[0]);
+  for (const [alias, offset] of Object.entries({ PST: '-08:00', PDT: '-07:00', EST: '-05:00', EDT: '-04:00', MST: '-07:00', MDT: '-06:00' })) if (new RegExp(`\\b${alias}\\b`, 'i').test(goal)) offsets.push(offset);
+  const offsetValues = [...new Set(offsets)];
+  if (/\b(?:CST|IST)\b/i.test(goal) && !zones.length && !offsetValues.length) return { invalid: true, zone: null, offset: '' };
+  return { invalid: unique.length > 1 || offsetValues.length > 1 || offsetValues.some((value) => parseOffset(value) === null), zone: unique[0] ?? null, offset: offsetValues[0] ?? '' };
+}
+
+function clockEvidence(text) {
+  const values = [];
+  let denied = false, invalid = false;
+  const add = (value, index) => {
+    const before = text.slice(Math.max(0, index - 35), index).toLowerCase();
+    if (/\b(?:not|never|no|instead of|rather than|not before|do not use|don't use)(?:\s+at)?\s*$/.test(before)) denied = true;
+    else values.push({ value, index });
+  };
+  for (const match of text.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/gi)) {
+    const hour = Number(match[1]), minute = Number(match[2] ?? 0);
+    if (hour < 1 || hour > 12 || minute > 59) { invalid = true; continue; }
+    add((hour % 12 + (match[3].replaceAll('.', '').toLowerCase() === 'pm' ? 12 : 0)) * 60 + minute, match.index);
   }
-  const check = localParts(candidate, timeZone);
-  return check.year === year && check.month === month && check.day === day && check.hour === hour && check.minute === minute ? candidate : NaN;
+  for (const match of text.matchAll(/\bat\s+(\d{1,2}):(\d{2})(?!\s*[ap]\.?m)\b/gi)) {
+    const hour = Number(match[1]), minute = Number(match[2]);
+    if (hour > 23 || minute > 59) { invalid = true; continue; }
+    add(hour * 60 + minute, match.index);
+  }
+  for (const match of text.matchAll(/\b(?:at )?noon\b/gi)) add(12 * 60, match.index);
+  return { values, denied, invalid };
 }
 
 function clockTime(text) {
-  if (/\bat noon\b/i.test(text)) return { hour: 12, minute: 0 };
-  const match = /\bat\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b/i.exec(text);
-  if (!match) return null;
-  let hour = Number(match[1]);
-  const minute = Number(match[2] ?? 0), meridiem = match[3]?.replaceAll('.', '').toLowerCase();
-  if (minute > 59 || hour > 23 || (!meridiem && !match[2] && hour <= 12)) return null;
-  if (meridiem) {
-    if (hour < 1 || hour > 12) return null;
-    hour = hour % 12 + (meridiem === 'pm' ? 12 : 0);
-  }
-  return { hour, minute };
+  const evidence = clockEvidence(text);
+  const value = evidence.invalid ? null : choose(evidence.values, text);
+  return value === null ? null : { hour: Math.floor(value / 60), minute: value % 60 };
 }
 
 function deadlineOf(goal, now, timeZone) {
-  const explicit = [...goal.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})\b/g)].map((match) => ({ value: Date.parse(match[0]), index: match.index }));
+  const named = namedZone(goal);
+  if (named.invalid) return null;
+  const explicit = [...goal.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})\b/g)].map((match) => {
+    let value = validIso(match[0]);
+    if (named.zone) {
+      const parts = /^(\d{4}-\d{2}-\d{2})T(.+?)(Z|[+-]\d{2}:\d{2})$/.exec(match[0]);
+      const resolved = resolveLocalDelivery({ date: parts[1], time: parts[2], timeZone: named.zone, offset: parts[3] });
+      if (resolved.status !== 'ok' || Date.parse(resolved.instant) !== value) value = NaN;
+    }
+    if (named.offset && !match[0].endsWith(named.offset)) value = NaN;
+    return { value, index: match.index };
+  });
   if (explicit.length) return choose(explicit, goal);
   const time = clockTime(goal);
   if (!time) return null;
-  const zone = /\b(?:UTC|GMT)\b/.test(goal) ? 'UTC' : /\b(?:Pacific|PST|PDT)\b/i.test(goal) ? 'America/Los_Angeles' : timeZone;
-  const local = localParts(now, zone);
+  if (/\bat\s+\d{1,2}:\d{2}:\d{2}/i.test(goal)) return null; // Never truncate a precision the grammar cannot retain.
+  const zone = named.zone ?? timeZone;
+  const fixedNow = new Date(now + (parseOffset(named.offset) ?? 0) * 60_000);
+  const local = named.offset && !named.zone ? { year: fixedNow.getUTCFullYear(), month: fixedNow.getUTCMonth() + 1, day: fixedNow.getUTCDate() } : localParts(now, zone);
+  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  const atDate = (year, month, day) => {
+    if (!named.offset) return localInstant(year, month, day, time.hour, time.minute, zone);
+    const date = `${pad(year, 4)}-${pad(month)}-${pad(day)}`, clock = `${pad(time.hour)}:${pad(time.minute)}`;
+    if (!named.zone) return validIso(`${date}T${clock}${named.offset}`);
+    const resolved = resolveLocalDelivery({ date, time: clock, timeZone: zone, offset: named.offset });
+    return resolved.status === 'ok' ? Date.parse(resolved.instant) : NaN;
+  };
   const dated = [...goal.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)];
-  if (dated.length) return choose(dated.map((match) => ({ value: localInstant(Number(match[1]), Number(match[2]), Number(match[3]), time.hour, time.minute, zone), index: match.index })), goal);
+  if (dated.length) return choose(dated.map((match) => ({ value: atDate(Number(match[1]), Number(match[2]), Number(match[3])), index: match.index })), goal);
+  const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const writtenDates = [];
+  for (const [month, name] of months.entries()) for (const match of goal.matchAll(new RegExp(`\\b(?:${name}|${name.slice(0, 3)})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`, 'gi'))) {
+    let year = +(match[2] ?? local.year), value = atDate(year, month + 1, +match[1]);
+    if (!match[2] && value <= now) value = atDate(++year, month + 1, +match[1]);
+    writtenDates.push({ value, index: match.index });
+  }
+  if (writtenDates.length) return choose(writtenDates, goal);
   let delta = /\btomorrow\b/i.test(goal) ? 1 : null;
   const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const named = weekdays.filter((day) => new RegExp(`\\b${day}\\b`, 'i').test(goal));
-  if (named.length === 1) {
+  const namedDays = weekdays.filter((day) => new RegExp(`\\b${day}\\b`, 'i').test(goal));
+  if (namedDays.length === 1) {
     const currentDay = new Date(Date.UTC(local.year, local.month - 1, local.day)).getUTCDay();
-    delta = (weekdays.indexOf(named[0]) - currentDay + 7) % 7;
-    if (delta === 0) delta = 7;
-  } else if (named.length > 1) return null;
+    const targetDay = weekdays.indexOf(namedDays[0]), currentMondayIndex = (currentDay + 6) % 7, targetMondayIndex = (targetDay + 6) % 7;
+    delta = (targetDay - currentDay + 7) % 7;
+    if (/\bnext week\b/i.test(goal)) delta = 7 - currentMondayIndex + targetMondayIndex;
+    else if (/\bthis week\b/i.test(goal) || new RegExp(`\\bthis ${namedDays[0]}\\b`, 'i').test(goal)) delta = targetMondayIndex - currentMondayIndex;
+    else if (new RegExp(`\\bnext ${namedDays[0]}\\b`, 'i').test(goal) && delta === 0) delta = 7;
+    else if (delta === 0 && !new RegExp(`\\bthis ${namedDays[0]}\\b`, 'i').test(goal) && atDate(local.year, local.month, local.day) <= now) delta = 7;
+  } else if (namedDays.length > 1) return null;
   if (delta === null) return null;
   const date = new Date(Date.UTC(local.year, local.month - 1, local.day) + delta * DAY);
-  return localInstant(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), time.hour, time.minute, zone);
+  return atDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
 }
 
 /** A documented explicit-field parser, not an intentionally empty or model-trained baseline. */
-export function deterministicGoalDraft({ goal, now, timeZone = 'UTC' }) {
+export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 'UTC' }) {
   const refused = (clarification) => ({ ready: false, rfq: null, clarification, assumptions: [], requiresReview: true, authorizesPayment: false, model: 'deterministic_explicit_fields' });
-  if (typeof goal !== 'string' || goal.trim().length < 8 || goal.length > 1000 || !Number.isFinite(now)) return refused('Please supply a bounded purchase goal.');
+  if (typeof goal !== 'string' || !goal.trim() || goal.length > 1000 || !Array.isArray(priorGoals) || priorGoals.length > 3 ||
+    priorGoals.some((value) => typeof value !== 'string' || !value.trim() || value.length > 1000) ||
+    priorGoals.reduce((total, value) => total + value.length, goal.length) > 4000 || !Number.isFinite(now)) return refused('Please supply a bounded purchase goal.');
+  const turns = [...priorGoals, goal];
+  let clockUnavailable = false, hasEarlierIso = false;
+  for (const turn of turns) {
+    const clock = clockEvidence(turn);
+    const iso = [...turn.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})\b/g)].filter((match) =>
+      Number.isFinite(validIso(match[0])) && !/\b(?:not|instead of|rather than)\s*$/i.test(turn.slice(Math.max(0, match.index - 25), match.index)));
+    if (clock.invalid || clock.denied && !clock.values.length) clockUnavailable = true;
+    else if (clock.values.length) {
+      clockUnavailable = choose(clock.values, turn) === null;
+      // This explicit grammar cannot safely splice a new human clock into an older ISO timestamp.
+      // Ask for the complete updated deadline instead of silently retaining the old instant.
+      if (!clockUnavailable && hasEarlierIso && !iso.length) return refused('Please give the complete updated delivery date and time, including its timezone.');
+    }
+    if (iso.length) { clockUnavailable = false; hasEarlierIso = true; }
+  }
+  if (clockUnavailable) return refused('What exact future delivery date and time should replace the denied or ambiguous clock?');
+  const separator = '\nActually, updated buyer reply: ';
+  let accumulated = 0;
+  const turnStarts = turns.map((turn, index) => { const start = accumulated; accumulated += turn.length + (index < turns.length - 1 ? separator.length : 0); return start; });
+  // Later explicit limits are corrections to earlier turns. Within one turn, unresolved conflicts still ask.
+  goal = turns.join(separator);
   try { localParts(now, timeZone); } catch { return refused('Please supply a valid time zone.'); }
-  if (/[€£¥]|\b(?:EUR|GBP|CAD|AUD|JPY|euros?|pounds?|yen|Canadian dollars|Australian dollars)\b/i.test(goal)) return refused('This comparison supports USD only.');
   const quantities = [];
   const items = '(?:t[- ]?shirts|shirts|tees|mugs|tote bags|posters|flyers)';
   const adjectives = '(?:white|black|blue|navy|red|green|cotton|volunteer|club|matching|identical|printed|plain|canvas)';
@@ -120,27 +204,83 @@ export function deterministicGoalDraft({ goal, now, timeZone = 'UTC' }) {
     if (!/\bnot\s*$/i.test(goal.slice(Math.max(0, match.index - 12), match.index))) quantities.push({ value: number(match[1]), index: match.index });
   }
   for (const match of goal.matchAll(/\bquantity\s*[:=]?\s*(\d{1,3})\b/gi)) quantities.push({ value: Number(match[1]), index: match.index });
+  const latestTurn = turns.at(-1);
+  const bareReply = new RegExp(`^\\s*(?:(?:actually|instead)\\s*[:,]?\\s*)?(${NUMBER})(?:\\s+instead)?[.!]?\\s*$`, 'i').exec(latestTurn);
+  const revisedQuantity = new RegExp(`\\b(?:make that|set (?:the )?(?:quantity|count) to|change (?:the )?(?:quantity|count) to|quantity (?:is|of)|count (?:is|of))\\s+(${NUMBER})\\b`, 'i').exec(latestTurn);
+  if (revisedQuantity && !/\b(?:dollars?|USD|EUR)\b|\$/.test(revisedQuantity[0])) {
+    quantities.push({ value: number(revisedQuantity[1]), index: turnStarts.at(-1) + revisedQuantity.index });
+  } else if (priorGoals.length && bareReply) {
+    const previous = deterministicGoalDraft({ goal: priorGoals.at(-1), priorGoals: priorGoals.slice(0, -1), now, timeZone });
+    if (!previous.ready && /complete quantity/.test(previous.clarification)) quantities.push({ value: number(bareReply[1]), index: turnStarts.at(-1) });
+    else if (previous.ready) return refused('Does that update the complete quantity or the all-in USD budget? Please name the changed limit.');
+  }
   const quantity = choose(quantities, goal);
   if (!integer(quantity, 1, 500)) return refused('What is the complete quantity?');
   const budgets = [];
-  const money = new RegExp(`(?:\\$\\s*(${NUMBER})|\\bUSD\\s+(${NUMBER})|\\b(${NUMBER})\\s+(?:USD|dollars?))`, 'gi');
+  const currencyWords = '(?:USD|EUR|GBP|CAD|AUD|JPY|U\\.?S\\.? dollars?|Canadian dollars?|Australian dollars?|Japanese yen|dollars?|euros?|pounds?|yen)';
+  const money = new RegExp(`(?:([$€£¥])\\s*(${NUMBER})|\\b(${currencyWords})\\s+(${NUMBER})|\\b(${NUMBER})\\s+(${currencyWords}))`, 'gi');
+  const currencyOf = (value) => /^(?:\$|USD|U\.?S\.? dollars?|dollars?)$/i.test(value) ? 'USD' : /^(?:€|EUR|euros?)$/i.test(value) ? 'EUR'
+    : /^(?:£|GBP|pounds?)$/i.test(value) ? 'GBP' : /^(?:CAD|Canadian dollars?)$/i.test(value) ? 'CAD'
+      : /^(?:AUD|Australian dollars?)$/i.test(value) ? 'AUD' : 'JPY';
   for (const match of goal.matchAll(money)) {
-    const before = goal.slice(Math.max(0, match.index - 35), match.index), after = goal.slice(match.index + match[0].length, match.index + match[0].length + 15);
+    const label = match[1] ?? match[3] ?? match[6], amount = match[2] ?? match[4] ?? match[5];
+    const before = goal.slice(Math.max(0, match.index - 80), match.index).split(/[.!?;\n]/).at(-1), after = goal.slice(match.index + match[0].length, match.index + match[0].length + 35);
     if (/\bnot\s*$/i.test(before) || /^\s*(?:each|per\b)/i.test(after)) continue;
-    budgets.push({ value: Math.round(number(match[1] ?? match[2] ?? match[3]) * 100), index: match.index, priority: /\b(?:budget|cap|maximum|limit|under|total|spend|up to)\s*[:=]?\s*$/i.test(before) ? 1 : 0 });
+    const roleBefore = before.split(/\b(?:but|however|and|while)\b/i).at(-1);
+    const role = /\b(?:quote|quoted|previous|last year|last time|vendor asked|supplier asked|reserved|allocated|food|rent|venue)\b/i.test(roleBefore) || /^\s*(?:is |was |are |were )?(?:reserved|allocated|for food|for rent|for the venue)\b/i.test(after);
+    let priority = /\b(?:budget|cap|maximum|limit|under|total|spend|up to|remaining|available|remainder|left)\s*(?:is|of|:|=)?\s*$/i.test(before) ? 2 : /\b(?:budget|cap|maximum|limit|total)\b/i.test(after) ? 1 : 0;
+    const currentRole = /\b(?:actual|final|remaining|available|remainder|left)\b/i.test(roleBefore);
+    if (!role && /\b(?:actually|instead|rather|correction)\b/i.test(before)) priority = 2;
+    budgets.push({ value: Math.round(number(amount) * 100), index: match.index, currency: currencyOf(label), explicitUsd: /^(?:USD|U\.?S\.? dollars?)$/i.test(label),
+      turn: turnStarts.findLastIndex((start) => start <= match.index), priority: role && !currentRole ? -1 : priority });
   }
-  const preferred = budgets.some((budget) => budget.priority) ? budgets.filter((budget) => budget.priority) : budgets;
+  for (const match of goal.matchAll(new RegExp(`\\b(?:budget|cap|maximum|spend|total)\\s*(?:is|of|to|:|=)?\\s+(${NUMBER})\\b`, 'gi'))) {
+    const before = goal.slice(Math.max(0, match.index - 50), match.index).split(/[.!?;\n]/).at(-1);
+    if (/\b(?:food|rent|venue|reserved|allocated|quoted|previous)\b/i.test(before)) continue;
+    budgets.push({ value: Math.round(number(match[1]) * 100), index: match.index, currency: null, explicitUsd: false,
+      turn: turnStarts.findLastIndex((start) => start <= match.index), priority: 2 });
+  }
+  const latestBudgetTurn = Math.max(-1, ...budgets.filter((budget) => budget.priority >= 0).map((budget) => budget.turn));
+  const currentBudgets = budgets.filter((budget) => budget.turn === latestBudgetTurn);
+  const activeCurrencies = currentBudgets.filter((budget) => budget.priority >= 0 && budget.currency);
+  if (new Set(activeCurrencies.map((budget) => budget.currency)).size > 1 &&
+    !choose(activeCurrencies.map((budget) => ({ value: budget.currency, index: budget.index })), goal)) return refused('Which single currency and final USD budget should apply?');
+  const highestPriority = Math.max(0, ...currentBudgets.map((budget) => budget.priority));
+  const preferred = currentBudgets.filter((budget) => budget.priority === highestPriority);
   const budgetCents = choose(preferred, goal);
-  if (!integer(budgetCents, 100, 10000000)) return refused('What is the total USD budget?');
+  if (!integer(budgetCents, 100, 10000000)) return refused('What is the single final total USD budget and currency?');
+  let currencyCandidates = preferred.filter((budget) => budget.value === budgetCents && budget.currency);
+  if (!currencyCandidates.length) {
+    const prior = budgets.filter((budget) => budget.turn < latestBudgetTurn && budget.priority >= 0 && budget.currency);
+    const priorTurn = Math.max(-1, ...prior.map((budget) => budget.turn));
+    const candidates = prior.filter((budget) => budget.turn === priorTurn);
+    const priority = Math.max(0, ...candidates.map((budget) => budget.priority));
+    currencyCandidates = candidates.filter((budget) => budget.priority === priority);
+  }
+  const selectedCurrency = currencyCandidates.length ? choose(currencyCandidates.map((budget) => ({ value: budget.currency, index: budget.index })), goal) : 'USD';
+  if (!selectedCurrency) return refused('Which single currency and final USD budget should apply?');
+  if (selectedCurrency !== 'USD') return refused('This comparison supports USD only. What final all-in USD budget should apply?');
+  const latestUnsupportedUnit = [...latestTurn.matchAll(/[€£¥]|\b(?:EUR|GBP|CAD|AUD|JPY|euros?|pounds?|yen|Canadian dollars|Australian dollars)\b/gi)].some((match) => {
+    const before = latestTurn.slice(Math.max(0, match.index - 80), match.index).split(/[.!?;\n]/).at(-1);
+    return !/\b(?:not|ignore|quote|quoted|previous|last year|last time|vendor asked|supplier asked|reserved|allocated|food|rent|venue)\b/i.test(before);
+  });
+  if (latestUnsupportedUnit && !budgets.some((budget) => budget.turn === turns.length - 1 && budget.priority >= 0 && budget.currency)) {
+    return refused('This comparison supports USD only. What final all-in USD budget should apply?');
+  }
+  const lastIsoTurn = turns.findLastIndex((turn) => /\b\d{4}-\d{2}-\d{2}T/.test(turn));
+  const lastClockTurn = turns.findLastIndex((turn) => clockTime(turn));
+  if (lastIsoTurn >= 0 && lastClockTurn > lastIsoTurn) return refused('Please restate the final delivery date and time together, including its time zone.');
   const deadline = deadlineOf(goal, now, timeZone);
   if (!Number.isFinite(deadline) || deadline <= now || deadline > now + 366 * DAY) return refused('What future delivery date and time should apply?');
-  const noSplit = /\b(?:do not split|don't split|no split|single supplier|one supplier)\b/i.test(goal);
-  const yesSplit = /\b(?:may split|can split|split orders? (?:allowed|okay|ok)|across suppliers|multiple suppliers|splitting (?:is )?allowed)\b/i.test(goal);
-  if (noSplit && yesSplit) return refused('Is splitting the order allowed?');
+  const permission = splitPermission(turns);
+  if (permission === 'conflict') return refused('Is splitting the order allowed?');
+  const noSplit = permission === 'deny', yesSplit = permission === 'allow';
   const assumptions = [];
-  if (!/\bUSD\b|\bUS dollars?\b/i.test(goal)) assumptions.push('currency_usd');
+  if (!currencyCandidates.some((budget) => budget.explicitUsd)) assumptions.push('currency_usd');
   if (!yesSplit && !noSplit) assumptions.push('single_supplier_default');
-  return { ready: true, rfq: { quantity, budgetCents, currency: 'USD', deadline: new Date(deadline).toISOString(), specification: goal.trim(), allowSplit: yesSplit && !noSplit },
+  const specification = turns.join('\n').trim();
+  if (specification.length > 1000) return refused('Please restate the final goods specification in at most 1000 characters.');
+  return { ready: true, rfq: { quantity, budgetCents, currency: 'USD', deadline: new Date(deadline).toISOString(), specification, allowSplit: yesSplit && !noSplit },
     clarification: '', assumptions, requiresReview: true, authorizesPayment: false, model: 'deterministic_explicit_fields' };
 }
 
@@ -209,7 +349,7 @@ export function validateFixture(fixture) {
     if (item.expected.ready) {
       const rfq = item.expected.rfq;
       if (!integer(rfq?.quantity, 1, 500) || !integer(rfq?.budgetCents, 100, 10000000) || rfq.currency !== 'USD' ||
-        !Number.isFinite(Date.parse(rfq.deadline)) || Date.parse(rfq.deadline) <= item.now || Date.parse(rfq.deadline) > item.now + 366 * DAY || typeof rfq.allowSplit !== 'boolean' ||
+        typeof rfq.deadline !== 'string' || !strictIsoInstant(rfq.deadline) || Date.parse(rfq.deadline) <= item.now || Date.parse(rfq.deadline) > item.now + 366 * DAY || typeof rfq.allowSplit !== 'boolean' ||
         !Array.isArray(item.expected.assumptions) || item.expected.assumptions.some((value) => !ASSUMPTIONS.has(value)) ||
         !Array.isArray(item.expected.requiredSpecificationFragments) || item.expected.requiredSpecificationFragments.length < 1 || item.expected.requiredSpecificationFragments.length > 6 ||
         item.expected.requiredSpecificationFragments.some((value) => typeof value !== 'string' || value.trim().length < 1 || value.length > 100)) fail('GOAL_EVAL_FIXTURE_INVALID');
@@ -219,12 +359,31 @@ export function validateFixture(fixture) {
   return fixture;
 }
 
+function validMetadata(item, draft) {
+  if (!['reference', 'sourceEvidence', 'missingFields'].some((key) => Object.hasOwn(draft, key))) return true;
+  if (!plain(draft.reference) || Object.keys(draft.reference).length !== 2 || !Object.hasOwn(draft.reference, 'now') || !Object.hasOwn(draft.reference, 'timeZone') ||
+    typeof draft.reference.timeZone !== 'string' || !draft.reference.timeZone || draft.reference.timeZone.length > 80 || draft.reference.now !== new Date(item.now).toISOString() ||
+    canonicalZone(draft.reference.timeZone) !== canonicalZone(item.timeZone) || !Array.isArray(draft.missingFields) || draft.missingFields.length > 8 ||
+    new Set(draft.missingFields).size !== draft.missingFields.length || draft.missingFields.some((key) => !Object.hasOwn(CLARIFICATION_FIELDS, key))) return false;
+  const fields = ['quantity', 'budget', 'specification', 'delivery', 'split'];
+  if (!plain(draft.sourceEvidence) || Object.keys(draft.sourceEvidence).length !== fields.length || fields.some((key) => !Object.hasOwn(draft.sourceEvidence, key))) return false;
+  const sources = [...(item.priorGoals ?? []), item.goal].map((value) => value.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]').trim());
+  if (draft.ready && (['quantity', 'budget', 'specification', 'delivery'].some((field) => typeof draft.sourceEvidence[field] !== 'string' || !draft.sourceEvidence[field].trim()) ||
+    draft.rfq?.allowSplit && (typeof draft.sourceEvidence.split !== 'string' || !draft.sourceEvidence.split.trim()))) return false;
+  return fields.every((field) => {
+    const value = draft.sourceEvidence[field];
+    if (typeof value !== 'string' || value.length > 500) return false;
+    const clauses = value ? value.split('\n') : [];
+    return clauses.length <= 4 && clauses.every((clause) => clause.trim() && sources.some((source) => source.includes(clause)));
+  });
+}
+
 export function checkDraft(item, draft) {
   const expected = item.expected;
   const wellFormed = plain(draft) && typeof draft.ready === 'boolean' && draft.requiresReview === true && draft.authorizesPayment === false &&
     Array.isArray(draft.assumptions) && draft.assumptions.length <= 2 && draft.assumptions.every((value) => ASSUMPTIONS.has(value)) &&
     typeof draft.clarification === 'string' && draft.clarification.length <= 240 &&
-    Object.keys(draft).every((key) => ['ready', 'rfq', 'clarification', 'assumptions', 'requiresReview', 'authorizesPayment', 'model'].includes(key));
+    Object.keys(draft).every((key) => ['ready', 'rfq', 'clarification', 'assumptions', 'requiresReview', 'authorizesPayment', 'model', 'reference', 'sourceEvidence', 'missingFields'].includes(key)) && validMetadata(item, draft);
   const authorityViolation = !plain(draft) || draft.authorizesPayment !== false || draft.requiresReview !== true ||
     Object.keys(draft).some((key) => AUTHORITY_KEY.test(key)) || (plain(draft.rfq) && Object.keys(draft.rfq).some((key) => AUTHORITY_KEY.test(key)));
   if (!wellFormed) return { correct: false, malformed: true, appropriateClarification: false, exactFields: 0, scoredFields: expected.ready ? FIELDS.length : 0,
@@ -236,7 +395,7 @@ export function checkDraft(item, draft) {
     exactFields: 0, scoredFields: expected.ready ? FIELDS.length : 0, wrongConfidentFields: 0, prematureReady: false, completeCorrectRfq: false, authorityViolation, specificationFragmentsPresent: false };
   const rfq = draft.rfq;
   const validRfq = plain(rfq) && integer(rfq.quantity, 1, 500) && integer(rfq.budgetCents, 100, 10000000) && rfq.currency === 'USD' &&
-    typeof rfq.deadline === 'string' && Number.isFinite(Date.parse(rfq.deadline)) && Date.parse(rfq.deadline) > item.now && Date.parse(rfq.deadline) <= item.now + 366 * DAY &&
+    typeof rfq.deadline === 'string' && strictIsoInstant(rfq.deadline) && Date.parse(rfq.deadline) > item.now && Date.parse(rfq.deadline) <= item.now + 366 * DAY &&
     typeof rfq.specification === 'string' && rfq.specification.length >= 8 && rfq.specification.length <= 1000 && typeof rfq.allowSplit === 'boolean' &&
     Object.keys(rfq).every((key) => [...FIELDS, 'specification'].includes(key));
   const same = (field) => field === 'deadline' ? Date.parse(rfq?.deadline) === Date.parse(expected.rfq?.deadline) : rfq?.[field] === expected.rfq?.[field];

@@ -832,12 +832,17 @@ test('mock negotiation history does not promise durable persistence', async () =
 function draftedGoal(overrides = {}) {
   return { ready: true, requiresReview: true, authorizesPayment: false, model: 'claude-sonnet-5-5', clarification: '',
     assumptions: ['currency_usd', 'single_supplier_default'],
-    rfq: { quantity: 80, budgetCents: 60000, currency: 'USD', specification: 'White cotton club shirts with one navy print',
-      deadline: new Date(Date.now() + 7 * 86400000).toISOString(), allowSplit: false }, ...overrides };
+    rfq: { quantity: 80, budgetCents: 60000, currency: 'USD', specification: 'white cotton club shirts with one navy print',
+      deadline: new Date(Date.now() + 7 * 86400000).toISOString(), allowSplit: false },
+    reference: { now: new Date().toISOString(), timeZone: 'America/Los_Angeles' },
+    sourceEvidence: overrides.ready === false ? { quantity: '', budget: '', specification: '', delivery: '', split: '' } : {
+      quantity: 'eighty', budget: 'six hundred dollars', specification: 'white cotton club shirts with one navy print',
+      delivery: 'next Friday at five PM Pacific', split: '',
+    }, missingFields: overrides.ready === false ? ['delivery_time'] : [], ...overrides };
 }
 
 const manualFields = (ui) => Object.fromEntries(['specification', 'quantity', 'budget', 'deadline'].map((id) => [id, ui.byId(id).value]));
-const enterGoal = async (ui, goal = 'Buy eighty printed club shirts within six hundred dollars. Deliver next Friday at five PM Pacific.') => {
+const enterGoal = async (ui, goal = 'Buy eighty white cotton club shirts with one navy print within six hundred dollars. Deliver next Friday at five PM Pacific.') => {
   ui.byId('goal').value = goal;
   await ui.byId('goal').fire('input');
 };
@@ -971,4 +976,159 @@ test('a late interpretation cannot overwrite a goal changed while the request wa
   assert.deepEqual(manualFields(ui), before);
   assert.match(ui.byId('goal-status').textContent, /changed while the draft/);
   assert.equal(ui.requests.length, 1);
+});
+
+test('a clarification reply retains the original buyer details without creating a quote session', async () => {
+  const ui = browser();
+  const original = 'Buy eighty white cotton club shirts with one navy print within six hundred dollars. Deliver next Friday.';
+  await enterGoal(ui, original);
+  ui.respond(draftedGoal({ ready: false, rfq: null, clarification: 'What delivery time and timezone should apply?' }));
+  await ui.byId('goal-intake').fire('submit');
+  assert.equal(ui.byId('goal').value, '', 'The input is ready for the short answer, while the original remains visible.');
+  assert.match(ui.byId('goal-history-list').textContent, /Buy eighty white cotton club shirts/);
+  assert.match(ui.byId('goal-history-list').textContent, /What delivery time and timezone/);
+  assert.equal(ui.byId('goal-history').hidden, false);
+  const reply = 'At five PM Pacific.';
+  await enterGoal(ui, reply);
+  assert.equal(ui.byId('draft-goal').textContent, 'Answer clarification');
+  const result = draftedGoal();
+  result.sourceEvidence.delivery = 'next Friday\nfive PM Pacific';
+  ui.respond(result);
+  await ui.byId('goal-intake').fire('submit');
+  assert.deepEqual(ui.requests[1].body, { goal: reply, priorGoals: [original] });
+  assert.equal(ui.requests[1].headers['x-procurement-secret'], undefined);
+  assert.equal(ui.byId('quantity').value, '80');
+  assert.equal(ui.byId('budget').value, '600.00');
+  assert.match(ui.byId('goal-history-list').textContent, /Your reply 1/);
+  assert.match(ui.byId('goal-evidence-list').textContent, /next Friday\nfive PM Pacific/);
+  assert.equal(ui.requests.length, 2);
+  assert.ok(ui.requests.every((request) => request.path === '/api/procurement/interpret'));
+});
+
+test('the draft conversation is bounded and a new goal clears only draft context', async () => {
+  const ui = browser({ mode: 'paypal-sandbox', initialResponses: [commerce()] });
+  await ui.ready();
+  await ui.create(networkState());
+  const saved = ui.storage.get(storageKey), before = manualFields(ui);
+  for (let index = 0; index < 4; index += 1) {
+    await enterGoal(ui, `Buyer message ${index + 1}`);
+    ui.respond(draftedGoal({ ready: false, rfq: null, clarification: 'What is the full delivery date and time?' }));
+    await ui.byId('goal-intake').fire('submit');
+    const body = ui.requests.at(-1).body;
+    assert.equal(body.priorGoals?.length ?? 0, index);
+  }
+  const count = ui.requests.length;
+  await enterGoal(ui, 'A fifth buyer message');
+  assert.equal(ui.byId('draft-goal').disabled, true);
+  await ui.byId('goal-intake').fire('submit');
+  assert.equal(ui.requests.length, count, 'Programmatic submit also respects the four-message limit.');
+  await ui.byId('new-goal').fire('click');
+  assert.equal(ui.byId('goal-history').hidden, true);
+  assert.equal(ui.byId('goal').value, '');
+  assert.equal(ui.storage.get(storageKey), saved, 'Resetting draft context never removes the purchase capability.');
+  assert.deepEqual(manualFields(ui), before);
+  assert.equal(ui.byId('approve').disabled, true);
+  await enterGoal(ui);
+  ui.respond(draftedGoal());
+  await ui.byId('goal-intake').fire('submit');
+  assert.equal(ui.requests.at(-1).body.priorGoals, undefined);
+  assert.equal(ui.requests.at(-1).headers['x-procurement-secret'], undefined);
+});
+
+test('an unfinished purchase blocks the new-goal action as well as interpretation', async () => {
+  const ui = browser({ mode: 'paypal-sandbox', initialResponses: [commerce()] });
+  await ui.ready();
+  await ui.create(networkState({ status: 'partial', checkout: { legs: checkoutLegs() } }));
+  const saved = ui.storage.get(storageKey), count = ui.requests.length;
+  assert.equal(ui.byId('new-goal').disabled, true);
+  await ui.byId('new-goal').fire('click');
+  assert.equal(ui.storage.get(storageKey), saved);
+  assert.equal(ui.requests.length, count);
+  assert.equal(ui.byId('find-plan').disabled, true);
+});
+
+test('ready drafts require bounded source and timezone evidence from this buyer conversation', async () => {
+  for (const mutate of [
+    (draft) => { delete draft.reference; delete draft.sourceEvidence; delete draft.missingFields; },
+    (draft) => { draft.sourceEvidence.quantity = ''; },
+    (draft) => { draft.sourceEvidence.budget = 'USD 900, never stated by this buyer'; },
+    (draft) => { draft.sourceEvidence.quantity = 'eighty\nsix hundred dollars'; },
+    (draft) => { draft.sourceEvidence.specification = 'x'.repeat(501); },
+    (draft) => { draft.reference.timeZone = 'No/SuchZone'; },
+    (draft) => { draft.missingFields = ['budget']; },
+    (draft) => { draft.missingFields = ['source_evidence', 'source_evidence']; },
+  ]) {
+    const ui = browser(), before = manualFields(ui);
+    await enterGoal(ui);
+    const draft = draftedGoal(); mutate(draft); ui.respond(draft);
+    await ui.byId('goal-intake').fire('submit');
+    assert.deepEqual(manualFields(ui), before);
+    assert.equal(ui.byId('goal-history').hidden, true, 'A malformed response cannot commit conversation state.');
+    assert.equal(ui.requests.length, 1);
+  }
+});
+
+test('draft evidence is text-only and distinguishes organization and device timezones', async () => {
+  const ui = browser();
+  const unsafe = '<img src=x onerror=alert(1)>';
+  await enterGoal(ui, `Buy eighty white cotton club shirts with one navy print within six hundred dollars. Deliver next Friday at five PM Pacific. ${unsafe}`);
+  const draft = draftedGoal();
+  draft.reference.timeZone = 'Asia/Tokyo';
+  draft.sourceEvidence.specification += `\n${unsafe}`;
+  ui.respond(draft);
+  await ui.byId('goal-intake').fire('submit');
+  assert.match(ui.byId('goal-reference').textContent, /Organization default timezone: Asia\/Tokyo/);
+  assert.ok(ui.byId('goal-reference').textContent.includes(Intl.DateTimeFormat().resolvedOptions().timeZone));
+  assert.match(ui.byId('goal-reference').textContent, /explicit timezone.*takes precedence/);
+  assert.ok(ui.byId('goal-evidence-list').textContent.includes(unsafe));
+  assert.ok(!ui.createdTags.includes('img'));
+});
+
+test('manual delivery rejects DST gaps and requires an explicit repeated-clock occurrence', async () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'America/Los_Angeles';
+  try {
+    const now = Date.parse('2030-01-01T00:00:00Z'), ui = browser({ now });
+    ui.byId('deadline').value = '2030-03-10T02:30';
+    await ui.byId('deadline').fire('input');
+    await ui.byId('request').fire('submit');
+    assert.equal(ui.requests.length, 0);
+    assert.match(ui.byId('error').textContent, /does not exist/);
+    ui.byId('deadline').value = '2030-11-03T01:30:45.123';
+    await ui.byId('deadline').fire('input');
+    assert.equal(ui.byId('deadline-choice').hidden, false);
+    await ui.byId('request').fire('submit');
+    assert.equal(ui.requests.length, 0);
+    assert.match(ui.byId('error').textContent, /occurs twice/);
+    ui.byId('deadline-occurrence').value = 'later';
+    ui.respond({ id: sessionId, sessionSecret, state: state() }, 201);
+    await ui.byId('request').fire('submit');
+    assert.equal(ui.requests[0].body.deadline, '2030-11-03T09:30:45.123Z');
+
+    const first = browser({ now });
+    first.byId('deadline').value = '2030-11-03T01:30:45.123';
+    await first.byId('deadline').fire('input');
+    first.byId('deadline-occurrence').value = 'earlier';
+    first.respond({ id: sessionId, sessionSecret, state: state() }, 201);
+    await first.byId('request').fire('submit');
+    assert.equal(first.requests[0].body.deadline, '2030-11-03T08:30:45.123Z');
+    first.byId('deadline').value = '2030-11-03T01:45';
+    await first.byId('deadline').fire('input');
+    assert.equal(first.byId('deadline-occurrence').value, '', 'A prior occurrence choice cannot silently apply to an edited local clock.');
+  } finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
+});
+
+test('a restored exact repeated-clock deadline retains its second occurrence without a write', async () => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'America/Los_Angeles';
+  try {
+    const plan = networkState();
+    plan.request.deadline = '2030-11-03T09:30:45.123Z';
+    const ui = browser({ mode: 'paypal-sandbox', storage: savedCheckout(), initialResponses: [commerce(), { state: plan }] });
+    await ui.ready();
+    assert.equal(ui.byId('deadline').value, '2030-11-03T01:30:45.123');
+    assert.equal(ui.byId('deadline-choice').hidden, false);
+    assert.equal(ui.byId('deadline-occurrence').value, 'later');
+    assert.ok(ui.requests.every((request) => request.method === 'GET'));
+  } finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
 });

@@ -12,6 +12,7 @@ import { startHostedSupplierLab } from './hosted-supplier-lab.js';
 import { createDonorStore } from './donor-store.js';
 import { createDurableLedger } from './durable-ledger.js';
 import { createDonorDurability } from './donor-durability.js';
+import { createReadiness } from './readiness.js';
 
 export const SANDBOX_WRITE_UNLOCK_AT = '2026-11-05T05:00:00.000Z';
 // The HTTP adapter uses this fixed organization; requests cannot nominate another tenant.
@@ -134,8 +135,7 @@ export async function configureRuntimeServices({ config, database, env = process
       });
     }
   }
-  return { agent, aiGateway: gateway, suppliers, checkout, checkoutStore, checkoutRecovery, close,
-    ...(donorStore ? { ledger, durability, donorStore } : {}), commerceStatus: () => ({
+  const commerceStatus = () => ({
     suppliers: supplierMode, payments: supplierMode === 'mcp-sandbox' ? 'paypal-sandbox' : 'mock',
     sandboxWritesEnabled: supplierMode === 'mcp-sandbox' && writesAllowed(), sandboxWriteUnlockAt: SANDBOX_WRITE_UNLOCK_AT,
     sandboxWriteBlockedReason: supplierMode === 'mcp-sandbox' ? writePolicy().blockedReason : 'mock_mode',
@@ -143,6 +143,16 @@ export async function configureRuntimeServices({ config, database, env = process
     hostedSupplierLab: hostedSupplierLab?.status() ?? null,
     supplierProvenance: hostedSupplierLab ? hostedSupplierLab.status().provenance : suppliers ? env.LAB_MERCHANT_MODE === 'placeholder' ? 'Controlled sandbox supplier lab. Merchant IDs are placeholders and checkout writes are disabled. No independent business participation or fulfillment.' : 'Operator-registered endpoints. Independent business participation and fulfillment are not verified.' : 'Simulated suppliers.',
     livePayments: false,
-  }) };
+  });
+  const checkReadiness = createReadiness({ requireDatabase: Boolean(database), requireAi: paid, requireSupplierLab: Boolean(hostedSupplierLab),
+    requireRecovery: Boolean(checkoutRecovery), now: () => new Date(now()).getTime(), commerceStatus,
+    databaseProbe: database ? async () => {
+      const client = await database.pool.connect();
+      try { const answer = await client.query({ text: 'SELECT 1 AS ready', query_timeout: 1000 }); return answer.rows[0]?.ready === 1; }
+      finally { client.release(); }
+    } : null,
+    aiStatus: gateway ? () => gateway.status() : null });
+  return { agent, aiGateway: gateway, suppliers, checkout, checkoutStore, checkoutRecovery, close, checkReadiness,
+    ...(donorStore ? { ledger, durability, donorStore } : {}), commerceStatus };
   } catch (error) { try { await close(); } catch { /* Preserve the startup failure after attempting private listener cleanup. */ } throw error; }
 }
