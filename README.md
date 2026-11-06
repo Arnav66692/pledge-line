@@ -1,5 +1,7 @@
 # Pledge Line
 
+Try `/rehearsal` for a credential-free donor-relief simulation with six inspectable outcomes. It runs the current consent, relief and claim-checking code against disposable mock records, without API credits or payments. [Scope and validation](docs/RELIEF-REHEARSAL-2026-11-06.md).
+
 The after-hours donor line for small nonprofits.
 
 Current evidence: [working demo](https://pledge-line.onrender.com/demo), [actual $674.15 sandbox checkout](docs/results/guarded-checkout-2026-11-05.json), and [AI comparisons with retained failures](docs/AI-VALUE-EVIDENCE-2026-11-05.md). The latest fresh purchase-drafting comparison failed its improvement gate; the historical routing comparison shows a narrower advantage. No general AI superiority or live-money readiness is claimed.

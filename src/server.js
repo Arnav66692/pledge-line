@@ -23,6 +23,7 @@ import { connectDatabase } from './database.js';
 import { configureRuntimeServices } from './runtime-services.js';
 import { wrapDurableCalls, observeMockPayPal, DonorDurabilityError } from './donor-durability.js';
 import { createReadiness } from './readiness.js';
+import { runRehearsal } from './rehearsal.js';
 
 const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const JSON_LIMIT_BYTES = 16 * 1024;
@@ -364,6 +365,7 @@ function createApi(deps) {
     commerceStatus: deps.commerceStatus ?? (() => ({})), now: () => clock().getTime() });
   const staffRequests = createRateLimiter({ limit: config.limits.staffPerMinute, windowMs: MINUTE_MS });
   const receiptRequests = createRateLimiter({ limit: config.limits.receiptsPerMinute, windowMs: MINUTE_MS });
+  const rehearsals = createRateLimiter({ limit: 12, windowMs: MINUTE_MS });
   const limitOr429 = (limiter, ip) => { if (!limiter.allow(ip)) throw tooManyRequests(limiter.waitMs(ip), !config.trustProxy); };
   const procurementRoute = createProcurementHttp({
     createService: (scenario) => {
@@ -486,6 +488,17 @@ function createApi(deps) {
     if (pathname === '/demo') {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
       return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'demo.html'));
+    }
+    if (pathname === '/rehearsal') {
+      if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+      return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'rehearsal.html'));
+    }
+    if (pathname === '/api/rehearsal') {
+      if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
+      limitOr429(rehearsals, ip);
+      const input = await readJson(req);
+      try { return send(res, 200, await runRehearsal(input)); }
+      catch (error) { if (error.status === 400) throw new HttpError(400, error.message); throw error; }
     }
     if (pathname === '/procurement') {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pledge Line. Put the promise to the test.</title>
+  <meta name="description" content="Run the actual donor-relief safety logic with disposable simulated records. No sign-in, credentials or payments.">
+  <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/demo.css"><link rel="stylesheet" href="/rehearsal.css">
+  <script src="/rehearsal.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#rehearsal">Skip to the rehearsal</a>
+<header><a class="wordmark" href="/">pledge line</a><nav aria-label="Primary"><a href="/">Donor line</a><a href="/demo">Recorded evidence</a><a href="/rehearsal" aria-current="page">Try relief</a></nav></header>
+<main>
+  <section class="rehearsal-intro"><p class="kicker">The after-hours donor line</p><h1>A hard month.<br>A promise kept.</h1><p class="lead">Give an eligible donor this month's gift back. Confirm the sponsor's payment first. Keep the monthly gift active.</p><p class="scope">Interactive simulation. Real consent, relief and claim-checking code, with disposable mock PayPal records and rules routing. No external API calls, AI credits, sign-in or payments.</p></section>
+  <section class="rehearsal-layout" id="rehearsal" aria-label="Donor relief rehearsal">
+    <form id="rehearsal-form">
+      <h2>What happens tonight?</h2>
+      <div class="amount-field"><label for="amount">The donor's latest gift, USD</label><div><span aria-hidden="true">$</span><input id="amount" name="amount" type="number" min="1" max="50" step="0.01" value="25.00" required inputmode="decimal" aria-describedby="amount-help"></div><p id="amount-help">Eligible range for this rehearsal, $1 to $50.</p></div>
+      <fieldset><legend>The situation</legend>
+        <label><input type="radio" name="scenario" value="covered" checked><span>Give this month back<small>The sponsor payment and donor refund complete.</small></span></label>
+        <label><input type="radio" name="scenario" value="no_consent"><span>The donor has not said yes<small>A request alone grants no payment authority.</small></span></label>
+        <label><input type="radio" name="scenario" value="changed_charge"><span>The charge changes<small>The old offer cannot approve a different amount.</small></span></label>
+        <label><input type="radio" name="scenario" value="sponsor_declined"><span>The sponsor payment is refused<small>No sponsor confirmation, no donor refund.</small></span></label>
+        <label><input type="radio" name="scenario" value="refund_lost"><span>The refund response is lost<small>Read the same charge. Do not refund again.</small></span></label>
+        <label><input type="radio" name="scenario" value="refund_unknown"><span>The refund stays uncertain<small>Keep the case open. Do not claim success.</small></span></label>
+      </fieldset>
+      <button id="run" type="submit">Run the relief flow <span aria-hidden="true">↗</span></button>
+      <p id="run-status" role="status" aria-live="polite"></p>
+    </form>
+    <div class="rehearsal-output" id="output" aria-busy="false">
+      <div id="empty"><p class="kicker">A promise with a record</p><h2>Words are easy.<br>What actually moved?</h2><p>The line must be able to show the consent, payment attempts and fresh reads behind its answer.</p><p class="detail">Each run starts with new fictional records. The simulated clock is fixed to November 3. Restart durability, voice recognition and model quality are separate checks.</p></div>
+      <section id="result" hidden aria-labelledby="result-title">
+        <p class="kicker" id="result-label"></p><h2 id="result-title" tabindex="-1"></h2><p id="result-explanation"></p>
+        <dl class="rehearsal-money"><div><dt>Sponsor captured</dt><dd id="sponsor"></dd></div><div><dt>Donor refunded</dt><dd id="refunded"></dd></div><div><dt>Monthly gift</dt><dd id="gift"></dd></div></dl>
+        <p class="detail" id="fees"></p>
+        <h3 class="section-title">The conversation</h3><div id="conversation"></div>
+        <h3 class="section-title">Check the promise</h3><ul id="checks" class="checks"></ul>
+        <details><summary>The execution record</summary><p class="detail">Simulated adapter reads and attempted writes from this run. A failed response is not proof that a write did not happen.</p><div class="timeline-scroll"><table><thead><tr><th scope="col">Event</th><th scope="col">Operation</th><th scope="col">Result</th></tr></thead><tbody id="timeline"></tbody></table></div></details>
+        <details><summary>What backs each sentence</summary><p class="detail">The actual claim checker compares these sentences with this run's simulated reads and writes. Proven means backed by those records. Plain means no financial claim. This is not a PayPal attestation.</p><ul id="sentences" class="sentences"></ul></details>
+      </section>
+    </div>
+  </section>
+  <section class="rehearsal-evidence"><div><p class="kicker">Beyond the rehearsal</p><h2>Test the logic.<br>Then inspect a real record.</h2><p>This rehearsal tests the application with simulated responses. Separate retained sandbox evidence shows an actual $25 sponsor capture and $25 donor refund, plus a signed receipt that detects edited content.</p><a href="/demo#verify">Verify the recorded receipt →</a></div><div><h3>What this establishes</h3><p>How the current code handles six specific relief situations. Successful recovery reads an existing charge. Uncertain outcomes stay open. Equal gross amounts still incur payment fees.</p><h3>What remains to measure</h3><p>Independent donor and nonprofit use, sponsor economics and benefit over existing support. This rehearsal does not measure those outcomes or demonstrate model accuracy.</p><a href="/demo">Watch the working sandbox app →</a></div></section>
+</main>
+<footer><span>Pledge Line</span><a href="/procurement">Supply desk</a><span>Disposable simulation. No payments.</span></footer>
+</body>
+</html>
