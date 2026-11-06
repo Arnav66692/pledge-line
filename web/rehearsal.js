@@ -55,7 +55,8 @@ function render(result) {
   }));
   document.querySelector('#empty').hidden = true;
   document.querySelector('#result').hidden = false;
-  document.querySelector('#result-title').focus({ preventScroll: !mobile.matches });
+  document.querySelector('#result-title').focus({ preventScroll: true });
+  if (mobile.matches) document.querySelector('#result').scrollIntoView({ block: 'start' });
 }
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
