@@ -16,7 +16,10 @@
     <form id="rehearsal-form">
       <h2>What happens tonight?</h2>
       <div class="amount-field"><label for="amount">The donor's latest gift, USD</label><div><span aria-hidden="true">$</span><input id="amount" name="amount" type="number" min="1" max="50" step="0.01" value="25.00" required inputmode="decimal" aria-describedby="amount-help"></div><p id="amount-help">Eligible range for this rehearsal, $1 to $50.</p></div>
-      <fieldset><legend>The situation</legend>
+      <div class="mobile-scenario"><label for="scenario-choice">The situation</label><select id="scenario-choice">
+        <option value="covered">Give this month back</option><option value="no_consent">The donor has not said yes</option><option value="changed_charge">The charge changes</option><option value="sponsor_declined">The sponsor payment is refused</option><option value="refund_lost">The refund response is lost</option><option value="refund_unknown">The refund stays uncertain</option>
+      </select></div>
+      <fieldset class="desktop-scenarios"><legend>The situation</legend>
         <label><input type="radio" name="scenario" value="covered" checked><span>Give this month back<small>The sponsor payment and donor refund complete.</small></span></label>
         <label><input type="radio" name="scenario" value="no_consent"><span>The donor has not said yes<small>A request alone grants no payment authority.</small></span></label>
         <label><input type="radio" name="scenario" value="changed_charge"><span>The charge changes<small>The old offer cannot approve a different amount.</small></span></label>
@@ -33,7 +36,7 @@
         <p class="kicker" id="result-label"></p><h2 id="result-title" tabindex="-1"></h2><p id="result-explanation"></p>
         <dl class="rehearsal-money"><div><dt>Sponsor captured</dt><dd id="sponsor"></dd></div><div><dt>Donor refunded</dt><dd id="refunded"></dd></div><div><dt>Monthly gift</dt><dd id="gift"></dd></div></dl>
         <p class="detail" id="fees"></p>
-        <h3 class="section-title">The conversation</h3><div id="conversation"></div>
+        <details class="rehearsal-conversation" id="conversation-details" open><summary>The conversation</summary><div id="conversation"></div></details>
         <h3 class="section-title">Check the promise</h3><ul id="checks" class="checks"></ul>
         <details><summary>The execution record</summary><p class="detail">Simulated adapter reads and attempted writes from this run. A failed response is not proof that a write did not happen.</p><div class="timeline-scroll"><table><thead><tr><th scope="col">Event</th><th scope="col">Operation</th><th scope="col">Result</th></tr></thead><tbody id="timeline"></tbody></table></div></details>
         <details><summary>What backs each sentence</summary><p class="detail">The actual claim checker compares these sentences with this run's simulated reads and writes. Proven means backed by those records. Plain means no financial claim. This is not a PayPal attestation.</p><ul id="sentences" class="sentences"></ul></details>

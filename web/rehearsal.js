@@ -2,6 +2,13 @@ const form = document.querySelector('#rehearsal-form');
 const output = document.querySelector('#output');
 const button = document.querySelector('#run');
 const status = document.querySelector('#run-status');
+const scenarioChoice = document.querySelector('#scenario-choice');
+const mobile = window.matchMedia('(max-width:800px)');
+document.querySelector('#conversation-details').open = !mobile.matches;
+scenarioChoice.addEventListener('change', () => {
+  for (const radio of form.querySelectorAll('input[name="scenario"]')) radio.checked = radio.value === scenarioChoice.value;
+});
+for (const radio of form.querySelectorAll('input[name="scenario"]')) radio.addEventListener('change', () => { if (radio.checked) scenarioChoice.value = radio.value; });
 const money = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 const set = (id, text) => { document.getElementById(id).textContent = text; };
 const OUTCOMES = {
@@ -48,7 +55,7 @@ function render(result) {
   }));
   document.querySelector('#empty').hidden = true;
   document.querySelector('#result').hidden = false;
-  document.querySelector('#result-title').focus({ preventScroll: true });
+  document.querySelector('#result-title').focus({ preventScroll: !mobile.matches });
 }
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
