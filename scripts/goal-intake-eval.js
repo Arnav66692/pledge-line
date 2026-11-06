@@ -198,10 +198,18 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
   goal = turns.join(separator);
   try { localParts(now, timeZone); } catch { return refused('Please supply a valid time zone.'); }
   const quantities = [];
-  const items = '(?:t[- ]?shirts|shirts|tees|mugs|tote bags|posters|flyers)';
-  const adjectives = '(?:white|black|blue|navy|red|green|cotton|volunteer|club|matching|identical|printed|plain|canvas)';
-  for (const match of goal.matchAll(new RegExp(`\\b(${NUMBER})(?:\\s+${adjectives}){0,5}\\s+${items}\\b`, 'gi'))) {
-    if (!/\bnot\s*$/i.test(goal.slice(Math.max(0, match.index - 12), match.index))) quantities.push({ value: number(match[1]), index: match.index });
+  const items = '(?:t[- ]?shirts?|shirts?|tees|mugs?|tote bags?|bags?|posters?|flyers?|units?|pieces?|badges?|bottles?|kits?|meals?|blankets?|jackets?)';
+  const descriptor = "[a-z]+(?:[-'][a-z]+)*";
+  const countRoles = new Set(('print prints printing color colors colour colours logo logos design designs size sizes pack packs box boxes case cases carton cartons bundle bundles set sets dozen dozens percent percentage per each of for with at by on under over between before after and or to from than instead cost costs price prices budget usd eur gbp cad aud jpy dollar dollars currency shipping fee fees delivery date dates time times sku january february march april may june july august september october november december').split(' '));
+  // Open product descriptors are bounded to eight words and stop at the nearest supported noun.
+  // Counts for packaging, artwork, pricing, identifiers or dates cannot become the complete item quantity.
+  for (const match of goal.matchAll(new RegExp(`\\b(${NUMBER})\\s+((?:${descriptor}\\s+){0,8}?)${items}\\b`, 'gi'))) {
+    const before = goal.slice(Math.max(0, match.index - 80), match.index), after = goal.slice(match.index + match[0].length);
+    if (match[2].toLowerCase().split(/[\s-]+/).some((word) => countRoles.has(word)) ||
+      /(?:[$€£¥]\s*|\b(?:not|no|instead of|USD|EUR|GBP|CAD|AUD|JPY)\s*)$/i.test(before) ||
+      /\b(?:sku|price|cost|budget|date|time|size|print|colou?r|logo|design|january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:id|code|number|count))?\s*[:#=]?\s*$|\b(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)\s+of\s*$/i.test(before) ||
+      /^\s+(?:colou?rs?|prints?|designs?|sizes?|per\b|for each\b)/i.test(after)) continue;
+    quantities.push({ value: number(match[1]), index: match.index });
   }
   for (const match of goal.matchAll(/\bquantity\s*[:=]?\s*(\d{1,3})\b/gi)) quantities.push({ value: Number(match[1]), index: match.index });
   const latestTurn = turns.at(-1);

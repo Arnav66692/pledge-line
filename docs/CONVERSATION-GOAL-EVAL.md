@@ -4,7 +4,7 @@ This compares language-task completion by the revised main agent and a strengthe
 
 ## Construction before inference
 
-The final suite has 24 independently authored **synthetic** tasks: six explicit controls, six contextual/discourse tasks, six clarification tasks, and six timezone/negation/goods tasks. A separate author receives this contract and supported product limits, without implementation, baseline outputs, model outputs or previous evaluation wording. Their wording and labels are retained without selecting tasks according to which approach wins. This is independent case authorship inside the development process, not independent customers or externally held-out language.
+The final suite has 24 independently authored **synthetic** tasks: six explicit controls, six contextual/discourse tasks, six clarification tasks, and six timezone/negation/goods tasks. A separate author receives this contract and supported product limits without implementation, baseline outputs or model outputs. After the offline diagnostic described below, the same author session prepared fresh wording and numeric instances while remaining blind to implementation and outcomes; its earlier authored wording remained available. Their wording and labels are retained without selecting tasks according to which approach wins. This is independent case authorship inside the development process, not independent customers or externally held-out language.
 
 Each task has one to three precommitted buyer turns, an explicit UTC reference timestamp and an IANA organization timezone. Every turn has a ready-or-clarify label. Later turns are delivered identically to both arms even if an arm answered incorrectly earlier. Replies are scripted in advance, rather than chosen after seeing a model question. The current and prior buyer turns are untrusted input; neither arm receives an invented assistant conversation or payment permission. Both approaches have the same three-turn maximum.
 
@@ -61,6 +61,8 @@ Wilson intervals and the paired sign-test are descriptive calculations under ind
 ## Freeze, archive and run
 
 Implementation and baseline review precede private-case freeze. The harness hashes all recursive `src/*.js` files, both evaluation scripts, this protocol and exact fixture bytes. Freeze creates an exclusive source-byte archive and a new manifest; existing snapshots, fixtures, outputs and failures are never overwritten. Current source/file inventory, exact fixture and archived bytes must match before billable dispatch.
+
+Before the first billable comparison, an earlier synthetic set exposed a common quantity-parser limitation in an offline run: unfamiliar descriptors between an explicit count and an item noun caused clarification. Its baseline completed 2/24 tasks and none of six explicit controls. That result and its frozen source remain retained; no model call was made against that set. Both production grounding and the comparator were then strengthened with bounded generic descriptors and numerical-role counterexamples using public regressions. A newly authored set, unseen by the implementation workers, is used for the subsequent comparison. The earlier set is diagnostic evidence, not fresh validation of the repaired version. A separate pre-inference schema audit also reduced nine overlong synonym lists to the existing four-alternative limit, preserving all original artifacts and documenting the narrower lexical coverage.
 
 ```sh
 node scripts/conversation-goal-eval.js --freeze \

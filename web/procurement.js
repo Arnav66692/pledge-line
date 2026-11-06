@@ -257,9 +257,9 @@
       const supplier = node('td');
       supplier.append(node('strong', quote.supplierName || (networkMode() ? 'MCP sandbox supplier' : 'Simulated supplier')));
       if (networkMode()) supplier.append(node('small', placeholderMerchants() ? 'Controlled supplier lab; placeholder merchant ID' : 'MCP sandbox supplier'));
-      supplier.append(node('small', `${quote.quantity ?? quote.maxQuantity ?? '—'} shirts in this quote`));
+      supplier.append(node('small', `${quote.quantity ?? quote.maxQuantity ?? '—'} items in this quote`));
       if (quote.negotiated) supplier.append(node('small', 'Negotiated quote'));
-      if (Number.isSafeInteger(quote.counterOfferCents)) supplier.append(node('small', `Agent offered ${money(quote.counterOfferCents, quote.currency)} per shirt. Chosen quote is ${money(quote.unitPriceCents, quote.currency)} per shirt.`));
+      if (Number.isSafeInteger(quote.counterOfferCents)) supplier.append(node('small', `Agent offered ${money(quote.counterOfferCents, quote.currency)} per item. Chosen quote is ${money(quote.unitPriceCents, quote.currency)} per item.`));
       if (included.has(quote.supplierId)) supplier.append(node('span', 'In this plan', 'quote-tag'));
       row.append(supplier, node('td', money(quote.unitPriceCents, quote.currency)), node('td', money(quote.setupCents, quote.currency)),
         node('td', money(quote.shippingCents, quote.currency)), node('td', money(quote.taxCents, quote.currency)));
@@ -314,7 +314,7 @@
     els.allocations.replaceChildren();
     for (const allocation of list(proposal.allocations)) {
       const item = node('li');
-      item.append(node('strong', `${allocation.quantity} shirts from ${allocation.supplierName || allocation.supplierId}`),
+      item.append(node('strong', `${allocation.quantity} items from ${allocation.supplierName || allocation.supplierId}`),
         node('span', money(allocation.totalCents, proposal.currency)),
         node('span', `Goods ${money(allocation.goodsCents, proposal.currency)}, setup ${money(allocation.setupCents, proposal.currency)}, shipping ${money(allocation.shippingCents, proposal.currency)}, tax ${money(allocation.taxCents, proposal.currency)}. Delivery ${date(allocation.deliveryAt)}.`, 'allocation-detail'),
         node('span', `${networkMode() ? placeholderMerchants() ? 'Placeholder sandbox payee' : 'Registered sandbox payee' : 'Simulated payee'} ${allocation.payeeId}. Quote ${allocation.quoteId}.`, 'allocation-payee'));
@@ -322,7 +322,7 @@
     }
     els.planExpiry.textContent = `Terms expire ${date(proposal.expiresAt)}. The server checks the terms again before settlement. Status rechecks remain available after expiry.`;
     els.termsSpecification.textContent = request?.specification || '';
-    els.termsRequest.textContent = `${proposal.quantity} shirts, delivered by ${date(request?.deadline)}.`;
+    els.termsRequest.textContent = `${proposal.quantity} items, delivered by ${date(request?.deadline)}.`;
     els.termsDisclosure.textContent = typeof proposal.disclosure === 'string' ? proposal.disclosure : networkMode() ? 'MCP sandbox supplier and PayPal sandbox demonstration. Test funds only.' : 'Simulated supplier and payment demonstration.';
     if (placeholderMerchants()) els.termsDisclosure.textContent += ' Controlled supplier lab: payees use placeholder merchant IDs. Checkout is unavailable until authorized PayPal sandbox merchants are configured.';
     els.termsHash.textContent = proposal.termsHash || '';
@@ -435,7 +435,7 @@
     els.checkoutBlocked.textContent = blockedReason === 'closed_unpaid' ? 'Closed in this app. PayPal orders were not canceled.' : typeof blockedReason === 'string' ? blockedReason : '';
     for (const leg of legs) {
       const item = node('li', null, 'checkout-leg');
-      item.append(node('strong', `${leg.supplierName || leg.supplierId}, ${leg.quantity} shirts`),
+      item.append(node('strong', `${leg.supplierName || leg.supplierId}, ${leg.quantity} items`),
         node('span', `${money(leg.amountCents, leg.currency || 'USD')}. ${legNames[leg.status] || 'Status must be rechecked'}.`, 'checkout-leg-status'),
         node('span', placeholderMerchants() ? 'Controlled supplier lab; placeholder merchant ID. Checkout unavailable. No goods fulfillment.' : 'MCP sandbox supplier. Test funds; no goods fulfillment.', 'field-hint'));
       if (leg.orderId) item.append(node('span', `PayPal sandbox order ${leg.orderId}${leg.captureId ? `. Capture ${leg.captureId}` : ''}.`, 'allocation-payee'));
@@ -476,7 +476,7 @@
     for (const payment of settlements) {
       const allocation = list(state?.proposal?.allocations).find((item) => item.supplierId === payment.supplierId);
       const item = node('li');
-      item.append(node('span', `${allocation?.supplierName || payment.supplierId}, ${payment.quantity ?? allocation?.quantity ?? '—'} shirts`),
+      item.append(node('span', `${allocation?.supplierName || payment.supplierId}, ${payment.quantity ?? allocation?.quantity ?? '—'} items`),
         node('span', `${money(payment.amountCents, state?.request?.currency || 'USD')}. ${settlementNames[payment.status] || String(payment.status || 'Not attempted').replaceAll('_', ' ')}.`));
       els.settlementList.append(item);
     }
@@ -545,7 +545,7 @@
     if (!/^\d+(?:\.\d{1,2})?$/.test(budget) || !Number.isSafeInteger(budgetCents) || budgetCents < 100 || budgetCents > 10000000) throw new Error('Enter a budget from $1 to $100,000, with no more than two decimal places.');
     if (!Number.isFinite(deadline.getTime()) || deadline.getTime() <= Date.now()) throw new Error('Choose a delivery deadline in the future.');
     const specification = els.specification.value.trim();
-    if (specification.length < 8 || specification.length > 1000) throw new Error('Describe the shirts and printing you need in 8 to 1000 characters.');
+    if (specification.length < 8 || specification.length > 1000) throw new Error('Describe the goods and requirements in 8 to 1000 characters.');
     return { quantity, budgetCents, currency: 'USD', deadline: deadline.toISOString(), specification, allowSplit: els.allowSplit.checked, scenario: els.scenario.value };
   }
 

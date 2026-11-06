@@ -37,7 +37,9 @@ function numberMatches(text) {
 }
 
 const ITEM_WORDS = '(?:t[- ]?shirts?|shirts?|tees|mugs?|tote bags?|bags?|posters?|flyers?|units?|pieces?|badges?|bottles?|kits?|meals?|blankets?|jackets?)';
-const ITEM_ADJECTIVES = '(?:white|black|blue|navy|red|green|cotton|volunteer|club|matching|identical|printed|plain|canvas|organic|unisex|heavyweight|screen[- ]printed|small|medium|large)';
+const ITEM_DESCRIPTOR = "[a-z]+(?:[-'][a-z]+)*";
+const QUANTITY_ROLE_WORD = /^(?:prints?|printing|colou?rs?|logos?|designs?|sizes?|packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?|percent|percentage|per|each|of|for|with|at|by|on|under|over|between|before|after|and|or|to|from|than|instead|costs?|prices?|budget|usd|eur|gbp|cad|aud|jpy|dollars?|currency|shipping|fees?|delivery|dates?|times?|sku|january|february|march|april|may|june|july|august|september|october|november|december)$/i;
+const QUANTITY_PREFIX_ROLE = /\b(?:sku|price|cost|budget|date|time|size|print|colou?r|logo|design|january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:id|code|number|count))?\s*[:#=]?\s*$|\b(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)\s+of\s*$/i;
 const CORRECTION = /\b(?:actually|instead|rather|make that|make it|change|correct|correction|final|now|i mean)\b/i;
 const MONEY_UNIT = /\$|\b(?:USD|U\.?S\.? dollars?|dollars?|euros?|EUR|GBP|CAD|AUD|JPY)\b/i;
 const HISTORIC = /\b(?:previous|prior|historical|old|original|vendor|supplier|quot(?:e|ed)|estimate|invoice|reserved?|earmarked)\b/gi;
@@ -60,10 +62,15 @@ function quantityCandidates(text, priorQuantityKnown = false) {
   if (oneEach) {
     for (const match of text.matchAll(new RegExp(`\\b(${NUMBER_PATTERN})\\s+(?:volunteers?|participants?|people)\\b`, 'gi'))) found.push({ value: numberWords(match[1]), index: match.index, end: match.index + match[0].length });
   } else {
-    const itemPattern = new RegExp(`\\b(${NUMBER_PATTERN})\\s+(?:${ITEM_ADJECTIVES}\\s+){0,6}${ITEM_WORDS}\\b`, 'gi');
+    // Bind to the nearest supported item noun through a bounded, open descriptor grammar.
+    // Role words reject packaging, decoration counts, percentages and financial/calendar values;
+    // accepting arbitrary descriptors is lexical grounding, not a general semantic proof.
+    const itemPattern = new RegExp(`\\b(${NUMBER_PATTERN})\\s+((?:${ITEM_DESCRIPTOR}\\s+){0,8}?)${ITEM_WORDS}\\b`, 'gi');
     for (const match of text.matchAll(itemPattern)) {
       const end = match.index + match[0].length;
-      if (numericRoleAllowed(text, match.index, match.index + match[1].length) && !/^\s+(?:colors?|colours?|prints?|designs?|sizes?|per\b|for each\b)/i.test(text.slice(end))) found.push({ value: numberWords(match[1]), index: match.index, end });
+      const descriptors = match[2].trim().split(/[\s-]+/).filter(Boolean);
+      if (!descriptors.some((word) => QUANTITY_ROLE_WORD.test(word)) && !QUANTITY_PREFIX_ROLE.test(text.slice(Math.max(0, match.index - 80), match.index)) &&
+        numericRoleAllowed(text, match.index, match.index + match[1].length) && !/^\s+(?:colors?|colours?|prints?|designs?|sizes?|per\b|for each\b)/i.test(text.slice(end))) found.push({ value: numberWords(match[1]), index: match.index, end });
     }
   }
   for (const match of text.matchAll(new RegExp(`\\b(?:quantity|qty|count)(?:\\s+(?:is|of|should be))?\\s*[:=]?\\s*(${NUMBER_PATTERN})\\b`, 'gi'))) {

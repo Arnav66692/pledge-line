@@ -42,6 +42,25 @@ test('numeric source checks support ordinary words and money but reject unrelate
   assert.equal(budgetIsGrounded(100, '$1.999 total'), false);
 });
 
+test('quantity grounding accepts bounded unfamiliar descriptors without treating other numeric roles as item counts', () => {
+  for (const phrase of ['48 cobalt-blue lightweight woven-cotton shirts', 'forty-eight brushed satin-finish insulated bottles',
+    '48 custom soft durable lined reversible washable reusable cobalt-blue bags', 'quantity: 48']) {
+    assert.equal(quantityIsGrounded(48, phrase), true, phrase);
+  }
+  for (const [value, phrase] of [[2, '2 print colors on white cotton shirts'], [2, '2 logos on custom shirts'],
+    [6, '6 boxes of white cotton shirts'], [24, '6 boxes of 24 shirts'], [2, '2 dozen cotton shirts'],
+    [100, '100 percent recycled cotton shirts'], [48, 'SKU 48 cobalt-blue shirts'], [48, 'price 48 cotton shirts'],
+    [13, 'November 13 lightweight shirts'], [48, '48 cotton shirts per box'],
+    [48, '48 custom soft durable lined reversible washable reusable cobalt-blue lightweight shirts']]) {
+    assert.equal(quantityIsGrounded(value, phrase), false, phrase);
+  }
+  const phrase = '48 cobalt-blue lightweight woven-cotton shirts', input = raw();
+  input.quantity = 48; input.specification = 'cobalt-blue lightweight woven-cotton shirts';
+  input.evidence.quantity = phrase; input.evidence.specification = input.specification;
+  const result = normalized(input, goal.replace('100 white cotton shirts', phrase));
+  assert.equal(result.ready, true); assert.equal(result.rfq.quantity, 48);
+});
+
 test('split permission respects surrounding negation, same-turn conflict and later explicit correction', () => {
   for (const phrase of ['Do not split.', "Don't split.", 'Don’t split.', 'No splits.', 'Use one supplier.', 'I am not allowing split orders across suppliers.',
     'We may not split across suppliers.', 'We cannot allow splitting.', 'You may not split the order.', "We can't permit splitting."]) assert.equal(splitPermission([phrase]), 'deny', phrase);

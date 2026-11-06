@@ -49,6 +49,21 @@ test('baseline asks rather than inventing missing, conflicting or unsupported li
   }
 });
 
+test('baseline accepts bounded unfamiliar descriptors and refuses numeric packaging, print, percentage and identifier roles', () => {
+  for (const phrase of ['48 cobalt-blue lightweight woven-cotton shirts', 'forty-eight brushed satin-finish insulated bottles',
+    '48 custom soft durable lined reversible washable reusable cobalt-blue bags', 'Quantity: 48 cotton shirts']) {
+    const draft = deterministicGoalDraft(input(`Buy ${phrase} under USD 800 total. Deliver 2026-11-13 at 5 PM Pacific.`));
+    assert.equal(draft.ready, true, phrase); assert.equal(draft.rfq.quantity, 48);
+  }
+  for (const phrase of ['2 print colors on white cotton shirts', '2 logos on custom shirts', '6 boxes of white cotton shirts',
+    '6 boxes of 24 shirts', '2 dozen cotton shirts', '100 percent recycled cotton shirts', 'SKU 48 cobalt-blue shirts',
+    'price 48 cotton shirts', 'November 13 lightweight shirts', '48 cotton shirts per box',
+    '48 custom soft durable lined reversible washable reusable cobalt-blue lightweight shirts']) {
+    const draft = deterministicGoalDraft(input(`Buy ${phrase} under USD 800 total. Deliver 2026-11-13 at 5 PM Pacific.`));
+    assert.equal(draft.ready, false, phrase); assert.match(draft.clarification, /complete quantity/, phrase);
+  }
+});
+
 test('baseline refuses impossible calendar dates and unchosen DST gaps or folds', () => {
   for (const deadline of ['2027-02-30T12:00:00Z', '2027-03-14 at 2:30 AM Pacific', '2026-11-01 at 1:30 AM Pacific']) {
     const draft = deterministicGoalDraft({ goal: `Buy 60 cotton shirts under USD 800, deliver ${deadline}.`,
