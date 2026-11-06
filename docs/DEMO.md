@@ -2,6 +2,8 @@
 
 The operator is a coordinator at the fictional Sunny Hollow Pantry. Donor care is the primary story. Supply desk is a separate staff purchasing task, such as volunteer shirts for a pantry distribution. A supplier quote is a promise, not fulfilled stock. Do not imply that donor refunds finance procurement or that the app links those balances.
 
+The current [96-second working-app recording](../web/demo-assets/continuous-demo-20261105.mp4) shows an actual PayPal sandbox pause and restart, original and edited receipt verification, a source-backed buying clarification and three controlled MCP supplier quotes. Separate fresh consent precedes each donor change; the gift finishes Active. The guard chooses the $674.15 verified deterministic plan over the $676.25 AI candidate. No procurement purchase is approved or paid in this recording. An uninterrupted 82-second workflow is followed by two labeled read-only inspections, all at original speed. Read its [captions](../web/demo-assets/continuous-demo-20261105.vtt) and [provenance](../web/demo-assets/continuous-demo-20261105-provenance.txt) for the exact scope and editing method. The [earlier 170-second recording](../web/demo-assets/working-demo.mp4) and its [historical provenance](../web/demo-assets/working-demo-provenance.txt) remain available. The plan below proposes a different, longer relief story; it is not a transcript of the current recording.
+
 ## Three-minute recording plan
 
 | Time | Show | Evidence needed |

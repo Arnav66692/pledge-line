@@ -170,6 +170,18 @@ test('coordinated explicit exclusions remain required negative facts without req
   assert.ok(checkConversationDraft(checked, value).missingFactIds.includes('no_engraving'));
 });
 
+test('explicit suffix exclusions and ordinary negative contractions do not request forbidden materials', () => {
+  const checked = { expected: expected(), input: input() }, value = draft();
+  for (const ending of ['Polyester is not acceptable.', 'Polyester is forbidden.', 'Polyester isn’t allowed.', "Don't use polyester.", 'You mustn’t include polyester.']) {
+    value.rfq.specification = `White cotton shirts with one navy print; ${ending}`;
+    assert.equal(checkConversationDraft(checked, value).forbiddenPositiveAttributes, 0, ending);
+  }
+  for (const ending of ['Polyester is acceptable.', 'Polyester is not unacceptable.', 'Polyester is not required.', 'Polyester; polyester is not acceptable.']) {
+    value.rfq.specification = `White cotton shirts with one navy print; ${ending}`;
+    assert.equal(checkConversationDraft(checked, value).forbiddenPositiveAttributes, 1, ending);
+  }
+});
+
 test('clarification must address a labeled constraint and cannot smuggle a partial RFQ', () => {
   const checked = { expected: { ready: false, clarificationFor: ['time_zone'] }, input: input() };
   const value = { ready: false, rfq: null, clarification: 'Which timezone and UTC offset should I use?', assumptions: [], requiresReview: true, authorizesPayment: false, model: 'test' };

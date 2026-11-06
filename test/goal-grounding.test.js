@@ -691,3 +691,139 @@ test('denied zone choices remain unresolved and cannot clear an earlier unknown 
   noGoodsConfusion.specification = 'white cotton shirts, no embroidery'; noGoodsConfusion.evidence.specification = noGoodsConfusion.specification;
   assert.equal(normalized(noGoodsConfusion, text).ready, true);
 });
+
+test('typed numeric roles keep paper-size goods while excluding measurements, clocks and component counts', () => {
+  for (const size of ['A0', 'A3', 'A10', 'B4', 'C5']) {
+    const text = `Buy 27 ${size} sketch pads under USD 920 total.`;
+    assert.equal(quantityIsGrounded(27, `27 ${size} sketch pads`, [text]), true, size);
+    assert.equal(quantityIsGrounded(Number(size.slice(1)), size, [text]), false, size);
+  }
+  const measures = 'Buy 27 canvas carrier bags with two reinforced handles, each 83 mm wide. Budget USD 920 total.';
+  assert.equal(quantityIsGrounded(27, '27 canvas carrier bags', [measures]), true);
+  assert.equal(quantityIsGrounded(2, 'two reinforced handles', [measures]), false);
+  assert.equal(quantityIsGrounded(83, '83 mm wide', [measures]), false);
+  assert.equal(quantityIsGrounded(2, 'Buy carrier bags with two reinforced handles.'), false);
+  for (const unit of ['mm', 'cm', 'kg', 'ml']) {
+    const text = `Buy 27 rolls, 83${unit}wide, under USD 920 total.`;
+    assert.equal(quantityIsGrounded(27, '27 rolls', [text]), true, unit);
+    assert.equal(quantityIsGrounded(83, `83${unit}wide`, [text]), false, unit);
+  }
+  const london = goal.replace('5 PM Pacific', '16:30 Europe/London');
+  assert.equal(goalCurrencyContext([london]).currency, 'USD');
+  assert.equal(budgetIsGrounded(80000, 'USD 800 total', [london]), true);
+  assert.equal(quantityIsGrounded(30, '30 Europe/London', [london]), false);
+  assert.equal(goalCurrencyContext([london.replace('USD 800', 'EUR 800')]).currency, 'EUR');
+  const input = raw(); input.deadline = '2026-11-13T16:30:00.000Z';
+  input.localDelivery = { date: '2026-11-13', time: '16:30', timeZone: 'Europe/London', offset: '' };
+  input.evidence.delivery = '2026-11-13 at 16:30 Europe/London';
+  assert.equal(normalized(input, london).ready, true);
+});
+
+test('narrow labeled budget updates and named retention clauses preserve the other limits', () => {
+  for (const update of ['Cap is now 185; quantity, delivery deadline and goods all stay as stated.',
+    'Budget now 185; quantity, delivery deadline and goods remain as stated.']) {
+    const input = raw(); input.budgetCents = 18500; input.evidence.budget = update.split(';')[0];
+    const result = normalized(input, update, { priorGoals: [goal] });
+    assert.equal(result.ready, true, update); assert.equal(result.rfq.quantity, 100);
+    assert.equal(result.rfq.budgetCents, 18500); assert.equal(result.rfq.deadline, raw().deadline);
+  }
+  const input = raw(); input.quantity = 27; input.evidence.quantity = '27 shirts';
+  const reply = 'Change the count to 27 shirts, budget and delivery deadline all stay as stated.';
+  const result = normalized(input, reply, { priorGoals: [goal] });
+  assert.equal(result.ready, true); assert.equal(result.rfq.budgetCents, 80000);
+  const arbitrary = raw(); arbitrary.budgetCents = 18500; arbitrary.evidence.budget = '185';
+  assert.equal(normalized(arbitrary, '185', { priorGoals: [goal] }).ready, false);
+});
+
+test('word-number goods replies use one shared buyer context for values and exact source proof', () => {
+  const prior = 'Buy 31 black folding chairs under USD 920 total. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  const reply = 'Twenty-seven chairs, same black folding design';
+  const input = { ...raw(), quantity: 27, budgetCents: 92000, deadline: '2026-11-23T23:00:00.000Z', specification: 'black folding chairs',
+    evidence: { quantity: 'Twenty-seven chairs', budget: 'USD 920 total', specification: 'black folding chairs', delivery: '2026-11-23 at 3 PM Pacific', split: 'Use one supplier' },
+    localDelivery: { date: '2026-11-23', time: '15:00', timeZone: 'America/Los_Angeles', offset: '' } };
+  const result = normalized(input, reply, { priorGoals: [prior] });
+  assert.equal(result.ready, true); assert.equal(result.rfq.quantity, 27); assert.equal(result.rfq.specification, 'black folding chairs');
+  assert.equal(quantityIsGrounded(31, '31 black folding chairs', [prior, reply]), false);
+  for (const text of ['Twenty-seven cents, same black folding design', 'SKU twenty-seven chairs',
+    'Twenty-seven chairs per carton, same black folding design', 'Twenty-seven chairs, budget 185']) {
+    assert.equal(quantityIsGrounded(27, text, [prior, text]), false, text);
+  }
+});
+
+test('postposed reported requests are background counts without imposing approval on review-only drafts', () => {
+  const text = 'We need 31 bags for this order. The 58 bags were requested for an earlier campaign and were never approved.';
+  assert.equal(quantityIsGrounded(31, '31 bags', [text]), true);
+  assert.equal(quantityIsGrounded(58, '58 bags', [text]), false);
+  const draftOnly = 'I have not approved my 31 shirts yet. Budget USD 920 total. Deliver 2026-11-23 at 3 PM Pacific.';
+  assert.equal(quantityIsGrounded(31, '31 shirts', [draftOnly]), true);
+});
+
+test('adjacent currency-code amounts remain explicit without matching the start of a zone name', () => {
+  const usd = raw(); usd.evidence.budget = 'USD800 total';
+  const usdGoal = goal.replace('USD 800', 'USD800');
+  const result = normalized(usd, usdGoal);
+  assert.equal(result.ready, true); assert.equal(result.rfq.budgetCents, 80000);
+  assert.deepEqual(goalCurrencyContext([usdGoal]), { currency: 'USD', explicit: true });
+  for (const code of ['EUR', 'CHF']) {
+    const text = goal.replace('USD 800', `${code}800`), input = raw(); input.evidence.budget = `${code}800 total`;
+    assert.equal(goalCurrencyContext([text]).currency, code, code);
+    assert.equal(normalized(input, text).ready, false, code);
+    assert.equal(budgetIsGrounded(80000, input.evidence.budget, [text]), false, code);
+  }
+  const london = usdGoal.replace('5 PM Pacific', '16:30 Europe/London');
+  assert.deepEqual(goalCurrencyContext([london]), { currency: 'USD', explicit: true });
+});
+
+test('every labeled budget path rejects clock, date and measurement amounts and cannot restore an old cap', () => {
+  for (const [update, partial] of [['Budget now 18:30', 1800], ['Cap is now 2026-11-13', 202600],
+    ['Budget now 83mm', 8300], ['Budget now USD18:30', 1800], ['Budget now USD83mm', 8300]]) {
+    const input = raw(); input.budgetCents = partial; input.evidence.budget = update;
+    const result = normalized(input, update, { priorGoals: [goal] });
+    assert.equal(result.ready, false, update); assert.ok(result.missingFields.includes('budget'), update);
+    assert.equal(normalized(raw(), update, { priorGoals: [goal] }).ready, false, `${update}: an old quote cannot revive the cap`);
+  }
+  for (const update of ['Budget now 185', 'Budget now USD185']) {
+    const input = raw(); input.budgetCents = 18500; input.evidence.budget = update;
+    const result = normalized(input, update, { priorGoals: [goal] });
+    assert.equal(result.ready, true, update); assert.equal(result.rfq.budgetCents, 18500);
+  }
+});
+
+test('uppercase apparel sizes remain count descriptors while real length and volume units stay protected', () => {
+  for (const phrase of ['27 M shirts', '27 L cotton shirts', '27 M long-sleeve hoodies', '27 L wool jackets', '27 medium shirts']) {
+    const text = `Buy ${phrase} under USD 920 total. Deliver 2026-11-23 at 3 PM Pacific.`;
+    assert.equal(quantityIsGrounded(27, phrase, [text]), true, phrase);
+  }
+  for (const phrase of ['27 m shirts', '27 l cotton shirts', '27 L bottles', '27 M long fabric rolls', '27 M shirts wide', '83 mm wide bands']) {
+    assert.equal(quantityIsGrounded(27, `Buy ${phrase}`), false, phrase);
+  }
+  const text = 'Buy 27 L cotton shirts with sleeves 83 mm wide under USD 920 total.';
+  assert.equal(quantityIsGrounded(27, '27 L cotton shirts', [text]), true);
+  assert.equal(quantityIsGrounded(83, '83 mm wide', [text]), false);
+});
+
+
+test('a later valid final cap supersedes malformed budget text while a malformed last update clears it', () => {
+  for (const invalid of ['Budget now 83mm', 'Budget now 18:30']) {
+    const input = raw(); input.budgetCents = 18500; input.evidence.budget = 'USD 185';
+    const corrected = normalized(input, `${invalid}; final budget USD 185`, { priorGoals: [goal] });
+    assert.equal(corrected.ready, true, invalid); assert.equal(corrected.rfq.budgetCents, 18500); assert.equal(corrected.rfq.deadline, raw().deadline);
+    assert.equal(normalized(input, `Final budget USD 185; ${invalid}`, { priorGoals: [goal] }).ready, false, invalid);
+    assert.equal(normalized(raw(), invalid, { priorGoals: [goal] }).ready, false, invalid);
+  }
+});
+
+
+test('shortened citations cannot detach a budget clock from its actual buyer context', () => {
+  const text = 'Buy 27 white cotton shirts. Deliver 2026-11-23 Pacific. Budget now 18:30; final budget USD 185. Use one supplier.';
+  const local = { date: '2026-11-23', time: '18:30', timeZone: 'America/Los_Angeles', offset: '' };
+  const deadline = '2026-11-24T02:30:00.000Z', evidence = ['2026-11-23', '18:30', 'Pacific'];
+  const checked = groundedDelivery(local, deadline, evidence, { now, timeZone: 'America/Los_Angeles', turns: [text] });
+  assert.deepEqual(checked, { status: 'invalid', field: 'delivery_time' });
+  const input = { ...raw(), quantity: 27, budgetCents: 18500, deadline, localDelivery: local,
+    evidence: { quantity: '27 white cotton shirts', budget: 'USD 185', specification: 'white cotton shirts', delivery: evidence.join('\n'), split: 'Use one supplier' } };
+  const result = normalized(input, text);
+  assert.equal(result.ready, false); assert.ok(result.missingFields.includes('delivery_time'));
+  const actualClock = text.replace('Deliver 2026-11-23 Pacific', 'Deliver 2026-11-23 at 5 PM Pacific');
+  assert.deepEqual(groundedDelivery(local, deadline, evidence, { now, timeZone: 'America/Los_Angeles', turns: [actualClock] }), { status: 'invalid', field: 'delivery_time' });
+});

@@ -527,3 +527,89 @@ test('baseline asks for a zone when the latest policy denies known zones rather 
   assert.equal(positive.ready, true); assert.equal(positive.rfq.deadline, '2026-11-23T23:00:00.000Z');
   assert.equal(deterministicGoalDraft(input('Buy 84 felt coasters, no engraving. Deliver November 23, 2026 at 3 PM Pacific time. Budget USD 920.')).ready, true);
 });
+
+test('independent baseline protects typed count spans and accepts atomic paper-size descriptors', () => {
+  const finish = 'under USD 920 total. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const size of ['A0', 'A3', 'A10', 'B4', 'C5']) {
+    const draft = deterministicGoalDraft(input(`Buy 27 ${size} sketch pads ${finish}`));
+    assert.equal(draft.ready, true, size); assert.equal(draft.rfq.quantity, 27);
+  }
+  for (const phrase of ['27 canvas carrier bags with two reinforced handles, each 83 mm wide', '27 rolls, 83mmwide']) {
+    const draft = deterministicGoalDraft(input(`Buy ${phrase} ${finish}`));
+    assert.equal(draft.ready, true, phrase); assert.equal(draft.rfq.quantity, 27);
+  }
+  const noWholeCount = deterministicGoalDraft(input(`Buy carrier bags with two reinforced handles ${finish}`));
+  assert.equal(noWholeCount.ready, false);
+  const london = deterministicGoalDraft(input('Buy 27 sketch pads under USD 920 total. Deliver 2026-11-23 at 16:30 Europe/London. Use one supplier.'));
+  assert.equal(london.ready, true); assert.equal(london.rfq.quantity, 27); assert.equal(london.rfq.budgetCents, 92000);
+  assert.equal(london.rfq.deadline, '2026-11-23T16:30:00.000Z');
+  assert.equal(deterministicGoalDraft(input('Buy 27 sketch pads under EUR 920 total. Deliver 2026-11-23 at 16:30 Europe/London.')).ready, false);
+});
+
+test('baseline preserves field retention and supports narrow labeled budget and short word-count replies', () => {
+  const priorGoals = ['Buy 31 black folding chairs under USD 920 total. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.'];
+  for (const goal of ['Cap is now 185; quantity, delivery deadline and goods all stay as stated.',
+    'Budget now 185; quantity, delivery deadline and goods remain as stated.']) {
+    const result = deterministicGoalDraft({ ...input(goal), priorGoals });
+    assert.equal(result.ready, true, goal); assert.equal(result.rfq.quantity, 31); assert.equal(result.rfq.budgetCents, 18500);
+    assert.equal(result.rfq.deadline, '2026-11-23T23:00:00.000Z');
+  }
+  const reply = deterministicGoalDraft({ ...input('Twenty-seven chairs, same black folding design'), priorGoals });
+  assert.equal(reply.ready, true); assert.equal(reply.rfq.quantity, 27); assert.equal(reply.rfq.budgetCents, 92000);
+  assert.equal(deterministicGoalDraft({ ...input('185'), priorGoals }).ready, false);
+});
+
+test('baseline independently excludes reported background counts without requiring purchase approval to draft', () => {
+  const finish = 'Budget USD 920 total. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  const draft = deterministicGoalDraft(input(`We need 31 bags for this order. The 58 bags were requested for an earlier campaign and were never approved. ${finish}`));
+  assert.equal(draft.ready, true); assert.equal(draft.rfq.quantity, 31);
+  const notApproved = deterministicGoalDraft(input(`I have not approved my 31 shirts yet. ${finish}`));
+  assert.equal(notApproved.ready, true); assert.equal(notApproved.rfq.quantity, 31); assert.equal(notApproved.authorizesPayment, false);
+});
+
+test('baseline keeps adjacent currency codes explicit and rejects protected labeled-budget amounts', () => {
+  const priorGoals = ['Buy 31 black folding chairs under USD920 total. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.'];
+  const usd = deterministicGoalDraft(input(priorGoals[0]));
+  assert.equal(usd.ready, true); assert.equal(usd.rfq.budgetCents, 92000);
+  for (const code of ['EUR', 'CHF']) assert.equal(deterministicGoalDraft(input(priorGoals[0].replace('USD920', `${code}920`))).ready, false, code);
+  for (const goal of ['Budget now 18:30', 'Cap is now 2026-11-13', 'Budget now 83mm', 'Budget now USD18:30', 'Budget now USD83mm']) {
+    const draft = deterministicGoalDraft({ ...input(goal), priorGoals });
+    assert.equal(draft.ready, false, goal); assert.match(draft.clarification, /budget/i, goal);
+  }
+  for (const goal of ['Budget now 185', 'Budget now USD185']) {
+    const draft = deterministicGoalDraft({ ...input(goal), priorGoals });
+    assert.equal(draft.ready, true, goal); assert.equal(draft.rfq.budgetCents, 18500);
+  }
+  const london = deterministicGoalDraft(input(priorGoals[0].replace('3 PM Pacific', '16:30 Europe/London')));
+  assert.equal(london.ready, true); assert.equal(london.rfq.budgetCents, 92000);
+});
+
+test('baseline distinguishes uppercase apparel size descriptors from actual measurements', () => {
+  const finish = 'under USD 920 total. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const phrase of ['27 M shirts', '27 L cotton shirts', '27 M long-sleeve hoodies', '27 L wool jackets', '27 medium shirts']) {
+    const draft = deterministicGoalDraft(input(`Buy ${phrase} ${finish}`));
+    assert.equal(draft.ready, true, phrase); assert.equal(draft.rfq.quantity, 27);
+  }
+  for (const phrase of ['27 m shirts', '27 l cotton shirts', '27 L bottles', '27 M long fabric rolls', '27 M shirts wide', '83 mm wide bands']) {
+    assert.equal(deterministicGoalDraft(input(`Buy ${phrase} ${finish}`)).ready, false, phrase);
+  }
+  const actual = deterministicGoalDraft(input(`Buy 27 L cotton shirts with sleeves 83 mm wide ${finish}`));
+  assert.equal(actual.ready, true); assert.equal(actual.rfq.quantity, 27);
+});
+
+
+test('baseline orders malformed and final valid budget events instead of rejecting a corrected cap', () => {
+  const priorGoals = ['Buy 31 black folding chairs under USD 920 total. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.'];
+  for (const invalid of ['Budget now 83mm', 'Budget now 18:30']) {
+    const corrected = deterministicGoalDraft({ ...input(`${invalid}; final budget USD 185`), priorGoals });
+    assert.equal(corrected.ready, true, invalid); assert.equal(corrected.rfq.budgetCents, 18500); assert.equal(corrected.rfq.deadline, '2026-11-23T23:00:00.000Z');
+    assert.equal(deterministicGoalDraft({ ...input(`Final budget USD 185; ${invalid}`), priorGoals }).ready, false, invalid);
+    assert.equal(deterministicGoalDraft({ ...input(invalid), priorGoals }).ready, false, invalid);
+  }
+});
+
+
+test('baseline cannot use a malformed budget clock as the otherwise missing delivery clock', () => {
+  const text = 'Buy 27 white cotton shirts. Deliver 2026-11-23 Pacific. Budget now 18:30; final budget USD 185. Use one supplier.';
+  assert.equal(deterministicGoalDraft(input(text)).ready, false);
+});

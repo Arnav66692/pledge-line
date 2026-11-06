@@ -174,7 +174,10 @@ export function validateConversationFixture(fixture, { fullSuite = true } = {}) 
 }
 
 function literalOccurrences(value, fragment) {
-  const target = value.toLowerCase().replace(/’/g, "'"), needle = fragment.toLowerCase().replace(/’/g, "'"), results = [];
+  const polarityText = (text) => text.toLowerCase().replace(/’/g, "'")
+    .replace(/\bcan't\b/g, 'can not').replace(/\bwon't\b/g, 'will not')
+    .replace(/\b(did|does|do|is|are|was|were|should|could|would|must)n'?t\b/g, '$1 not');
+  const target = polarityText(value), needle = polarityText(fragment), results = [];
   for (let index = target.indexOf(needle); index !== -1; index = target.indexOf(needle, index + Math.max(1, needle.length))) {
     if (/^[a-z0-9]/.test(needle) && /[a-z0-9]/.test(target[index - 1] ?? '') || /[a-z0-9]$/.test(needle) && /[a-z0-9]/.test(target[index + needle.length] ?? '')) continue;
     const before = target.slice(Math.max(0, index - 50), index).split(/[.!?;\n]/).at(-1);
@@ -190,7 +193,9 @@ function literalOccurrences(value, fragment) {
     // word "engraving" still sees its immediately preceding "no".
     const newNegativeFact = /^(?:no|without)\s+/.test(needle) && /\band\s*$/.test(before) &&
       !/\b(?:not|don't|dont|never|cannot|can't)\b/.test(before);
-    const negated = Boolean(removed) || !newNegativeFact && /\b(?:no|not|without|avoid|exclude|excluding|instead of|rather than)\s+(?:[a-z-]+\s+){0,3}$/.test(before) && !directiveDenied;
+    const suffixExclusion = /^\s+(?:(?:is|are)\s+(?:not|never)\s+(?:acceptable|allowed|permitted|wanted)|(?:is|are)\s+(?:unacceptable|forbidden|prohibited|excluded))\b/.test(after) &&
+      !/\b(?:not true that|not say|not state|not claim)\s*$/.test(before);
+    const negated = Boolean(removed) || suffixExclusion || !newNegativeFact && /\b(?:no|not|without|avoid|exclude|excluding|instead of|rather than)\s+(?:[a-z-]+\s+){0,3}$/.test(before) && !directiveDenied;
     const historical = !directiveDenied && /\b(?:previous|previously|earlier|old|rejected|last year|last time|used to)\b/.test(before);
     results.push({ negated, historical });
   }

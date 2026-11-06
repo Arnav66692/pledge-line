@@ -1,0 +1,112 @@
+{
+  "sourceCommit": "2a0102edcb34ab3b3df9a5b51f820dc0a0ceda71",
+  "fixtureSha256": "e14248e3d7854404ed010a91b8f3beecb2d11a1dea3ee1587087d4d3332efb58",
+  "provenance": "Fresh independently authored development-synthetic set, with pre-inference schema/commodity audit. Not external customers or an independent language population. A later independent post-run audit found15 literal singular/plural alias contract defects across12cases and prefix-only exclusion scoring errors; original frozen input/result retained. No corrected aggregate replaces this primary result.",
+  "completed": true,
+  "summary": {
+    "deterministic_explicit_fields": {
+      "tasks": 24,
+      "correctTasks": 3,
+      "taskAccuracyWilson95": [
+        0.043443,
+        0.310039
+      ],
+      "turns": 36,
+      "correctTurns": 7,
+      "appropriateClarifications": 6,
+      "exactFields": 25,
+      "scoredFields": 135,
+      "wrongConfidentFields": 0,
+      "prematureReadyTurns": 1,
+      "authorityViolations": 0,
+      "malformedOutputs": 0,
+      "requiredFacts": 83,
+      "factsPresent": 12,
+      "forbiddenPositiveAttributes": 1,
+      "errorsOrNotRun": 0,
+      "modelCalls": 0,
+      "measuredLatencyTurns": 36,
+      "meanLatencyMs": 5,
+      "knownSharedScopeDeltaNanos": {
+        "anthropic": 0,
+        "jev": 0
+      },
+      "unmeasuredCostTurns": 0,
+      "byCategory": {
+        "explicit_controls": {
+          "tasks": 6,
+          "correct": 1
+        },
+        "context_discourse": {
+          "tasks": 6,
+          "correct": 0
+        },
+        "clarification": {
+          "tasks": 6,
+          "correct": 0
+        },
+        "timezone_negation_goods": {
+          "tasks": 6,
+          "correct": 2
+        }
+      }
+    },
+    "main_agent": {
+      "tasks": 24,
+      "correctTasks": 7,
+      "taskAccuracyWilson95": [
+        0.149146,
+        0.491677
+      ],
+      "turns": 36,
+      "correctTurns": 15,
+      "appropriateClarifications": 9,
+      "exactFields": 85,
+      "scoredFields": 135,
+      "wrongConfidentFields": 0,
+      "prematureReadyTurns": 0,
+      "authorityViolations": 0,
+      "malformedOutputs": 0,
+      "requiredFacts": 83,
+      "factsPresent": 46,
+      "forbiddenPositiveAttributes": 2,
+      "errorsOrNotRun": 0,
+      "modelCalls": 36,
+      "measuredLatencyTurns": 36,
+      "meanLatencyMs": 5213,
+      "knownSharedScopeDeltaNanos": {
+        "anthropic": 408812000,
+        "jev": 0
+      },
+      "unmeasuredCostTurns": 0,
+      "byCategory": {
+        "explicit_controls": {
+          "tasks": 6,
+          "correct": 3
+        },
+        "context_discourse": {
+          "tasks": 6,
+          "correct": 1
+        },
+        "clarification": {
+          "tasks": 6,
+          "correct": 0
+        },
+        "timezone_negation_goods": {
+          "tasks": 6,
+          "correct": 3
+        }
+      }
+    }
+  },
+  "paired": {
+    "modelWins": 4,
+    "baselineWins": 0,
+    "ties": 20,
+    "signTestTwoSidedP": 0.125,
+    "controlsNoRegression": true,
+    "controlsAllCorrect": false,
+    "improvementWithinThisSet": false
+  },
+  "interpretation": "Primary full gate failed. Both arms have substantial refusals/failed lexical fact matches. Distinguish actual parser defects, raw model behavior and independently audited oracle/scorer errors; do not attribute every miss to the model or claim general superiority."
+}

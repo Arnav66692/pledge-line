@@ -1,0 +1,28 @@
+Pledge Line — actual sandbox workflow recording
+Recorded November 5, 2026 (Pacific time). Duration: 96 seconds.
+
+Video: continuous-demo-20261105.mp4
+SHA-256: ab6185c8748d3f2aac28d3c3ee6f22149ad0ecfcdb1c6e9bb87571bd7a0dedbd
+Bytes: 2906688
+Captions: continuous-demo-20261105.vtt
+Caption SHA-256: 7200dcc1773d7bebba7a7fea327cd9d12478fa2dcf2f02f469fce9adcbc67770
+Source commit: 2a0102edcb34ab3b3df9a5b51f820dc0a0ceda71
+
+What the recording demonstrates
+- The donor gives fresh consent to an exact pause proposal. A PayPal sandbox read confirms SUSPENDED. A new restart proposal requires separate fresh consent; PayPal confirms ACTIVE. The signed receipt opens after ending the call.
+- The original receipt verifies. An isolated edit to exactly sentence one is detected and identified.
+- A date-only buying goal triggers a clock-time clarification. The buyer's 5 PM Pacific reply retains the earlier source-backed, editable quantity, goods, USD budget and split limits.
+- The app obtains quotes from three project-controlled MCP sandbox suppliers. Anthropic proposes bounded counteroffers; Jev supplies advisory review.
+- The price guard selects the verified deterministic plan at $674.15 rather than the AI candidate at $676.25. This does not establish AI-specific price savings.
+- No procurement purchase is approved and no procurement order or capture is attempted in this recording. The donor subscription finished ACTIVE, independently read back from PayPal after the recording.
+
+Editing and recording method
+Output 00:00–01:22 is one contiguous 82-second interval of the successful automated app workflow, at original speed. Only idle time before and after that interval was removed.
+Output 01:22–01:30 is a labeled, separately recorded eight-second read-only inspection of the same quote results.
+Output 01:30–01:36 is a labeled, separately recorded six-second read-only inspection of the same edited receipt.
+The only cuts are at 01:22 and 01:30. There are no frozen-screen holds, speedups, generated UI frames or motion interpolation. Approximately two native browser screenshots per second were encoded at 12 frames per second by repeating captured frames according to their timestamps.
+The narration is an original authored script rendered offline with macOS speech synthesis. There is no music or recorded application/microphone audio. English captions accompany the narration. This is not a real-microphone acceptance test or an independent user study.
+
+Scope and history
+All PayPal actions use the sandbox and test funds. Live payments remain disabled. The shared demo PIN is not production donor authentication. Supplier endpoints belong to this project; independent suppliers, inventory and fulfillment have not been demonstrated. No adoption, retention improvement or staff-time savings is claimed by this recording.
+The earlier 170-second working-demo.mp4, its captions and working-demo-provenance.txt remain available as historical artifacts. That earlier recording's disclosed export-helper interruption and screen hold do not apply to this new successful recording.

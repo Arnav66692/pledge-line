@@ -3,7 +3,7 @@ const WORD_VALUES = Object.freeze({ zero: 0, one: 1, two: 2, three: 3, four: 4, 
   twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 });
 const WORD_PATTERN = `(?:(?:${Object.keys(WORD_VALUES).join('|')}|hundred|thousand|dozen|and)[ -]+){0,7}(?:${Object.keys(WORD_VALUES).join('|')}|hundred|thousand|dozen)`;
 const NUMBER_PATTERN = `(?:(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d{1,2})?|${WORD_PATTERN})`;
-const MONEY = new RegExp(`(?:([$€£¥]|\\b(?:USD|EUR|GBP|CAD|AUD|JPY|U\\.?S\\.? dollars?|Canadian dollars?|Australian dollars?|euros?|pounds?|yen))\\s*(${NUMBER_PATTERN})(?!\\w|\\.\\d|,\\d)|\\b(${NUMBER_PATTERN})\\s+(USD|EUR|GBP|CAD|AUD|JPY|U\\.?S\\.? dollars?|Canadian dollars?|Australian dollars?|euros?|pounds?|yen|dollars?))`, 'gi');
+const MONEY = new RegExp(`(?:([$€£¥]|\\b(?:USD|EUR|GBP|CAD|AUD|JPY|U\\.?S\\.? dollars?|Canadian dollars?|Australian dollars?|euros?|pounds?|yen)(?![A-Za-z_]))\\s*(${NUMBER_PATTERN})(?!\\w|\\.\\d|,\\d)|\\b(${NUMBER_PATTERN})\\s+(USD|EUR|GBP|CAD|AUD|JPY|U\\.?S\\.? dollars?|Canadian dollars?|Australian dollars?|euros?|pounds?|yen|dollars?)(?![A-Za-z_]))`, 'gi');
 const GOODS = /\b(?:shirts?|t[- ]?shirts?|tees|mugs?|totes?|bags?|posters?|flyers?|units?|badges?|bottles?|supplies|kits?|meals?|blankets?|jackets?|quantity|count|volunteers?|participants?|people|extras?|spares?)\b/i;
 const BUDGET_WORD = /\b(?:budget|cap|maximum|limit|total|spend|under|at most|no more than)\b/i;
 const ZONES = Object.freeze({ Pacific: 'America/Los_Angeles', PST: 'America/Los_Angeles', PDT: 'America/Los_Angeles',
@@ -37,25 +37,25 @@ function numberMatches(text) {
 }
 
 const ITEM_WORDS = '(?:t[- ]?shirts?|shirts?|tees|mugs?|tote bags?|bags?|posters?|flyers?|units?|pieces?|badges?|bottles?|kits?|meals?|blankets?|jackets?)';
-const ITEM_DESCRIPTOR = "(?:[a-z]+(?:[-'][a-z]+)*|[abc](?:10|[0-9]))";
+const ITEM_DESCRIPTOR = "(?:[abc](?:10|[0-9])\\b|[a-z]+(?:[-'][a-z]+)*)";
 const QUANTITY_ROLE_WORD = /^(?:prints?|printing|colou?rs?|logos?|designs?|sizes?|packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?|percent|percentage|per|each|of|for|with|at|by|on|under|over|between|before|after|and|or|to|from|than|instead|costs?|prices?|budget|usd|eur|gbp|cad|aud|jpy|dollars?|currency|shipping|fees?|delivery|dates?|times?|sku|january|february|march|april|may|june|july|august|september|october|november|december)$/i;
 const QUANTITY_PREFIX_ROLE = /\b(?:sku|price|cost|budget|date|time|size|print|colou?r|logo|design|january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:id|code|number|count))?\s*[:#=]?\s*$|\b(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)\s+of\s*$/i;
 const CORRECTION = /\b(?:actually|instead|rather|make that|make it|change|replace(?:s|d)?|revise|update|adjust|raise|lower|increase|decrease|switch|correct|correction|final|now|i mean)\b/i;
 const MONEY_UNIT = /\$|\b(?:USD|U\.?S\.? dollars?|dollars?|euros?|EUR|GBP|CAD|AUD|JPY)\b/i;
 const HISTORIC = /\b(?:previous|prior|historical|old|original|vendor|supplier|quot(?:e|ed)|estimate|invoice|reserved?|earmarked)\b/gi;
 const BUDGET_ROLE = /\b(?:final\s+(?:budget|cap|ceiling|limit)|budget|cap|ceiling|maximum|limit|all[- ]in|total|spend(?:ing)?|under|up to|no more than|not exceed|remaining|remainder|leaving|left for|use|allocate(?:d)?)\b/gi;
-const NON_CURRENCY_WORDS = new Set(['for', 'the', 'and', 'cap', 'max', 'buy', 'get', 'qty', 'now', 'was', 'our', 'use', 'its', 'tax', 'all']);
+const NON_CURRENCY_WORDS = new Set(['for', 'the', 'and', 'cap', 'max', 'buy', 'get', 'qty', 'sku', 'now', 'was', 'our', 'use', 'its', 'tax', 'all']);
 const GLOBAL_BUDGET_SCOPE = '(?:(?:overall|organization-wide|company-wide)(?:\\s+(?:event|program|project|operating|annual|quarterly)){0,2}|program|project)';
 const GLOBAL_FUND = new RegExp(`\\b${GLOBAL_BUDGET_SCOPE}\\s+(?:budget|fund|balance)\\b`, 'i');
 
 // Scope correction intent to the clause naming the field, rather than another field's edit.
 function intentClauses(text) {
-  return text.split(/[;\n]+|[.!?]\s+|,\s+(?=(?:keep|retain|preserve|leave|change|replace|revise|update|adjust|raise|lower|increase|decrease|use|make|set)\b)|\b(?:and|but)\s+(?=(?:keep|retain|preserve|leave|change|replace|revise|update|adjust|raise|lower|increase|decrease)\b)/i).map((clause) => clause.trim()).filter(Boolean);
+  return text.split(/[;\n]+|[.!?]\s+|,\s+(?=(?:keep|retain|preserve|leave|same|unchanged|change|replace|revise|update|adjust|raise|lower|increase|decrease|use|make|set)\b)|[, ]*\b(?:and|but)\s+(?=(?:keep|retain|preserve|leave|change|replace|revise|update|adjust|raise|lower|increase|decrease)\b)|,\s+(?=(?:(?:the|our)\s+)?(?:budget|cap|ceiling|limit|delivery|deadline|date|time|quantity|count|goods|specification|design|material|colou?r|print|split|supplier)\b)/i).map((clause) => clause.trim()).filter(Boolean);
 }
 
 function retainedClause(text) {
   const normalized = text.replace(/\b(?:do not|don't|dont|never)\s+(?:change|replace|adjust|revise|update)\b/gi, 'keep');
-  return /\b(?:keep|retain|preserve|leave|unchanged)\b|\b(?:remain|remains|stay|stays)\s+(?:exactly\s+)?(?:the\s+)?same\b/i.test(normalized) &&
+  return /\b(?:keep|retain|preserve|leave|unchanged)\b|^\s*same\b|\b(?:remain|remains|stay|stays)\s+(?:exactly\s+)?(?:the\s+)?(?:same|as stated)\b/i.test(normalized) &&
     !/\b(?:change|replace|revise|update|adjust|raise|lower|increase|decrease|switch|instead|rather|actually|correct(?:ion)?)\b/i.test(normalized);
 }
 
@@ -69,6 +69,49 @@ function purchaseAllocation(before, after) {
 
 function lastMatch(pattern, text) {
   return [...text.matchAll(pattern)].at(-1)?.index ?? -1;
+}
+
+
+
+function apparelSizeDescriptor(text, match) {
+  if (!/^\d+\s+[ML]$/.test(match[0])) return false;
+  const clothing = /^\s+(?:[a-z]+(?:[-'][a-z]+)*\s+){0,6}(?:t[- ]?shirts?|shirts?|tees|jackets?|hoodies?|sweaters?|jerseys?|uniforms?|coats?|vests?|trousers?|pants|shorts|socks|gloves?|hats?|caps?|aprons?|garments?|apparel)\b/i.exec(text.slice(match.index + match[0].length));
+  if (!clothing) return false;
+  const after = text.slice(match.index + match[0].length + clothing[0].length);
+  return !/^\s+(?:wide|long|high|tall|thick|deep|in\s+(?:length|width|height|volume))\b/i.test(after);
+}
+
+/** Lexical numeric spans prevent non-count values from being reconsidered as purchased item counts. */
+function numericRoleSpans(text) {
+  const spans = [];
+  const record = (kind, pattern, include = () => true) => {
+    for (const match of text.matchAll(pattern)) if (include(match)) spans.push({ kind, start: match.index, end: match.index + match[0].length });
+  };
+  record('date', /(?<!\d)\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})?)?\b/g);
+  record('clock', /(?<!\d)\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:\s*[ap]\.?m\.?)?\b/gi);
+  record('clock', /\b(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*[ap]\.?m\.?\b/gi);
+  record('zone', /\b(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/gi);
+  record('size', /\b[abc](?:10|[0-9])\b/gi);
+  record('measurement', /(?<!\d)\d+(?:\.\d+)?\s*(?:mm|cm|kg|ml|oz|ft|m|g|l|inches?|feet|yards?)(?=\b|(?:wide|long|high|tall|thick|deep)\b)/gi, (match) => !apparelSizeDescriptor(text, match));
+  record('money', MONEY);
+  record('money', /\b\d+(?:\.\d+)?\s+(?:cents?|credits?|tokens?)\b/gi);
+  return spans;
+}
+
+function propertyCount(text, index) {
+  const before = text.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+  if (/\b(?:complete\s+)?(?:quantity|qty|count)(?:\s+(?:is|of|now|is now|should be))?\s*[:=]?\s*$/i.test(before)) return false;
+  const property = lastMatch(/\b(?:with|having|featuring|features?|including|containing|contains?|equipped with|fitted with)\b/gi, before);
+  return property >= 0 && property > quantityIntentIndex(before);
+}
+
+function reportedBackgroundCount(text, candidate) {
+  const before = text.slice(0, candidate.index).split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+  if (quantityIntentIndex(before) >= 0 && currentQuantityRole(text, candidate.index)) return false;
+  const after = text.slice(candidate.end).split(/[;!?\n]|\.\s+/)[0];
+  return /^\s*(?:(?:that|which)\s+)?(?:was|were|had been|has been|have been)\s+(?:(?:previously|earlier|originally)\s+)?(?:requested|proposed|suggested|quoted|planned)\b/i.test(after) ||
+    /^\s*(?:requested|proposed|suggested|quoted|planned)\b/i.test(after) && /\b(?:unapproved|not approved|never approved|declined|rejected|previous|earlier|historical)\b/i.test(before + ' ' + after) ||
+    /\b(?:request|proposal|quote|estimate)\b/i.test(before) && /^\s*(?:was|were|is|are)?\s*(?:unapproved|not approved|never approved|declined|rejected)\b/i.test(after);
 }
 
 function numericRoleAllowed(text, index, end) {
@@ -113,11 +156,11 @@ function genericQuantityCandidates(text, allowCitedPhrase = false) {
     const before = text.slice(0, number.index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
     if ((!allowCitedPhrase && (quantityIntentIndex(before) < 0 || lastMatch(/\b(?:deliver(?:y|ed)?|deadline|date|time|budget|cap|spend|shipping|fee|print|logo|design|colou?r|sku|size)\b/gi, before) > quantityIntentIndex(before))) || !currentQuantityRole(text, number.index) ||
       !numericRoleAllowed(text, number.index, number.end) || QUANTITY_PREFIX_ROLE.test(before)) continue;
-    const after = text.slice(number.end), words = /^\s+([a-z]+(?:[-'][a-z]+)*(?:\s+[a-z]+(?:[-'][a-z]+)*){0,20})/i.exec(after);
+    const after = text.slice(number.end), words = new RegExp(`^\\s+(${ITEM_DESCRIPTOR}(?:\\s+${ITEM_DESCRIPTOR}){0,20})`, 'i').exec(after);
     if (!words || number.value <= 12 && /^\s*(?:a\.?m\.?|p\.?m\.?)\b/i.test(after)) continue;
     const tokens = words[1].split(/\s+/), phrase = [];
     for (const token of tokens) {
-      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|made|constructed|manufactured|finished|please|due|instead|rather)$/i.test(token)) break;
+      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|made|constructed|manufactured|finished|was|were|is|are|has|have|had|please|due|instead|rather)$/i.test(token)) break;
       if (/^of$/i.test(token) && !(phrase.length === 1 && /^pairs?$/i.test(phrase[0]))) break;
       phrase.push(token);
     }
@@ -127,7 +170,7 @@ function genericQuantityCandidates(text, allowCitedPhrase = false) {
     const sourceTokens = [...words[1].matchAll(/\S+/g)], lastToken = sourceTokens[phrase.length - 1];
     const phraseEnd = number.end + words[0].indexOf(words[1]) + lastToken.index + lastToken[0].length;
     if (/[a-z0-9'_-]/i.test(text[phraseEnd] ?? '')) continue;
-    if (/^\s+(?:per|for each)\b/i.test(text.slice(phraseEnd))) continue;
+    if (/^\s+(?:per|for each|on each)\b/i.test(text.slice(phraseEnd))) continue;
     found.push({ ...number, end: phraseEnd, generic: true });
   }
   return found;
@@ -144,7 +187,7 @@ function hasBuyingContext(text) {
 function shortQuantityReply(text) {
   const values = numberMatches(text);
   return values.length === 1 && values[0].index === text.search(/\S/) &&
-    new RegExp(`^\\s*${NUMBER_PATTERN}\\s+[a-z]+(?:[-'][a-z]+)*(?:\\s+[a-z]+(?:[-'][a-z]+)*){0,7}(?:\\s*,\\s*please)?\\s*[.!]?\\s*$`, 'i').test(text);
+    new RegExp(`^\\s*${NUMBER_PATTERN}\\s+${ITEM_DESCRIPTOR}(?:\\s+${ITEM_DESCRIPTOR}){0,7}(?:\\s*,\\s*(?:same|unchanged|keep (?:the )?same|retain (?:the )?same)\\s+${ITEM_DESCRIPTOR}(?:\\s+${ITEM_DESCRIPTOR}){0,7})?(?:\\s*,\\s*please)?\\s*[.!]?\\s*$`, 'i').test(text);
 }
 
 function quantityCandidates(text, priorQuantityKnown = false, allowCitedPhrase = false, inheritedBuyerRole = false) {
@@ -175,7 +218,8 @@ function quantityCandidates(text, priorQuantityKnown = false, allowCitedPhrase =
     const values = numberMatches(text).filter((match) => numericRoleAllowed(text, match.index, match.end));
     if (values.length === 1) found.push(values[0]);
   }
-  return found.filter((item) => Number.isSafeInteger(item.value) && currentQuantityRole(text, item.index)).sort((a, b) => a.index - b.index);
+  const protectedSpans = numericRoleSpans(text);
+  return found.filter((item) => Number.isSafeInteger(item.value) && !protectedSpans.some((span) => item.index >= span.start && item.index < span.end) && !propertyCount(text, item.index) && !reportedBackgroundCount(text, item) && currentQuantityRole(text, item.index)).sort((a, b) => a.index - b.index);
 }
 
 function selectCandidate(candidates, text) {
@@ -195,12 +239,14 @@ function currencyUnit(value) {
 }
 
 function budgetCandidates(text) {
-  const found = [];
+  const found = [], protectedSpans = numericRoleSpans(text).filter((span) => span.kind !== 'money');
   for (const clauseMatch of text.matchAll(/[^!?;\n]+/g)) {
     const clause = clauseMatch[0];
     const monies = [...clause.matchAll(MONEY)];
     for (const [index, match] of monies.entries()) {
       const start = match.index, end = start + match[0].length;
+      const amountText = match[2] ?? match[3], amountStart = clauseMatch.index + start + match[0].lastIndexOf(amountText);
+      if (protectedSpans.some((span) => amountStart < span.end && span.start < amountStart + amountText.length)) continue;
       const before = clause.slice(monies[index - 1] ? monies[index - 1].index + monies[index - 1][0].length : 0, start).split(/[.!?]\s+/).at(-1);
       const after = clause.slice(end, monies[index + 1]?.index ?? clause.length).split(/[.!?]\s+/)[0];
       const role = lastMatch(BUDGET_ROLE, before), historic = lastMatch(HISTORIC, before);
@@ -215,8 +261,10 @@ function budgetCandidates(text) {
     }
   }
   if (!found.length && BUDGET_WORD.test(text) && !MONEY_UNIT.test(text)) {
-    const labeled = new RegExp(`\\b(?:budget|cap|ceiling|maximum|limit|under|spend|up to|total)(?:\\s+(?:is|of|should be|at|to|with))?\\s*[:=]?\\s*(${NUMBER_PATTERN})\\b|\\b(${NUMBER_PATTERN})\\s+(?:total|all[- ]in|maximum|budget|cap)\\b`, 'gi');
+    const labeled = new RegExp(`\\b(?:budget|cap|ceiling|maximum|limit|under|spend|up to|total)(?:\\s+(?:is(?: now)?|of|should be|at|to|with|now))?\\s*[:=]?\\s*(${NUMBER_PATTERN})\\b|\\b(${NUMBER_PATTERN})\\s+(?:total|all[- ]in|maximum|budget|cap)\\b`, 'gi');
     for (const match of text.matchAll(labeled)) {
+      const amountText = match[1] ?? match[2], amountStart = match.index + match[0].lastIndexOf(amountText);
+      if (protectedSpans.some((span) => amountStart < span.end && span.start < amountStart + amountText.length)) continue;
       const before = text.slice(0, match.index).split(/[.!?]\s+|[;\n]/).at(-1), after = text.slice(match.index + match[0].length).split(/[.!?]\s+|[;\n]/)[0];
       if (new RegExp(`\\b${GLOBAL_BUDGET_SCOPE}\\s*$`, 'i').test(before) && !purchaseAllocation(before, after)) continue;
       const dollars = numberWords(match[1] ?? match[2]);
@@ -226,7 +274,37 @@ function budgetCandidates(text) {
   return found.filter((item) => Number.isSafeInteger(item.value)).sort((a, b) => a.index - b.index);
 }
 
-function latestFieldValue(turns, field) {
+
+function invalidLabeledBudgetEvents(text) {
+  const protectedSpans = numericRoleSpans(text).filter((span) => span.kind !== 'money');
+  const label = new RegExp(`\\b(?:budget|cap|ceiling|maximum|limit|under|spend|up to|total)(?:\\s+(?:is(?: now)?|of|should be|at|to|with|now))?\\s*[:=]?\\s*(?:[$€£¥]|[A-Za-z]{3}(?![A-Za-z_]))?\\s*(${NUMBER_PATTERN})`, 'gi');
+  return [...text.matchAll(label)].flatMap((match) => {
+    const start = match.index + match[0].lastIndexOf(match[1]), end = start + match[1].length;
+    return protectedSpans.filter((span) => start < span.end && span.start < end).map((span) => ({ valueIndex: start, ...span }));
+  });
+}
+
+// Calendar association excludes malformed budget values; the original provenance strings are retained.
+function deliveryFieldText(text) {
+  const spans = invalidLabeledBudgetEvents(text).sort((first, second) => first.start - second.start);
+  let cursor = 0, result = '';
+  for (const span of spans) {
+    if (span.end <= cursor) continue;
+    result += text.slice(cursor, Math.max(cursor, span.start)) + ' '.repeat(span.end - Math.max(cursor, span.start));
+    cursor = span.end;
+  }
+  return result + text.slice(cursor);
+}
+
+function malformedLabeledBudget(text, validCandidates = []) {
+  const invalidPositions = invalidLabeledBudgetEvents(text).map((event) => event.valueIndex);
+  const priority = Math.max(-Infinity, ...validCandidates.map((candidate) => candidate.priority));
+  const validPosition = Math.max(-1, ...validCandidates.filter((candidate) => candidate.priority === priority).map((candidate) => candidate.index));
+  return Math.max(-1, ...invalidPositions) > validPosition;
+}
+
+function numericFieldContext(turns) {
+  const rows = [];
   let quantity = null, budget = null, hadGoods = false, buyingContext = false;
   for (const text of turns) {
     const quantities = quantityCandidates(text, quantity !== null, false, buyingContext), budgets = budgetCandidates(text);
@@ -235,15 +313,21 @@ function latestFieldValue(turns, field) {
     if (quantities.length) quantity = selectCandidate(quantities, text);
     else if (/\b(?:quantity|qty)\b.*(?:unknown|undecided|not sure|[=-]\s*-\d)|\b(?:forget|remove)\b.*\b(?:quantity|qty)\b/i.test(text)) quantity = null;
     else if (hadGoods && quantity === null && budget !== null && Number.isSafeInteger(bareValue) && bareValue >= 1 && bareValue <= 500) quantity = bareValue;
-    if (budgets.length) {
+    if (malformedLabeledBudget(text, budgets)) budget = null;
+    else if (budgets.length) {
       const priority = Math.max(...budgets.map((item) => item.priority));
       budget = selectCandidate(budgets.filter((item) => item.priority === priority), text);
     } else if (BUDGET_WORD.test(text) && /(?:\$|\bUSD)\s*-|\b(?:unknown|undecided|no budget|not sure)\b/i.test(text)) budget = null;
     else if (hadGoods && budget === null && quantity !== null && !quantities.length && Number.isFinite(bareValue) && bareValue >= 1) budget = Math.round(bareValue * 100);
     hadGoods ||= GOODS.test(text);
     buyingContext ||= hasBuyingContext(text);
+    rows.push({ text, quantities, budgets, quantity, budget });
   }
-  return field === 'quantity' ? quantity : budget;
+  return rows;
+}
+
+function latestFieldValue(turns, field) {
+  return numericFieldContext(turns).at(-1)?.[field] ?? null;
 }
 
 /** Track the currency of the active buying budget, rather than any historical quote in the conversation. */
@@ -266,10 +350,14 @@ export function goalCurrencyContext(turns) {
       if (currencies.length > 1) { active = { currency: 'conflict', explicit: false }; continue; }
       const chosen = matching.at(-1);
       if (chosen) active = { currency: chosen.currency, explicit: chosen.explicitCurrency || active.currency === chosen.currency && active.explicit };
-    } else if (isBudgetUpdate(text) && lastMatch(HISTORIC, text) < 0) {
+    } else if (isBudgetUpdate(text)) {
       const mentions = [...text.matchAll(/\b(?:USD|EUR|GBP|CAD|AUD|JPY|U\.?S\.? dollars?|Canadian dollars?|Australian dollars?|euros?|pounds?|yen)\b/gi),
         ...[...text.matchAll(/\b([a-z]{3})(?=\s*\d)/gi)].filter((match) => !['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY'].includes(match[0].toUpperCase()) && !NON_CURRENCY_WORDS.has(match[0].toLowerCase()))];
-      if (mentions.length === 1) active = currencyUnit(mentions[0][0]);
+      const currentMentions = mentions.filter((match) => {
+        const before = text.slice(0, match.index).split(/[;!?\n]|\.\s+/).at(-1);
+        return lastMatch(HISTORIC, before) <= lastMatch(BUDGET_ROLE, before);
+      });
+      if (currentMentions.length === 1) active = currencyUnit(currentMentions[0][0]);
     }
   }
   return active;
@@ -277,7 +365,8 @@ export function goalCurrencyContext(turns) {
 
 function isBudgetUpdate(text) {
   if (retainedClause(text)) return false;
-  const hasMoney = MONEY_UNIT.test(text) || /[€£¥]/.test(text);
+  const unknownCode = [...text.matchAll(/\b([a-z]{3})(?![a-z_])(?=\s*\d)/gi)].some((match) => !NON_CURRENCY_WORDS.has(match[1].toLowerCase()));
+  const hasMoney = MONEY_UNIT.test(text) || /[€£¥]/.test(text) || BUDGET_WORD.test(text) && unknownCode;
   const strongRole = BUDGET_WORD.test(text) || /\b(?:ceiling|remaining|remainder|leaving|left for|not exceed|allocate(?:d)?)\b/i.test(text), historic = lastMatch(HISTORIC, text);
   return budgetCandidates(text).length > 0 || strongRole && (numberMatches(text).length > 0 || hasMoney || CORRECTION.test(text)) ||
     hasMoney && historic < 0 && (CORRECTION.test(text) || !/\b(?:quote|vendor|supplier|invoice)\b/i.test(text));
@@ -318,25 +407,26 @@ function containsPositivePhrase(text, phrase) {
 
 /** Require current proof for every recognized updated field; unknown associations remain review-only clarification. */
 export function latestSourceIssues(evidence, turns, specification, localDelivery = null) {
-  const latest = {}, missing = [];
+  const latest = {}, missing = [], context = numericFieldContext(turns);
   let previous = '';
   for (const [index, text] of turns.entries()) {
-    const clauses = intentClauses(text), before = turns.slice(0, index), through = turns.slice(0, index + 1);
-    const quantityChanged = latestFieldValue(before, 'quantity') !== latestFieldValue(through, 'quantity');
-    const budgetChanged = latestFieldValue(before, 'budget') !== latestFieldValue(through, 'budget');
-    if (quantityCandidates(text, true).length && (index === 0 || quantityChanged) || clauses.some((clause) => !retainedClause(clause) && /\b(?:change|replace|revise|update|adjust)\b/i.test(clause) && /\b(?:quantity|qty|count)\b/i.test(clause) && !quantityCandidates(clause, true).length)) latest.quantity = index;
+    const clauses = intentClauses(text), row = context[index];
+    const quantityChanged = (context[index - 1]?.quantity ?? null) !== row.quantity;
+    const budgetChanged = (context[index - 1]?.budget ?? null) !== row.budget;
+    if (row.quantities.length && (index === 0 || quantityChanged) || clauses.some((clause) => !retainedClause(clause) && /\b(?:change|replace|revise|update|adjust)\b/i.test(clause) && /\b(?:quantity|qty|count)\b/i.test(clause) && !quantityCandidates(clause, true).length)) latest.quantity = index;
     if (clauses.some(isBudgetUpdate) && (index === 0 || budgetChanged || !budgetCandidates(text).length)) latest.budget = index;
     for (const clause of clauses) {
+      const deliveryClause = deliveryFieldText(clause);
       const deliveryChange = !retainedClause(clause) && CORRECTION.test(clause) && /\b(?:deliver|delivery|deadline)\b/i.test(clause);
-      if (DATE_ANCHOR.test(clause) || deliveryChange && /\bdate\b/i.test(clause) || deliveryChange && !CLOCK_ANCHOR.test(clause) && !hasZoneAnchor(clause) && !/\b(?:same|keep|unchanged)\b/i.test(clause)) latest.delivery_date = index;
-      if (CLOCK_ANCHOR.test(clause) || deliveryChange && /\btime\b/i.test(clause) && !/\btime\s*zone\b/i.test(clause)) latest.delivery_time = index;
-      if (hasZoneAnchor(clause) || deliveryChange && /\b(?:timezone|time zone|zone|offset)\b/i.test(clause)) latest.time_zone = index;
+      if (DATE_ANCHOR.test(deliveryClause) || deliveryChange && /\bdate\b/i.test(clause) || deliveryChange && !CLOCK_ANCHOR.test(deliveryClause) && !hasZoneAnchor(deliveryClause) && !/\b(?:same|keep|unchanged)\b/i.test(clause)) latest.delivery_date = index;
+      if (CLOCK_ANCHOR.test(deliveryClause) || deliveryChange && /\btime\b/i.test(clause) && !/\btime\s*zone\b/i.test(clause)) latest.delivery_time = index;
+      if (hasZoneAnchor(deliveryClause) || deliveryChange && /\b(?:timezone|time zone|zone|offset)\b/i.test(clause)) latest.time_zone = index;
     }
     if (index === 0 && GOODS.test(text) || clauses.some((clause) => specificationUpdate(clause, previous))) latest.specification = index;
     previous += '\n' + text;
   }
   const sourceField = { quantity: 'quantity', budget: 'budget', specification: 'specification', delivery_date: 'delivery', delivery_time: 'delivery', time_zone: 'delivery' };
-  const proofChecks = { quantity: (text) => quantityCandidates(text, true, true).length > 0 || /^\s*\d+\s*$/.test(text),
+  const proofChecks = { quantity: (text) => quantityIsGrounded(context.at(-1)?.quantity, text, turns),
     budget: (text) => budgetCandidates(text).length > 0 || /^\s*\d+(?:\.\d{1,2})?\s*$/.test(text),
     specification: (text) => SPEC_FEATURE.test(text) || new RegExp(`\\b${ITEM_WORDS}\\b`, 'i').test(text),
     delivery_date: (text) => DATE_ANCHOR.test(text), delivery_time: (text) => CLOCK_ANCHOR.test(text), time_zone: (text) => hasZoneAnchor(text) };
@@ -349,7 +439,7 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
     if (!clauses.some((clause) => sourceTurns.some((turn) => turn.includes(clause)) && proofChecks[field](clause) &&
       (!numeric || (field === 'quantity' ? quantityIsGrounded : budgetIsGrounded)(latestFieldValue(turns, field), clause, turns)))) missing.push(field);
   }
-  if (localDelivery && latest.delivery_time !== undefined && !clockIsGrounded(localDelivery.time, turns[latest.delivery_time])) missing.push('delivery_time');
+  if (localDelivery && latest.delivery_time !== undefined && !clockIsGrounded(localDelivery.time, deliveryFieldText(turns[latest.delivery_time]))) missing.push('delivery_time');
   const lastSpec = latest.specification;
   if (lastSpec !== undefined) {
     const featureWords = '(?:white|black|blue|navy|red|green|cotton|polyester|canvas|screen|printed|embroidery|print|artwork|quality|logo|design|material|fabric|shirts?|mugs?)';
@@ -361,9 +451,10 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
 }
 
 export function quantityIsGrounded(value, evidence, turns = [evidence]) {
-  if (!Number.isSafeInteger(value) || !evidence || latestFieldValue(turns, 'quantity') !== value) return false;
-  const cited = quantityCandidates(evidence, turns.some((turn) => quantityCandidates(turn).length), true);
-  return cited.some((candidate) => candidate.value === value && (!candidate.generic || turns.some((turn, index) => quantityCandidates(turn, index > 0, false, turns.slice(0, index).some(hasBuyingContext)).some((actual) => {
+  const context = numericFieldContext(turns);
+  if (!Number.isSafeInteger(value) || !evidence || context.at(-1)?.quantity !== value) return false;
+  const cited = quantityCandidates(evidence, context.some((row) => row.quantities.length), true);
+  return cited.some((candidate) => candidate.value === value && (!candidate.generic || context.some(({ text: turn, quantities }) => quantities.some((actual) => {
     if (actual.value !== value) return false;
     const whole = turn.slice(actual.index, actual.end), citation = evidence.slice(candidate.index, candidate.end);
     return whole === citation || whole.startsWith(citation) && /^\s/.test(whole.slice(citation.length));
@@ -656,11 +747,11 @@ function dateIsGrounded(date, text, now, zone) {
 }
 
 export function groundedDelivery(local, deadline, evidence, { now, timeZone, turns = null }) {
-  const text = evidence.join('\n');
+  const text = deliveryFieldText(evidence.join('\n'));
   // An explicitly cited later buyer clock supersedes an older clock while its date remains usable.
   // Contradictions within that last buyer turn are still checked together and refused.
-  const latestClockTurn = Array.isArray(turns) ? (turns.findLast((turn) => CLOCK_ANCHOR.test(turn)) ?? null) : null;
-  const clockText = latestClockTurn === null ? text : evidence.filter((clause) => latestClockTurn.includes(clause) && CLOCK_ANCHOR.test(clause)).join('\n');
+  const latestClockTurn = Array.isArray(turns) ? (turns.findLast((turn) => CLOCK_ANCHOR.test(deliveryFieldText(turn))) ?? null) : null;
+  const clockText = latestClockTurn === null ? text : evidence.filter((clause) => latestClockTurn.includes(clause)).map(deliveryFieldText).filter((clause) => CLOCK_ANCHOR.test(clause)).join('\n');
   const zonePolicy = Array.isArray(turns) ? latestDeliveryZonePolicy(turns) : null;
   const zoneText = zonePolicy ? evidence.filter((clause) => zonePolicy.text.includes(clause) && hasZoneAnchor(clause)).join('\n') : text;
   if (zonePolicy && !zoneText) return { status: 'invalid', field: 'time_zone' };
@@ -681,6 +772,8 @@ export function groundedDelivery(local, deadline, evidence, { now, timeZone, tur
   if (sourceOffsets.length > 1 || first && second) return { status: 'invalid', field: 'time_zone' };
   if (local.offset && parseOffset(local.offset) === null) return { status: 'invalid', field: 'time_zone' };
   if (sourceOffsets.length && local.offset && parseOffset(sourceOffsets[0]) !== parseOffset(local.offset)) return { status: 'invalid', field: 'time_zone' };
+  // A shortened quote cannot turn a protected budget clock into delivery evidence.
+  if (Array.isArray(turns) && (latestClockTurn === null || !clockIsGrounded(local.time, deliveryFieldText(latestClockTurn)))) return { status: 'invalid', field: 'delivery_time' };
   const literals = [...text.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})\b/g)].map((match) => match[0]);
   // A single literal timestamp is authoritative on its own; contradictory source constraints are checked first.
   if (!named.length && !first && !second && literals.some((value) => (!zonePolicy || zonePolicy.text.includes(value)) && strictIsoInstant(value) === iso)) return { status: 'ok', instant: iso };
