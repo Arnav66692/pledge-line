@@ -27,6 +27,10 @@ test('guided evidence page is available without a PIN and cannot start a payment
     const provenance = await fetch(base + '/demo-assets/working-demo-provenance.txt');
     assert.equal(provenance.status, 200);
     assert.ok((await provenance.json()).durationSeconds < 180);
+    const checkoutImage = await fetch(base + '/demo-assets/guarded-checkout-20261105.png');
+    assert.equal(checkoutImage.status, 200);
+    assert.equal(checkoutImage.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await checkoutImage.arrayBuffer()), fs.readFileSync(new URL('../web/demo-assets/guarded-checkout-20261105.png', import.meta.url)));
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
 

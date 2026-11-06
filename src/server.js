@@ -52,6 +52,7 @@ const STATIC_TYPES = Object.freeze({
   '.woff2': 'font/woff2',
   '.glb': 'model/gltf-binary',
   '.webp': 'image/webp',
+  '.png': 'image/png',
   '.txt': 'text/plain; charset=utf-8',
   '.mp4': 'video/mp4',
   '.vtt': 'text/vtt; charset=utf-8',

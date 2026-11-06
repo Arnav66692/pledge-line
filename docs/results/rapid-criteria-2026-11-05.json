@@ -1,0 +1,126 @@
+{
+  "sourceCommit": "34a867d64f1514baf24f405c6214c2c56e7dff43",
+  "recordedAt": "2026-11-06T07:15:31.527Z",
+  "evidenceClass": "One rapid text-only Claude assessment plus one conditional Opus recommendation; not the earlier three-image panel, official judging or a guarantee of winning.",
+  "method": {
+    "judgeModel": "claude-sonnet-5-5",
+    "judgeEffort": "low",
+    "judgeOutputCap": 1200,
+    "consultModel": "claude-opus-5-5",
+    "consultEffort": "high",
+    "consultOutputCap": 1536,
+    "maximumInferenceRequests": 2,
+    "actualInferenceRequests": 2,
+    "retries": 0,
+    "viewLimit": "Neither model saw the live UI, video, audio or screenshots. The factual packet explicitly identified this limitation.",
+    "criteria": "Five equally weighted internal1-to10 scores mapped to90; not numericweights prescribed by Devpost."
+  },
+  "assessment": {
+    "rawAssessment": {
+      "criteria": {
+        "Technological Implementation": {
+          "score": 8,
+          "reason": "Real sandbox captures/refunds, invoice, webhooks, reconciliation; AI gate failed."
+        },
+        "Design": {
+          "score": 6.5,
+          "reason": "Consent and receipt flow is coherent; UI not observed, cold starts noted."
+        },
+        "Potential Impact": {
+          "score": 6,
+          "reason": "Credible nonprofit problem and mechanism; no users or measured benefit."
+        },
+        "Innovation/Idea": {
+          "score": 6.5,
+          "reason": "Consent plus readback plus MCP negotiation is distinctive; novelty unproven."
+        },
+        "Presentation": {
+          "score": 5.5,
+          "reason": "96s movie omits the 674.15 payment; upload pending; video unseen."
+        }
+      },
+      "topDeductions": [
+        "AI showed no fresh win: 11/24 vs 14/24 baseline; improvement gate failed.",
+        "Demo video omits the payment approvals and captures; public upload pending.",
+        "No target-user evidence; Donorbox/Givebutter overlap; suppliers are project-controlled."
+      ]
+    },
+    "criteria": {
+      "Technological Implementation": {
+        "score": 8,
+        "reason": "Real sandbox captures/refunds, invoice, webhooks, reconciliation; AI gate failed."
+      },
+      "Design": {
+        "score": 6.5,
+        "reason": "Consent and receipt flow is coherent; UI not observed, cold starts noted."
+      },
+      "Potential Impact": {
+        "score": 6,
+        "reason": "Credible nonprofit problem and mechanism; no users or measured benefit."
+      },
+      "Innovation/Idea": {
+        "score": 6.5,
+        "reason": "Consent plus readback plus MCP negotiation is distinctive; novelty unproven."
+      },
+      "Presentation": {
+        "score": 5.5,
+        "reason": "96s movie omits the 674.15 payment; upload pending; video unseen."
+      }
+    },
+    "topDeductions": [
+      "AI showed no fresh win: 11/24 vs 14/24 baseline; improvement gate failed.",
+      "Demo video omits the payment approvals and captures; public upload pending.",
+      "No target-user evidence; Donorbox/Givebutter overlap; suppliers are project-controlled."
+    ],
+    "total": 32.5,
+    "outOf": 50,
+    "internalLinearComparison90": 58.5,
+    "scaleDisclosure": "Equal weights and numeric scales are internal conventions, not prescribed by the supplied official excerpt."
+  },
+  "opusRecommendation": "## One change: ship one verifiable end-to-end release\n\nDeploy commit `34a867d`. Then record and publish a single continuous demo, under 3 minutes, on that deployed build. Release the audited MIT package alongside it.\n\n## Why it matters\n\nPresentation (5.5) is your weakest score. The current 96-second video omits the payment approvals and captures, so judges cannot see the most differentiated part of the product. Showing the full flow in one take supports Presentation, Design and Technological Implementation. Disclosing limits honestly also protects credibility.\n\nThis will not reach 80/90 alone. Potential Impact and Innovation still need real nonprofit-staff feedback, and the AI drafting result remains a loss (11/24 vs 14/24 baseline). Do not tune prompts to flip that gate.\n\n## Acceptance test\n\n- The hosted Render build reports commit `34a867d`.\n- The full test suite on the release package has 0 failures.\n- A fresh clone of the public package passes the same suite.\n- The public video shows, uncut:\n  - pause/restart\n  - the sponsor capture and donor refund\n  - goal clarification\n  - three MCP quotes\n  - exact-plan approval\n  - PayPal sandbox buyer approval\n  - both captures, with provider readback showing COMPLETED and the configured payee\n  - signed-receipt verification and tamper detection\n- A persistent on-screen \"PayPal sandbox, test funds\" label is visible throughout.\n- A closing card states the limits: project-controlled suppliers, shared demo PIN, no user study, AI has not beaten the baseline, Donorbox/Givebutter overlap.\n\n## Plan\n\n1. Finish the release audit. Deploy and verify the commit hash. Warm the instance to avoid a free-tier cold start during recording.\n2. Script the flow in about 150 words. Do a dry run, then record in a single take.\n3. Add captions and the limits card. Upload the video publicly and link the repo and video in Devpost.\n4. If time remains, run brief walkthroughs with real nonprofit staff. Report their feedback verbatim and add no claims beyond it.",
+  "usage": {
+    "judge": {
+      "input_tokens": 3621,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 413,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    },
+    "consult": {
+      "input_tokens": 1975,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 1235,
+      "output_tokens_details": {
+        "thinking_tokens": 529
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    },
+    "estimatedCostUSD": 0.043972,
+    "conservativeCombinedReservationUSD": 0.262824,
+    "remainingLocalAnthropicAllocationUSD": 0.295676,
+    "providerBalanceVerified": false
+  },
+  "paymentBoundary": {
+    "paypalSandboxOnly": true,
+    "paypalRequestsDuringReview": 0,
+    "authentication": "Explicit AnthropicAPIkey only, fixed APIhost, no subscription-session credentials/OAuth/CLI/fallback."
+  },
+  "evidenceSha256": "96757a351b0f039e0ab391620084ddda0fc7017a7298f17095bde5f220d0f2e1",
+  "limitation": "Fresh F11 model loss remains11/24 vs14baseline; postrepair known-case replay24vs23 is exposed counterfactual work. Recommendation is advice, not evidence that the proposed release or a score of80 has been achieved."
+}
