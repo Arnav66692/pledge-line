@@ -61,6 +61,80 @@ test('quantity grounding accepts bounded unfamiliar descriptors without treating
   assert.equal(result.ready, true); assert.equal(result.rfq.quantity, 48);
 });
 
+test('paper-size descriptors do not hide an explicit item count or manufacture one', () => {
+  for (const size of ['A0', 'A3', 'A10', 'B4', 'C5']) assert.equal(quantityIsGrounded(144, `144 ${size} matte paper posters`), true, size);
+  for (const phrase of ['Size A3 posters', 'A3 matte paper posters', 'SKU 144 A3 posters', '13-inch posters']) {
+    assert.equal(quantityIsGrounded(144, phrase), false, phrase);
+    assert.equal(quantityIsGrounded(3, phrase), false, phrase);
+  }
+});
+
+test('an edit to one field retains unchanged limits and their original source quotes', () => {
+  const input = raw(); input.quantity = 76; input.evidence.quantity = '76 shirts';
+  const update = 'Change the count to 76 shirts; retain the same white cotton shirts, total ceiling, supplier policy and deadline.';
+  const result = normalized(input, update, { priorGoals: [goal] });
+  assert.equal(result.ready, true); assert.equal(result.rfq.quantity, 76);
+  assert.equal(result.rfq.budgetCents, 80000); assert.equal(result.rfq.deadline, raw().deadline);
+  assert.equal(result.rfq.specification, 'white cotton shirts');
+  const noBudgetChange = normalized(input, 'Do not change the budget; change the count to 76 shirts.', { priorGoals: [goal] });
+  assert.equal(noBudgetChange.ready, true);
+  const newFeature = normalized(input, 'Change the count to 76 shirts and keep blue artwork.', { priorGoals: [goal] });
+  assert.equal(newFeature.ready, false); assert.ok(newFeature.missingFields.includes('specification'));
+  for (const update of ['Please change the budget.', 'Replace the budget.', 'Change the quantity.']) {
+    const missing = normalized(raw(), update, { priorGoals: [goal] });
+    assert.equal(missing.ready, false, update);
+    assert.ok(missing.missingFields.includes(/quantity/.test(update) ? 'quantity' : 'budget'), update);
+  }
+});
+
+test('current-order earmarks are budgets while unrelated reserves and the program fund are not', () => {
+  const globalOnly = 'The organization has USD 15000 program budget. Buy 60 burgundy fleece blankets. Deliver 2026-11-13 at 5 PM Pacific. Use one supplier.';
+  assert.equal(budgetIsGrounded(1500000, 'USD 15000 program budget', [globalOnly]), false);
+  assert.equal(budgetIsGrounded(1500000, 'program budget is 15000', [globalOnly.replace('USD 15000 program budget', 'program budget is 15000')]), false);
+  const allocatedFund = globalOnly.replace('USD 15000 program budget', 'USD 15000 program budget allocated for this order');
+  assert.equal(budgetIsGrounded(1500000, 'USD 15000 program budget allocated for this order', [allocatedFund]), true);
+  for (const allocation of ['USD 2100 is earmarked for these blankets all in', 'The amount earmarked for these blankets is USD 2100 all in',
+    'USD 2100 is reserved for this order all in']) {
+    const text = `The organization has USD 15000 program budget. ${allocation}. USD 500 is reserved for travel. Buy 60 burgundy fleece blankets. Deliver 2026-11-13 at 5 PM Pacific. Use one supplier.`;
+    assert.equal(budgetIsGrounded(210000, allocation, [text]), true, allocation);
+    assert.equal(budgetIsGrounded(1500000, 'USD 15000 program budget', [text]), false);
+    assert.equal(budgetIsGrounded(50000, 'USD 500 is reserved for travel', [text]), false);
+    const final = `${text} Actually the final cap is USD 1900.`;
+    assert.equal(budgetIsGrounded(210000, allocation, [final]), false);
+    assert.equal(budgetIsGrounded(190000, 'final cap is USD 1900', [final]), true);
+  }
+  const incomplete = normalized(raw(), 'Keep the count unchanged and revise the budget.', { priorGoals: [goal] });
+  assert.equal(incomplete.ready, false); assert.ok(incomplete.missingFields.includes('budget'));
+});
+
+test('a replace-with budget update inherits the stated currency and refuses stale money', () => {
+  const update = 'Replace the all-in cap with 2,750 and retain the same goods, count, delivery deadline and supplier policy.';
+  assert.equal(normalized(raw(), update, { priorGoals: [goal] }).ready, false);
+  const input = raw(); input.budgetCents = 275000; input.evidence.budget = 'cap with 2,750';
+  const result = normalized(input, update, { priorGoals: [goal] });
+  assert.equal(result.ready, true); assert.equal(result.rfq.budgetCents, 275000);
+  assert.ok(!result.assumptions.includes('currency_usd'));
+});
+
+test('shared, divided and distributed supplier permissions retain denial and conditional safeguards', () => {
+  for (const phrase of ['The order may be shared among suppliers', 'We can divide across vendors', 'The order may be distributed between multiple suppliers']) {
+    assert.equal(splitPermission([phrase]), 'allow', phrase);
+    const input = raw(); input.allowSplit = true;
+    const result = normalized(input, goal.replace('Use one supplier', phrase));
+    assert.equal(result.ready, true, phrase); assert.equal(result.rfq.allowSplit, true);
+    assert.equal(result.sourceEvidence.split, phrase);
+  }
+  for (const phrase of ['The order may not be shared among suppliers', "We don't allow the order to be divided across vendors", 'The order must not be distributed between suppliers']) {
+    assert.equal(splitPermission([phrase]), 'deny', phrase);
+    const input = raw(); input.allowSplit = true;
+    assert.equal(normalized(input, goal.replace('Use one supplier', phrase)).ready, false);
+  }
+  for (const phrase of ['The order may be shared among suppliers only if I confirm', 'The order can be divided across vendors after buyer approval']) {
+    assert.equal(splitPermission([phrase]), 'conflict', phrase);
+  }
+  assert.equal(splitPermission(['The order was shared among suppliers']), 'unspecified');
+});
+
 test('split permission respects surrounding negation, same-turn conflict and later explicit correction', () => {
   for (const phrase of ['Do not split.', "Don't split.", 'Don’t split.', 'No splits.', 'Use one supplier.', 'I am not allowing split orders across suppliers.',
     'We may not split across suppliers.', 'We cannot allow splitting.', 'You may not split the order.', "We can't permit splitting."]) assert.equal(splitPermission([phrase]), 'deny', phrase);

@@ -64,6 +64,70 @@ test('baseline accepts bounded unfamiliar descriptors and refuses numeric packag
   }
 });
 
+test('baseline accepts an explicit count before a bounded paper-size code but cannot turn the code into quantity', () => {
+  const finish = 'under USD 800 total. Deliver 2026-11-13 at 5 PM Pacific.';
+  for (const code of ['A0', 'A3', 'A10', 'B4', 'C5']) {
+    const draft = deterministicGoalDraft(input(`Order 144 ${code} matte paper posters ${finish}`));
+    assert.equal(draft.ready, true, code); assert.equal(draft.rfq.quantity, 144);
+  }
+  for (const phrase of ['Size A3 posters', 'A3 matte paper posters', 'SKU 144 A3 posters', '13-inch posters']) {
+    const draft = deterministicGoalDraft(input(`Order ${phrase} ${finish}`));
+    assert.equal(draft.ready, false, phrase); assert.match(draft.clarification, /complete quantity/);
+  }
+});
+
+test('baseline keeps unchanged fields through another limit edit and supports replace-with money', () => {
+  const priorGoals = ['Buy 60 white cotton shirts under USD 800 total. Deliver 2026-11-13 at 5 PM Pacific. Use one supplier.'];
+  const quantity = deterministicGoalDraft({ ...input('Change the count to 76 shirts; retain the same goods, total ceiling, supplier policy and deadline.'), priorGoals });
+  assert.equal(quantity.ready, true); assert.equal(quantity.rfq.quantity, 76); assert.equal(quantity.rfq.budgetCents, 80000);
+  assert.equal(quantity.rfq.deadline, '2026-11-14T01:00:00.000Z');
+  const budget = deterministicGoalDraft({ ...input('Replace the all-in cap with 2,750 and retain the same goods, count, delivery deadline and supplier policy.'), priorGoals });
+  assert.equal(budget.ready, true); assert.equal(budget.rfq.budgetCents, 275000);
+  assert.ok(!budget.assumptions.includes('currency_usd'));
+  for (const update of ['Please change the budget.', 'Replace the budget.', 'Keep the count unchanged and revise the budget.',
+    'Keep the count unchanged and update the budget.', 'Retain the quantity but adjust the budget.']) {
+    const incomplete = deterministicGoalDraft({ ...input(update), priorGoals });
+    assert.equal(incomplete.ready, false); assert.match(incomplete.clarification, /new final all-in USD budget/);
+  }
+  for (const update of ['Change the quantity.', 'Keep the budget unchanged and revise the count.']) {
+    const incomplete = deterministicGoalDraft({ ...input(update), priorGoals });
+    assert.equal(incomplete.ready, false); assert.match(incomplete.clarification, /new complete quantity/);
+  }
+});
+
+test('baseline distinguishes purchase earmarks from an overall fund and unrelated reserves', () => {
+  const globalOnly = 'The organization has USD 15000 program budget. Buy 60 burgundy fleece blankets. Deliver 2026-11-13 at 5 PM Pacific. Use one supplier.';
+  const unallocated = deterministicGoalDraft(input(globalOnly));
+  assert.equal(unallocated.ready, false); assert.match(unallocated.clarification, /budget/);
+  assert.equal(deterministicGoalDraft(input(globalOnly.replace('USD 15000 program budget', 'program budget is 15000'))).ready, false);
+  const allocated = deterministicGoalDraft(input(globalOnly.replace('USD 15000 program budget', 'USD 15000 program budget allocated for this order')));
+  assert.equal(allocated.ready, true); assert.equal(allocated.rfq.budgetCents, 1500000);
+  for (const allocation of ['USD 2100 is earmarked for these blankets all in', 'The amount earmarked for these blankets is USD 2100 all in',
+    'USD 2100 is reserved for this order all in']) {
+    const goal = `The organization has USD 15000 program budget. ${allocation}. USD 500 is reserved for travel. Buy 60 burgundy fleece blankets. Deliver 2026-11-13 at 5 PM Pacific. Use one supplier.`;
+    const draft = deterministicGoalDraft(input(goal));
+    assert.equal(draft.ready, true, allocation); assert.equal(draft.rfq.budgetCents, 210000);
+    const final = deterministicGoalDraft(input(goal + ' Actually the final cap is USD 1900.'));
+    assert.equal(final.ready, true); assert.equal(final.rfq.budgetCents, 190000);
+  }
+});
+
+test('baseline independently recognizes shared-order permission, denial and unresolved conditions', () => {
+  const complete = 'Buy 72 ceramic mugs under USD 800 total. Deliver 2026-11-13 at 5 PM Pacific.';
+  for (const permission of ['The order may be shared among suppliers.', 'We can divide across vendors.', 'The order may be distributed between multiple suppliers.']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${permission}`));
+    assert.equal(draft.ready, true, permission); assert.equal(draft.rfq.allowSplit, true);
+  }
+  for (const denial of ['The order may not be shared among suppliers.', "We don't allow the order to be divided across vendors.", 'The order must not be distributed between suppliers.']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${denial}`));
+    assert.equal(draft.ready, true, denial); assert.equal(draft.rfq.allowSplit, false);
+    assert.ok(!draft.assumptions.includes('single_supplier_default'));
+  }
+  for (const conditional of ['The order may be shared among suppliers only if I confirm.', 'The order can be divided across vendors after buyer approval.']) {
+    assert.equal(deterministicGoalDraft(input(`${complete} ${conditional}`)).ready, false, conditional);
+  }
+});
+
 test('baseline refuses impossible calendar dates and unchosen DST gaps or folds', () => {
   for (const deadline of ['2027-02-30T12:00:00Z', '2027-03-14 at 2:30 AM Pacific', '2026-11-01 at 1:30 AM Pacific']) {
     const draft = deterministicGoalDraft({ goal: `Buy 60 cotton shirts under USD 800, deliver ${deadline}.`,
