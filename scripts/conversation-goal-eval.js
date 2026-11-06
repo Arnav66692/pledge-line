@@ -185,7 +185,12 @@ function literalOccurrences(value, fragment) {
     const directiveDenied = directive && /\b(?:do not|don't|dont|never|not|cannot|can't|must not|should not)\s*$/.test(before.slice(0, directive.index));
     const removed = directive && !directiveDenied && !/\b(?:and|then|but|add|include|keep|retain|use)\b/.test(directive[0]) &&
       (!/^replace\b/.test(directive[0]) || !/\bwith\b/.test(directive[0]) && /^(?:\s+[a-z-]+){0,3}\s+with\b/.test(after));
-    const negated = Boolean(removed) || /\b(?:no|not|without|avoid|exclude|excluding|instead of|rather than)\s+(?:[a-z-]+\s+){0,3}$/.test(before) && !directiveDenied;
+    // A new explicit negative fact after a conjunction starts its own assertion:
+    // "no handles and no engraving" requests both exclusions. The contained
+    // word "engraving" still sees its immediately preceding "no".
+    const newNegativeFact = /^(?:no|without)\s+/.test(needle) && /\band\s*$/.test(before) &&
+      !/\b(?:not|don't|dont|never|cannot|can't)\b/.test(before);
+    const negated = Boolean(removed) || !newNegativeFact && /\b(?:no|not|without|avoid|exclude|excluding|instead of|rather than)\s+(?:[a-z-]+\s+){0,3}$/.test(before) && !directiveDenied;
     const historical = !directiveDenied && /\b(?:previous|previously|earlier|old|rejected|last year|last time|used to)\b/.test(before);
     results.push({ negated, historical });
   }

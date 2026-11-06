@@ -1,0 +1,248 @@
+{
+  "sourceCommit": "45c14e1b9fa3922da1a6654c25889635b5b19ac4",
+  "coreCommit": "66cdb4d248df243ad4febc1e9648033b4c131b7a",
+  "method": "Three fresh separate-context samples of claude-sonnet-5-5 using the five user-supplied official categories. Equal 1..10 half-point scores and /90 linear conversion are internal, not official weights or predictions. They saw factual text and three narrow authentic proof crops, not the full video/audio/browser. All three outcomes retained; no retries or target score in the request.",
+  "summary": {
+    "kind": "summary",
+    "requestedSamples": 3,
+    "completedAssessments": 3,
+    "allValid": true,
+    "totalsOutOf50": [
+      30,
+      30.5,
+      31.5
+    ],
+    "medianOutOf50": 30.5,
+    "rangeOutOf50": [
+      30,
+      31.5
+    ],
+    "internalLinearComparison90": 54.9,
+    "criterionMedians": {
+      "Technological Implementation": 6.5,
+      "Design": 6.5,
+      "Potential Impact": 5,
+      "Innovation/Idea": 6.5,
+      "Presentation": 6
+    },
+    "limitation": "Three separate-context samples of one Claude version, not independent human judges. The model receives three keyframes and factual text/transcript, not the full video, audio or live browser. Numeric scale/equal weights/linear conversion are internal conventions. Allocation deltas are shared-scope counters, not exact own-request charges.",
+    "recordedAt": "2026-11-06T02:58:37.885Z"
+  },
+  "assessments": [
+    {
+      "index": 1,
+      "status": "completed",
+      "assessment": {
+        "rawAssessment": {
+          "criteria": {
+            "Technological Implementation": {
+              "score": 6.5,
+              "reason": "Substantial sandbox PayPal work: create/capture, restart recovery, verified webhooks, pause/resume, signed receipts, and 911 tests with 904 passing. The AI layer is weak: the final-7 run failed and AI lost on the gates, a contradictory provider response was rejected, and the selected plan came from a deterministic guard rather than the AI."
+            },
+            "Design": {
+              "score": 6.5,
+              "reason": "The design is coherent: fresh consent and readback, a draft that cannot pay, retained limits, and clear paused and receipt-edit states. The frames are narrow crops, so overall layout is unverified. The automation export failed during the demo and the operator continued manually, which weakens end-to-end completeness."
+            },
+            "Potential Impact": {
+              "score": 5,
+              "reason": "The audience of small nonprofits and the refund/pause and procurement problems are credible, and the guarded mechanism is demonstrated. There are no independent users, no measured benefit, and no competitor study. The AI did not beat the baseline (674.15 vs 676.25), so the demonstrated value comes from protection, not AI savings."
+            },
+            "Innovation/Idea": {
+              "score": 6,
+              "reason": "Combining consent-gated sandbox PayPal actions, a tamper-evident signed receipt, and a guard that overrides the AI plan is a thoughtful, differentiated approach. The individual pieces are fairly conventional, and the AI contributes little demonstrated novelty."
+            },
+            "Presentation": {
+              "score": 6,
+              "reason": "The 170s film has original narration, explicit cuts, no fabricated UI, and a stated problem. It mixes 2 live takes with a read-only guard clip and an edited still, and it was not published on YouTube. The dense claims and the manual continuation after the export failure reduce the clarity of a seamless end-to-end demonstration."
+            }
+          },
+          "topDeductions": [
+            "The AI component did not clear its gates: the final-7 run failed (AI 0/24 vs baseline 2/24), the known-case regression failed on control regression, and the AI plan lost to the deterministic one on price. This leaves the AI contribution unproven.",
+            "No independent users, supplier participation or measured benefit. All validation is developer-synthetic, run by the same author, with known cases reused and statistics that are not significant.",
+            "The demo was not fully seamless: the automation export failed and the operator continued manually. The film mixes live takes with edited stills, and the video is not on YouTube."
+          ]
+        },
+        "criteria": {
+          "Technological Implementation": {
+            "score": 6.5,
+            "reason": "Substantial sandbox PayPal work: create/capture, restart recovery, verified webhooks, pause/resume, signed receipts, and 911 tests with 904 passing. The AI layer is weak: the final-7 run failed and AI lost on the gates, a contradictory provider response was rejected, and the selected plan came from a deterministic guard rather than the AI."
+          },
+          "Design": {
+            "score": 6.5,
+            "reason": "The design is coherent: fresh consent and readback, a draft that cannot pay, retained limits, and clear paused and receipt-edit states. The frames are narrow crops, so overall layout is unverified. The automation export failed during the demo and the operator continued manually, which weakens end-to-end completeness."
+          },
+          "Potential Impact": {
+            "score": 5,
+            "reason": "The audience of small nonprofits and the refund/pause and procurement problems are credible, and the guarded mechanism is demonstrated. There are no independent users, no measured benefit, and no competitor study. The AI did not beat the baseline (674.15 vs 676.25), so the demonstrated value comes from protection, not AI savings."
+          },
+          "Innovation/Idea": {
+            "score": 6,
+            "reason": "Combining consent-gated sandbox PayPal actions, a tamper-evident signed receipt, and a guard that overrides the AI plan is a thoughtful, differentiated approach. The individual pieces are fairly conventional, and the AI contributes little demonstrated novelty."
+          },
+          "Presentation": {
+            "score": 6,
+            "reason": "The 170s film has original narration, explicit cuts, no fabricated UI, and a stated problem. It mixes 2 live takes with a read-only guard clip and an edited still, and it was not published on YouTube. The dense claims and the manual continuation after the export failure reduce the clarity of a seamless end-to-end demonstration."
+          }
+        },
+        "topDeductions": [
+          "The AI component did not clear its gates: the final-7 run failed (AI 0/24 vs baseline 2/24), the known-case regression failed on control regression, and the AI plan lost to the deterministic one on price. This leaves the AI contribution unproven.",
+          "No independent users, supplier participation or measured benefit. All validation is developer-synthetic, run by the same author, with known cases reused and statistics that are not significant.",
+          "The demo was not fully seamless: the automation export failed and the operator continued manually. The film mixes live takes with edited stills, and the video is not on YouTube."
+        ],
+        "total": 30,
+        "outOf": 50,
+        "internalLinearComparison90": 54,
+        "scaleDisclosure": "Equal weights and numeric scales are internal conventions, not prescribed by the supplied official excerpt."
+      },
+      "allocationDeltaNanos": {
+        "anthropic": 19670000,
+        "jev": 0
+      }
+    },
+    {
+      "index": 2,
+      "status": "completed",
+      "assessment": {
+        "rawAssessment": {
+          "criteria": {
+            "Technological Implementation": {
+              "score": 6.5,
+              "reason": "Real sandbox PayPal evidence: create/capture with restart recovery, a pause/resume demonstrated in the UI, verified and deduped webhooks, signed receipts, and 911 tests. Code-controlled consent and quote guards are non-trivial. But the AI's measured value is weak: the final-7 run failed, the known-regression gate failed, and the AI never beat the baseline on price."
+            },
+            "Design": {
+              "score": 6.5,
+              "reason": "The flow is coherent: buyer turns, editable limits, fresh consent and readback, a draft that cannot pay, a separate staff request, and a plain-language receipt check. The keyframes show clear readback and tamper messages. The packet reports an automation export failure and manual continuation, and the crops do not show the whole experience."
+            },
+            "Potential Impact": {
+              "score": 5,
+              "reason": "Small nonprofits with donor refund/pause and procurement is a specific, credible problem, and the guard mechanism is demonstrated. There are no independent users and no measured benefit. The AI showed no demonstrated advantage, and the plan selection came from a deterministic guard rather than AI savings."
+            },
+            "Innovation/Idea": {
+              "score": 6.5,
+              "reason": "The combination of consent-bound, code-controlled payment actions, a signed tamper-evident receipt, and a guard that picks the cheaper of the deterministic and AI plans is thoughtful and differentiated. The AI's role is mostly constrained clarification, and it never beat the baseline, which limits the novelty of the AI contribution."
+            },
+            "Presentation": {
+              "score": 6,
+              "reason": "A 170s film with narration and captions, validated for privacy and decoding, shows the real guard clip and the receipt edit. The honest disclosure of failures builds credibility. The packet is dense, the AI story is muddled by failed gates, the video is not on YouTube, and I saw only keyframes, not the end-to-end video."
+            }
+          },
+          "topDeductions": [
+            "The AI conversation layer never passed its own gate. Final-7 failed (AI 0/24 vs baseline 2/24, a contradictory provider response), and the known-regression run still failed on controls, so the AI's benefit is unproven.",
+            "No evidence of real user benefit or AI-driven savings. The complete-plan result at 674.15 comes from the deterministic guard, since the AI plan was 676.25, and all tests were developer-authored and synthetic.",
+            "The demonstration is narrow and partly manual. The automation export failed and the operator continued by hand. Supplier fulfillment is controlled and simulated. Latency is about 5s for the model versus about 4ms for the baseline."
+          ]
+        },
+        "criteria": {
+          "Technological Implementation": {
+            "score": 6.5,
+            "reason": "Real sandbox PayPal evidence: create/capture with restart recovery, a pause/resume demonstrated in the UI, verified and deduped webhooks, signed receipts, and 911 tests. Code-controlled consent and quote guards are non-trivial. But the AI's measured value is weak: the final-7 run failed, the known-regression gate failed, and the AI never beat the baseline on price."
+          },
+          "Design": {
+            "score": 6.5,
+            "reason": "The flow is coherent: buyer turns, editable limits, fresh consent and readback, a draft that cannot pay, a separate staff request, and a plain-language receipt check. The keyframes show clear readback and tamper messages. The packet reports an automation export failure and manual continuation, and the crops do not show the whole experience."
+          },
+          "Potential Impact": {
+            "score": 5,
+            "reason": "Small nonprofits with donor refund/pause and procurement is a specific, credible problem, and the guard mechanism is demonstrated. There are no independent users and no measured benefit. The AI showed no demonstrated advantage, and the plan selection came from a deterministic guard rather than AI savings."
+          },
+          "Innovation/Idea": {
+            "score": 6.5,
+            "reason": "The combination of consent-bound, code-controlled payment actions, a signed tamper-evident receipt, and a guard that picks the cheaper of the deterministic and AI plans is thoughtful and differentiated. The AI's role is mostly constrained clarification, and it never beat the baseline, which limits the novelty of the AI contribution."
+          },
+          "Presentation": {
+            "score": 6,
+            "reason": "A 170s film with narration and captions, validated for privacy and decoding, shows the real guard clip and the receipt edit. The honest disclosure of failures builds credibility. The packet is dense, the AI story is muddled by failed gates, the video is not on YouTube, and I saw only keyframes, not the end-to-end video."
+          }
+        },
+        "topDeductions": [
+          "The AI conversation layer never passed its own gate. Final-7 failed (AI 0/24 vs baseline 2/24, a contradictory provider response), and the known-regression run still failed on controls, so the AI's benefit is unproven.",
+          "No evidence of real user benefit or AI-driven savings. The complete-plan result at 674.15 comes from the deterministic guard, since the AI plan was 676.25, and all tests were developer-authored and synthetic.",
+          "The demonstration is narrow and partly manual. The automation export failed and the operator continued by hand. Supplier fulfillment is controlled and simulated. Latency is about 5s for the model versus about 4ms for the baseline."
+        ],
+        "total": 30.5,
+        "outOf": 50,
+        "internalLinearComparison90": 54.9,
+        "scaleDisclosure": "Equal weights and numeric scales are internal conventions, not prescribed by the supplied official excerpt."
+      },
+      "allocationDeltaNanos": {
+        "anthropic": 20410000,
+        "jev": 0
+      }
+    },
+    {
+      "index": 3,
+      "status": "completed",
+      "assessment": {
+        "rawAssessment": {
+          "criteria": {
+            "Technological Implementation": {
+              "score": 7,
+              "reason": "Non-trivial sandbox PayPal work is shown: create/capture, pause/resume, refund, webhook verification, and a signed receipt that survives restart. 911 tests pass and the code controls consent and payee. The AI contribution is weak: the model lost to or tied the deterministic baseline, and the final-7 run failed with a contradictory response."
+            },
+            "Design": {
+              "score": 6.5,
+              "reason": "The flow is coherent: draft cannot pay, fresh consent and readback precede pause, a separate staff request, a receipt checker, and plan comparison. Keyframes show clear readback and receipt-check cards. The export failure needed manual continuation, and only narrow crops were visible, so the full end-to-end experience is not fully evidenced."
+            },
+            "Potential Impact": {
+              "score": 5,
+              "reason": "The audience (small nonprofits, donor refund/pause) and the problem are specific and credible, and the mechanism is demonstrated in the sandbox. There are no independent users, no measured benefit, and no AI-driven savings; the selected plan's lower price came from the deterministic baseline."
+            },
+            "Innovation/Idea": {
+              "score": 6.5,
+              "reason": "Code-enforced consent and readback gates, tamper-evident signed receipts, and a guard that picks the cheaper verified plan over the AI plan are a thoughtful trust-oriented combination. The AI negotiation and conversation layers show no demonstrated advantage over simple baselines, which limits the novelty of the AI side."
+            },
+            "Presentation": {
+              "score": 6.5,
+              "reason": "A 170s film with two takes, a read-only guard clip, and an edited still uses original narration, captions, and a privacy review, and it is hosted at /demo. The film relies on edited stills and explicit cuts rather than one continuous run. The honest negative results are clear but dense, and the packet shows only three crops."
+            }
+          },
+          "topDeductions": [
+            "The AI shows no demonstrated advantage: every conversation gate failed, final-7 scored AI 0/24 vs baseline 2/24, and the exposed regression failed on control regression. The AI is mostly slower (about 5s vs 4ms) and costs money without a measured benefit.",
+            "There is no external validation: the cases are developer-synthetic, there are no independent users or suppliers, the evidence is not a fresh holdout, and the benefit claims rest on the author's own tests.",
+            "The demo is not a clean continuous end-to-end run: the automation export failed and the operator continued manually, the film uses cuts and an edited still, and the public repo and Devpost submission are not yet in place."
+          ]
+        },
+        "criteria": {
+          "Technological Implementation": {
+            "score": 7,
+            "reason": "Non-trivial sandbox PayPal work is shown: create/capture, pause/resume, refund, webhook verification, and a signed receipt that survives restart. 911 tests pass and the code controls consent and payee. The AI contribution is weak: the model lost to or tied the deterministic baseline, and the final-7 run failed with a contradictory response."
+          },
+          "Design": {
+            "score": 6.5,
+            "reason": "The flow is coherent: draft cannot pay, fresh consent and readback precede pause, a separate staff request, a receipt checker, and plan comparison. Keyframes show clear readback and receipt-check cards. The export failure needed manual continuation, and only narrow crops were visible, so the full end-to-end experience is not fully evidenced."
+          },
+          "Potential Impact": {
+            "score": 5,
+            "reason": "The audience (small nonprofits, donor refund/pause) and the problem are specific and credible, and the mechanism is demonstrated in the sandbox. There are no independent users, no measured benefit, and no AI-driven savings; the selected plan's lower price came from the deterministic baseline."
+          },
+          "Innovation/Idea": {
+            "score": 6.5,
+            "reason": "Code-enforced consent and readback gates, tamper-evident signed receipts, and a guard that picks the cheaper verified plan over the AI plan are a thoughtful trust-oriented combination. The AI negotiation and conversation layers show no demonstrated advantage over simple baselines, which limits the novelty of the AI side."
+          },
+          "Presentation": {
+            "score": 6.5,
+            "reason": "A 170s film with two takes, a read-only guard clip, and an edited still uses original narration, captions, and a privacy review, and it is hosted at /demo. The film relies on edited stills and explicit cuts rather than one continuous run. The honest negative results are clear but dense, and the packet shows only three crops."
+          }
+        },
+        "topDeductions": [
+          "The AI shows no demonstrated advantage: every conversation gate failed, final-7 scored AI 0/24 vs baseline 2/24, and the exposed regression failed on control regression. The AI is mostly slower (about 5s vs 4ms) and costs money without a measured benefit.",
+          "There is no external validation: the cases are developer-synthetic, there are no independent users or suppliers, the evidence is not a fresh holdout, and the benefit claims rest on the author's own tests.",
+          "The demo is not a clean continuous end-to-end run: the automation export failed and the operator continued manually, the film uses cuts and an edited still, and the public repo and Devpost submission are not yet in place."
+        ],
+        "total": 31.5,
+        "outOf": 50,
+        "internalLinearComparison90": 56.7,
+        "scaleDisclosure": "Equal weights and numeric scales are internal conventions, not prescribed by the supplied official excerpt."
+      },
+      "allocationDeltaNanos": {
+        "anthropic": 20210000,
+        "jev": 0
+      }
+    }
+  ],
+  "editorialNotes": [
+    "The actual suite was911 total,904 passed,7 optional skips. One assessment loosely calls all911 tests passing; this wording is incorrect and is retained as model output, not accepted as a test claim.",
+    "The current known-case comparison at this source was17/24 vs14/24, but failed the explicit-control gate. Higher point completion is not general superiority or a price advantage.",
+    "Later source repairs and offline replays do not replace this preserved assessment."
+  ]
+}

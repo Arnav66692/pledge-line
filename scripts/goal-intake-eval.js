@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { canonicalZone, parseOffset, resolveLocalDelivery, strictIsoInstant } from '../src/goal-grounding.js';
+import { canonicalZone, hasUnknownZoneReference, latestDeliveryZonePolicy, parseOffset, resolveLocalDelivery, strictIsoInstant } from '../src/goal-grounding.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SCOPE = 'pledge-line-functional-20261105';
@@ -29,7 +29,7 @@ const NUMBERS = Object.freeze({ zero: 0, one: 1, two: 2, three: 3, four: 4, five
   twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 });
 const NUMBER_WORDS = [...Object.keys(NUMBERS), 'hundred', 'thousand', 'and'].join('|');
 const NUMBER = `(?:\\d[\\d,]*(?:\\.\\d{1,2})?|(?:(?:${NUMBER_WORDS})[ -]+){0,6}(?:${NUMBER_WORDS}))`;
-const CORRECTION = /\b(?:actually|instead|rather|make that|change|replace|revise|update|adjust|raise|lower|increase|decrease|switch|correct|correction|final|now cap)\b/i;
+const CORRECTION = /\b(?:actually|instead|rather|make that|change|replace(?:s|d)?|revise|update|adjust|raise|lower|increase|decrease|switch|correct|correction|final|now cap)\b/i;
 
 function number(value) {
   const text = value.toLowerCase().replaceAll(',', '').trim();
@@ -73,8 +73,27 @@ function validIso(value) {
   return at ? Date.parse(at) : NaN;
 }
 
+
+let cityAliases = null;
+function explicitCityZones(text) {
+  if (!/\b(?:time|timezone|zone)\b/i.test(text)) return [];
+  if (!cityAliases) {
+    const zones = new Map();
+    for (const candidate of Intl.supportedValuesOf('timeZone')) {
+      const name = candidate.split('/').at(-1).replaceAll('_', ' ').toLowerCase(), canonical = canonicalZone(candidate);
+      if (!canonical || !/^[a-z][a-z -]{2,60}$/.test(name)) continue;
+      if (!zones.has(name)) zones.set(name, new Set());
+      zones.get(name).add(canonical);
+    }
+    const names = [...zones.keys()].sort((a, b) => b.length - a.length).map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    cityAliases = { zones, expression: new RegExp(`\\b(${names.join('|')})\\s+(?:time(?:\\s*zone)?|timezone)\\b|\\b(?:time\\s*zone|timezone)\\s+(?:is\\s+|of\\s+)?(${names.join('|')})\\b`, 'gi') };
+  }
+  return [...new Set([...text.matchAll(cityAliases.expression)].flatMap((match) => [...cityAliases.zones.get((match[1] ?? match[2]).toLowerCase())]))];
+}
+
 function namedZone(goal) {
-  const zones = [...goal.matchAll(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g)].map((match) => canonicalZone(match[0])).filter(Boolean);
+  if (hasUnknownZoneReference(goal)) return { invalid: true, zone: null, offset: '' };
+  const zones = [...explicitCityZones(goal), ...[...goal.matchAll(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g)].map((match) => canonicalZone(match[0])).filter(Boolean)];
   for (const [pattern, zone] of [[/\b(?:UTC|GMT)\b(?!\s*(?:[+-]\d|offset))/i, 'UTC'], [/\b(?:Pacific|PST|PDT|Los Angeles)\b/i, 'America/Los_Angeles'],
     [/\b(?:Eastern|EST|EDT|New York)\b/i, 'America/New_York'], [/\bCentral\b/i, 'America/Chicago'], [/\bMountain\b/i, 'America/Denver'],
     [/\bTokyo\b/i, 'Asia/Tokyo'], [/\bLondon\b/i, 'Europe/London']]) if (pattern.test(goal)) zones.push(zone);
@@ -115,8 +134,8 @@ function clockTime(text) {
   return value === null ? null : { hour: Math.floor(value / 60), minute: value % 60 };
 }
 
-function deadlineOf(goal, now, timeZone) {
-  const named = namedZone(goal);
+function deadlineOf(goal, now, timeZone, zonePolicy = null) {
+  const named = namedZone(zonePolicy?.text ?? goal);
   if (named.invalid) return null;
   const explicit = [...goal.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})\b/g)].map((match) => {
     let value = validIso(match[0]);
@@ -222,6 +241,7 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
     priorGoals.some((value) => typeof value !== 'string' || !value.trim() || value.length > 1000) ||
     priorGoals.reduce((total, value) => total + value.length, goal.length) > 4000 || !Number.isFinite(now)) return refused('Please supply a bounded purchase goal.');
   const turns = [...priorGoals, goal];
+  if (latestDeliveryZonePolicy(turns)?.unresolved) return refused('Which single valid time zone should apply?');
   let clockUnavailable = false, hasEarlierIso = false;
   for (const turn of turns) {
     const clock = clockEvidence(turn);
@@ -267,19 +287,27 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
     const verbs = [...clause.matchAll(countRole)].filter((match) => !/^(?:order|purchase)$/i.test(match[0]) ||
       !/\b(?:a|an|the|our|their|its|that|this|old|previous|historical|original)\s*$/i.test(clause.slice(0, match.index)) &&
       !/^\s+(?:of|for|was|is|had|contained|shows?)\b/i.test(clause.slice(match.index + match[0].length)));
-    return verbs.at(-1)?.index ?? roleIndex(countField, clause);
+    const replacement = /\b(?:replace|replaces|replaced)\s+(?:(?:this|that|the|our|previous|earlier|old)\s+)?(?:order|purchase)\s*:\s*$/i.exec(clause);
+    return Math.max(verbs.at(-1)?.index ?? -1, replacement?.index ?? -1, verbs.length ? -1 : roleIndex(countField, clause));
   };
   const countIsCurrent = (index) => {
     const clause = goal.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
-    const intent = countIntent(clause), historic = roleIndex(pastRole, clause);
+    const intent = countIntent(clause), replacement = /\b(?:replace|replaces|replaced)\s+(?:(?:this|that|the|our|previous|earlier|old)\s+)?(?:order|purchase)\s*:\s*$/i.exec(clause);
+    const historic = roleIndex(pastRole, replacement?.index === intent ? clause.slice(0, intent) : clause);
     if (intent >= 0 && /\b(?:not|never|no|don't|dont|doesn't|doesnt|won't|wont|wouldn't|wouldnt|shouldn't|shouldnt|can't|cant|cannot|mustn't|mustnt|shan't|shant|couldn't|couldnt|no need to)(?:\s+(?:ever|actually|really|currently|now|please|to|exactly)){0,3}\s*$/i.test(clause.slice(0, intent))) return false;
     return historic < 0 || intent > historic && /[,;]|\b(?:now|today|instead|actually|current|new|this time|this event|this order)\b|\band\s+(?:I|we)\b/i.test(clause.slice(historic, intent));
   };
+  const shortReply = new RegExp(`^\\s*${NUMBER}\\s+[a-z]+(?:[-'][a-z]+)*(?:\\s+[a-z]+(?:[-'][a-z]+)*){0,7}(?:\\s*,\\s*please)?\\s*[.!]?\\s*$`, 'i').test(turns.at(-1)) && [...turns.at(-1).matchAll(new RegExp(`\\b${NUMBER}\\b`, 'gi'))].filter((match) => !/^(?:and[ -]*)+$/i.test(match[0])).length === 1;
+  const inheritedPurchase = priorGoals.some((turn, index) => [...turn.matchAll(/\b(?:buy|order|need|needs|want|require|purchase|procure|get|quantity|qty|count)\b/gi)].some((match) => {
+    const end = match.index + match[0].length;
+    const clause = turn.slice(0, end).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+    return countIntent(clause) === clause.length - match[0].length && countIsCurrent(turnStarts[index] + end);
+  }));
   for (const match of goal.matchAll(new RegExp(`\\b(${NUMBER})\\b`, 'gi'))) {
     if (/^(?:and[ -]*)+$/i.test(match[1])) continue;
     const before = goal.slice(0, match.index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
     const end = match.index + match[0].length, after = goal.slice(end);
-    if (countIntent(before) < 0 || roleIndex(/\b(?:deliver(?:y|ed)?|deadline|date|time|budget|cap|spend|shipping|fee|print|logo|design|colou?r|sku|size)\b/gi, before) > countIntent(before) || !countIsCurrent(match.index) ||
+    if (!(inheritedPurchase && shortReply && match.index >= turnStarts.at(-1)) && countIntent(before) < 0 || roleIndex(/\b(?:deliver(?:y|ed)?|deadline|date|time|budget|cap|spend|shipping|fee|print|logo|design|colou?r|sku|size)\b/gi, before) > countIntent(before) || !countIsCurrent(match.index) ||
       /(?:[$€£¥]\s*|\b(?:not|no|instead of|USD|EUR|GBP|CAD|AUD|JPY)\s*)$/i.test(before) ||
       /\b(?:sku|price|cost|budget|date|time|size|print|colou?r|logo|design|january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:id|code|number|count))?\s*[:#=]?\s*$|\b(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)\s+of\s*$/i.test(before) ||
       /(?:[-/.,]|\d:)$/.test(before) || /^(?:[-/]|:\d|[.,]\d)/.test(after)) continue;
@@ -287,11 +315,11 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
     if (!tail || number(match[1]) <= 12 && /^\s*(?:a\.?m\.?|p\.?m\.?)\b/i.test(after)) continue;
     const sourceWords = [...tail[1].matchAll(/\S+/g)], selected = [];
     for (const token of sourceWords) {
-      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|due|instead|rather)$/i.test(token[0])) break;
+      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|made|constructed|manufactured|finished|please|due|instead|rather)$/i.test(token[0])) break;
       if (/^of$/i.test(token[0]) && !(selected.length === 1 && /^pairs?$/i.test(selected[0][0]))) break;
       selected.push(token);
     }
-    if (!selected.length || selected.length > 9 || selected.some((token, index) => (countRoles.has(token[0].toLowerCase()) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(token[0])) && token[0].toLowerCase() !== 'of' &&
+    if (!selected.length || selected.length > 9 || selected.some((token) => /^(?:suppliers?|vendors?)$/i.test(token[0])) || selected.some((token, index) => (countRoles.has(token[0].toLowerCase()) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(token[0])) && token[0].toLowerCase() !== 'of' &&
       !(index === selected.length - 1 && index > 0 && /^(?:boxes|cases|cartons|bundles|sets)$/i.test(token[0]))) ||
       /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)$/i.test(selected[0][0]) ||
       /^(?:percent|percentage|sizes?|prints?|printing|colou?rs?|logos?|designs?|sku|inches?|centimeters?|centimetres?|mm|cm|hours?|days?|weeks?|months?|years?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(selected.at(-1)[0])) continue;
@@ -395,7 +423,7 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
   const lastIsoTurn = turns.findLastIndex((turn) => /\b\d{4}-\d{2}-\d{2}T/.test(turn));
   const lastClockTurn = turns.findLastIndex((turn) => clockTime(turn));
   if (lastIsoTurn >= 0 && lastClockTurn > lastIsoTurn) return refused('Please restate the final delivery date and time together, including its time zone.');
-  const deadline = deadlineOf(goal, now, timeZone);
+  const deadline = deadlineOf(goal, now, timeZone, latestDeliveryZonePolicy(turns));
   if (!Number.isFinite(deadline) || deadline <= now || deadline > now + 366 * DAY) return refused('What future delivery date and time should apply?');
   const permission = explicitSplitPermission(turns);
   if (permission === 'conflict') return refused('Is splitting the order allowed?');

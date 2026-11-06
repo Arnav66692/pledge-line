@@ -154,6 +154,22 @@ test('removed attributes are local exclusions while retained or denied removals 
   assert.equal(checkConversationDraft(checked, value).missingFactIds.includes('material_cotton'), true);
 });
 
+test('coordinated explicit exclusions remain required negative facts without requesting the contained attribute', () => {
+  const checked = { expected: expected(), input: input() }, value = draft();
+  checked.expected.requiredSpecificationFacts.push({ id: 'no_engraving', anyOf: ['no engraving'] });
+  checked.expected.forbiddenSpecificationFragments.push('engraving');
+  value.rfq.specification = 'White cotton shirts with one navy print; no handles and no engraving.';
+  const result = checkConversationDraft(checked, value);
+  assert.equal(result.correct, true);
+  assert.equal(result.forbiddenPositiveAttributes, 0);
+  value.rfq.specification = 'White cotton shirts with one navy print; not no engraving.';
+  assert.ok(checkConversationDraft(checked, value).missingFactIds.includes('no_engraving'));
+  value.rfq.specification = 'White cotton shirts with one navy print; not no handles and no engraving.';
+  assert.ok(checkConversationDraft(checked, value).missingFactIds.includes('no_engraving'));
+  value.rfq.specification = 'White cotton shirts with one navy print; no handles and engraving.';
+  assert.ok(checkConversationDraft(checked, value).missingFactIds.includes('no_engraving'));
+});
+
 test('clarification must address a labeled constraint and cannot smuggle a partial RFQ', () => {
   const checked = { expected: { ready: false, clarificationFor: ['time_zone'] }, input: input() };
   const value = { ready: false, rfq: null, clarification: 'Which timezone and UTC offset should I use?', assumptions: [], requiresReview: true, authorizesPayment: false, model: 'test' };

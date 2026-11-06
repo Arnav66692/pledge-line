@@ -464,3 +464,66 @@ test('baseline independently preserves negated setting verbs and refuses histori
   assert.equal(deterministicGoalDraft(input(`Use 67 for the quantity instead; buy ivory linen serviettes. ${finish}`)).rfq.quantity, 67);
   assert.equal(deterministicGoalDraft(input(`Keep quantity 67; buy ivory linen serviettes. ${finish}`)).rfq.quantity, 67);
 });
+
+
+test('baseline separates supplier policy and inherits explicit replacement or short goods replies fairly', () => {
+  const finish = 'under USD 920 total. Deliver November 23, 2026 at 3 PM Pacific. Use one supplier only.';
+  const prior = `Buy 84 felt coasters made from wool ${finish}`;
+  assert.equal(deterministicGoalDraft(input(prior)).rfq.quantity, 84);
+  const replacement = deterministicGoalDraft({ ...input('The smaller trial replaces that order: 19 felt coasters.'), priorGoals: [prior] });
+  assert.equal(replacement.ready, true); assert.equal(replacement.rfq.quantity, 19);
+  const incomplete = `Buy felt coasters ${finish}`;
+  const answer = deterministicGoalDraft({ ...input('19 felt coasters, please'), priorGoals: [incomplete] });
+  assert.equal(answer.ready, true); assert.equal(answer.rfq.quantity, 19);
+  assert.equal(deterministicGoalDraft(input('19 felt coasters, please')).ready, false);
+  for (const text of ['19 cents, please', '19 days, please', 'SKU 19 felt coasters', '19 felt coasters per carton', '19 packs of 7 felt coasters']) {
+    assert.equal(deterministicGoalDraft({ ...input(text), priorGoals: [incomplete] }).ready, false, text);
+  }
+});
+
+test('baseline independently reads explicit runtime IANA city-time aliases and rejects conflicting cities', () => {
+  const draft = deterministicGoalDraft(input('Buy 84 felt coasters under USD 920 total. Deliver November 23, 2026 at 3 PM Vienna time. Use one supplier only.'));
+  assert.equal(draft.ready, true); assert.equal(draft.rfq.deadline, '2026-11-23T14:00:00.000Z');
+  const conflict = deterministicGoalDraft(input('Buy 84 felt coasters under USD 920 total. Deliver November 23, 2026 at 3 PM Vienna time and Lisbon time.'));
+  assert.equal(conflict.ready, false);
+});
+
+
+test('baseline shares calendar refusal of explicit unknown zones instead of accepting its default zone', () => {
+  const start = 'Buy 84 felt coasters under USD 920 total. Deliver November 23, 2026 at 3 PM ';
+  for (const label of ['Avalon time', 'time zone: Avalon', 'timezone is Avalon', 'Pacific time and Avalon time', 'Avalon time UTC-08:00']) {
+    assert.equal(deterministicGoalDraft(input(`${start}${label}. Use one supplier.`)).ready, false, label);
+  }
+  for (const label of ['local time', 'organization time', "organization's time", 'configured timezone', 'delivery time', 'timezone America/Los_Angeles', 'timezone UTC-08:00']) {
+    const draft = deterministicGoalDraft(input(`${start}${label}. Use one supplier.`));
+    assert.equal(draft.ready, true, label); assert.equal(draft.rfq.deadline, '2026-11-23T23:00:00.000Z');
+  }
+});
+
+
+test('baseline follows the latest explicit zone policy instead of retaining an earlier unknown zone forever', () => {
+  const start = 'Buy 84 felt coasters under USD 920 total. Deliver November 23, 2026 at 3 PM ';
+  for (const label of ['europe/Avalon', 'europe/avalon']) assert.equal(deterministicGoalDraft(input(`${start}${label}. Use one supplier.`)).ready, false, label);
+  const priorGoals = [`${start}Avalon time. Use one supplier.`];
+  for (const goal of ['Use Pacific time instead.', 'Use organization timezone instead.']) {
+    const draft = deterministicGoalDraft({ ...input(goal), priorGoals });
+    assert.equal(draft.ready, true, goal); assert.equal(draft.rfq.deadline, '2026-11-23T23:00:00.000Z');
+    assert.equal(draft.rfq.quantity, 84); assert.equal(draft.rfq.budgetCents, 92000);
+  }
+  for (const goal of ['Use same timezone instead.', 'Use Pacific time and Avalon time instead.']) {
+    assert.equal(deterministicGoalDraft({ ...input(goal), priorGoals }).ready, false, goal);
+  }
+});
+
+
+test('baseline asks for a zone when the latest policy denies known zones rather than selecting one', () => {
+  const priorGoals = ['Buy 84 felt coasters under USD 920 total. Deliver November 23, 2026 at 3 PM Avalon time. Use one supplier.'];
+  for (const goal of ['Do not use Pacific time.', 'Never use Pacific time.', 'We shouldn’t use Pacific time.',
+    'Use Pacific time, not Eastern time.', 'Use Pacific time; Eastern time is not allowed.']) {
+    const draft = deterministicGoalDraft({ ...input(goal), priorGoals });
+    assert.equal(draft.ready, false, goal); assert.match(draft.clarification, /time zone/i, goal);
+  }
+  const positive = deterministicGoalDraft({ ...input('Use Pacific time instead.'), priorGoals });
+  assert.equal(positive.ready, true); assert.equal(positive.rfq.deadline, '2026-11-23T23:00:00.000Z');
+  assert.equal(deterministicGoalDraft(input('Buy 84 felt coasters, no engraving. Deliver November 23, 2026 at 3 PM Pacific time. Budget USD 920.')).ready, true);
+});

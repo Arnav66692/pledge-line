@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetIsGrounded, canonicalZone, goalCurrencyContext, groundedDelivery, numberWords, quantityIsGrounded, resolveLocalDelivery, sourceClauses, splitPermission, splitPolicy, strictIsoInstant } from '../src/goal-grounding.js';
+import { budgetIsGrounded, canonicalZone, goalCurrencyContext, groundedDelivery, hasUnknownZoneReference, numberWords, quantityIsGrounded, resolveLocalDelivery, sourceClauses, splitPermission, splitPolicy, strictIsoInstant } from '../src/goal-grounding.js';
 import { normalizeGoalDraft } from '../src/goal-intake.js';
 
 const now = Date.parse('2026-11-05T20:00:00Z');
@@ -587,4 +587,107 @@ test('quantity roles retain modal and setting negations, historic document scope
   }
   assert.equal(quantityIsGrounded(67, 'Use 67 for the quantity instead'), true);
   assert.equal(quantityIsGrounded(67, 'Keep quantity 67'), true);
+});
+
+
+test('supplier policy is not an item count and short citations retain the same bounded purchase identity', () => {
+  const text = 'Buy 84 felt coasters dyed sapphire. Use one supplier only.';
+  assert.equal(quantityIsGrounded(84, '84 felt coasters', [text]), true);
+  assert.equal(quantityIsGrounded(1, 'Use one supplier only', [text]), false);
+  const made = 'Buy 84 felt coasters made from wool. Use one vendor only.';
+  assert.equal(quantityIsGrounded(84, '84 felt coasters', [made]), true);
+  for (const evidence of ['USD 84', 'SKU 84 felt coasters', '84 centimeters', '8 felt coasters']) {
+    assert.equal(quantityIsGrounded(84, evidence, [text, `Ignore historical ${evidence}.`]), false, evidence);
+  }
+});
+
+test('replacement orders and bounded count-plus-goods replies inherit only actual buyer context', () => {
+  const prior = 'Buy 84 felt coasters under USD 920 total. Deliver November 23, 2026 at 3 PM Pacific.';
+  const update = 'The smaller trial replaces that order: 19 felt coasters.';
+  assert.equal(quantityIsGrounded(19, '19 felt coasters', [prior, update]), true);
+  assert.equal(quantityIsGrounded(84, '84 felt coasters', [prior, update]), false);
+  for (const text of ['Do not replace that order: 19 felt coasters.', 'The historical invoice replaced that order: 19 felt coasters.']) {
+    assert.equal(quantityIsGrounded(19, '19 felt coasters', [prior, text]), false, text);
+  }
+  const incomplete = 'Buy felt coasters under USD 920 total. Deliver November 23, 2026 at 3 PM Pacific.';
+  const answer = '19 felt coasters, please';
+  assert.equal(quantityIsGrounded(19, answer, [incomplete, answer]), true);
+  assert.equal(quantityIsGrounded(19, answer), false);
+  for (const text of ['19 cents, please', '19 days, please', 'SKU 19 felt coasters', '19 felt coasters per carton', '19 packs of 7 felt coasters']) {
+    assert.equal(quantityIsGrounded(19, text, [incomplete, text]), false, text);
+  }
+});
+
+test('explicit city-time names use runtime IANA zones without inferring a location from other text', () => {
+  const input = raw(), text = goal.replace('Pacific', 'Vienna time');
+  input.evidence.delivery = input.evidence.delivery.replace('Pacific', 'Vienna time');
+  input.localDelivery.timeZone = 'Europe/Vienna'; input.deadline = '2026-11-13T16:00:00.000Z';
+  const result = normalized(input, text);
+  assert.equal(result.ready, true); assert.equal(result.rfq.deadline, input.deadline);
+  const conflict = raw(); conflict.evidence.delivery = '2026-11-13 at 5 PM Vienna time and Lisbon time';
+  conflict.localDelivery.timeZone = 'Europe/Vienna'; conflict.deadline = input.deadline;
+  const refused = normalized(conflict, goal.replace('2026-11-13 at 5 PM Pacific', conflict.evidence.delivery));
+  assert.equal(refused.ready, false); assert.ok(refused.missingFields.includes('time_zone'));
+  const invented = structuredClone(input); invented.evidence.delivery = '2026-11-13 at 5 PM Avalon time';
+  assert.equal(normalized(invented, goal.replace('2026-11-13 at 5 PM Pacific', invented.evidence.delivery)).ready, false);
+});
+
+
+test('unknown explicit city-time references cannot fall through to the organization clock or a matching offset', () => {
+  assert.equal(hasUnknownZoneReference('Buy black/white cotton shirts from https://example.com/catalog. Deliver at local time.'), false);
+  assert.equal(hasUnknownZoneReference('Deliver in Europe/Avalon.'), true);
+  for (const label of ['Avalon time', 'time zone: Avalon', 'timezone is Avalon', 'Pacific time and Avalon time', 'Avalon time UTC-08:00']) {
+    const input = raw(), text = goal.replace('Pacific', label);
+    input.evidence.delivery = input.evidence.delivery.replace('Pacific', label);
+    const result = normalized(input, text);
+    assert.equal(result.ready, false, label); assert.ok(result.missingFields.includes('time_zone'), label);
+  }
+  const omitted = raw(), text = goal.replace('Pacific', 'Pacific time and Avalon time');
+  omitted.evidence.delivery = '2026-11-13 at 5 PM Pacific';
+  assert.equal(normalized(omitted, text).ready, false, 'Citing only the recognized alias cannot hide another explicit unknown name.');
+  for (const label of ['local time', 'organization time', "organization's time", 'configured timezone', 'delivery time', 'timezone America/Los_Angeles', 'timezone UTC-08:00']) {
+    const input = raw(); input.evidence.delivery = input.evidence.delivery.replace('Pacific', label);
+    const result = normalized(input, goal.replace('Pacific', label));
+    assert.equal(result.ready, true, label); assert.equal(result.rfq.deadline, raw().deadline);
+  }
+});
+
+
+test('unknown IANA references are case-insensitive and an explicit later zone correction can recover', () => {
+  for (const label of ['europe/Avalon', 'europe/avalon']) {
+    const input = raw(); input.evidence.delivery = input.evidence.delivery.replace('Pacific', label);
+    const result = normalized(input, goal.replace('Pacific', label));
+    assert.equal(result.ready, false, label); assert.ok(result.missingFields.includes('time_zone'), label);
+  }
+  const prior = goal.replace('Pacific', 'Avalon time');
+  for (const [reply, citation] of [['Use Pacific time instead.', 'Pacific time'],
+    ['Use organization timezone instead.', 'Use organization timezone instead.']]) {
+    const input = raw(); input.evidence.delivery = `2026-11-13 at 5 PM\n${citation}`;
+    const result = normalized(input, reply, { priorGoals: [prior] });
+    assert.equal(result.ready, true, reply); assert.equal(result.rfq.deadline, raw().deadline);
+    assert.equal(result.rfq.quantity, 100); assert.equal(result.rfq.budgetCents, 80000);
+  }
+  const omitted = raw(); omitted.evidence.delivery = '2026-11-13 at 5 PM';
+  assert.equal(normalized(omitted, 'Use Pacific time instead.', { priorGoals: [prior] }).ready, false);
+  for (const reply of ['Use same timezone instead.', 'Use Pacific time and Avalon time instead.']) {
+    const input = raw(); input.evidence.delivery = `2026-11-13 at 5 PM\n${reply}`;
+    const result = normalized(input, reply, { priorGoals: [prior] });
+    assert.equal(result.ready, false, reply); assert.ok(result.missingFields.includes('time_zone'), reply);
+  }
+});
+
+
+test('denied zone choices remain unresolved and cannot clear an earlier unknown policy', () => {
+  const prior = goal.replace('Pacific', 'Avalon time');
+  for (const reply of ['Do not use Pacific time.', 'Never use Pacific time.', 'We shouldn’t use Pacific time.',
+    'Use Pacific time, not Eastern time.', 'Use Pacific time; Eastern time is not allowed.']) {
+    const input = raw(); input.evidence.delivery = `2026-11-13 at 5 PM\n${reply}`;
+    const result = normalized(input, reply, { priorGoals: [prior] });
+    assert.equal(result.ready, false, reply); assert.ok(result.missingFields.includes('time_zone'), reply);
+  }
+  const positive = raw(); positive.evidence.delivery = '2026-11-13 at 5 PM\nPacific time';
+  assert.equal(normalized(positive, 'Use Pacific time instead.', { priorGoals: [prior] }).ready, true);
+  const noGoodsConfusion = raw(), text = goal.replace('white cotton shirts', 'white cotton shirts, no embroidery');
+  noGoodsConfusion.specification = 'white cotton shirts, no embroidery'; noGoodsConfusion.evidence.specification = noGoodsConfusion.specification;
+  assert.equal(normalized(noGoodsConfusion, text).ready, true);
 });

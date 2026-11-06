@@ -40,7 +40,7 @@ const ITEM_WORDS = '(?:t[- ]?shirts?|shirts?|tees|mugs?|tote bags?|bags?|posters
 const ITEM_DESCRIPTOR = "(?:[a-z]+(?:[-'][a-z]+)*|[abc](?:10|[0-9]))";
 const QUANTITY_ROLE_WORD = /^(?:prints?|printing|colou?rs?|logos?|designs?|sizes?|packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?|percent|percentage|per|each|of|for|with|at|by|on|under|over|between|before|after|and|or|to|from|than|instead|costs?|prices?|budget|usd|eur|gbp|cad|aud|jpy|dollars?|currency|shipping|fees?|delivery|dates?|times?|sku|january|february|march|april|may|june|july|august|september|october|november|december)$/i;
 const QUANTITY_PREFIX_ROLE = /\b(?:sku|price|cost|budget|date|time|size|print|colou?r|logo|design|january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:id|code|number|count))?\s*[:#=]?\s*$|\b(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)\s+of\s*$/i;
-const CORRECTION = /\b(?:actually|instead|rather|make that|make it|change|replace|revise|update|adjust|raise|lower|increase|decrease|switch|correct|correction|final|now|i mean)\b/i;
+const CORRECTION = /\b(?:actually|instead|rather|make that|make it|change|replace(?:s|d)?|revise|update|adjust|raise|lower|increase|decrease|switch|correct|correction|final|now|i mean)\b/i;
 const MONEY_UNIT = /\$|\b(?:USD|U\.?S\.? dollars?|dollars?|euros?|EUR|GBP|CAD|AUD|JPY)\b/i;
 const HISTORIC = /\b(?:previous|prior|historical|old|original|vendor|supplier|quot(?:e|ed)|estimate|invoice|reserved?|earmarked)\b/gi;
 const BUDGET_ROLE = /\b(?:final\s+(?:budget|cap|ceiling|limit)|budget|cap|ceiling|maximum|limit|all[- ]in|total|spend(?:ing)?|under|up to|no more than|not exceed|remaining|remainder|leaving|left for|use|allocate(?:d)?)\b/gi;
@@ -82,6 +82,10 @@ const PURCHASE_COUNT_ROLE = /\b(?:buy|order|need|needs|want|require|purchase|pro
 const QUANTITY_FIELD_ROLE = /\b(?:complete quantity|quantity|qty|count)\b/gi;
 const PAST_COUNT_ROLE = /\b(?:previous|prior|historical|old|original|last year|last time|invoice|quoted?|estimate|vendor|supplier|used to)\b/gi;
 
+function replacementQuantityRole(before) {
+  return /\b(?:replace|replaces|replaced)\s+(?:(?:this|that|the|our|previous|earlier|old)\s+)?(?:order|purchase)\s*:\s*$/i.exec(before);
+}
+
 function quantityIntentIndex(before) {
   const roles = [...before.matchAll(PURCHASE_COUNT_ROLE)].filter((match) => {
     if (!/^(?:order|purchase)$/i.test(match[0])) return true;
@@ -89,12 +93,13 @@ function quantityIntentIndex(before) {
       !/^\s+(?:of|for|was|is|had|contained|shows?)\b/i.test(before.slice(match.index + match[0].length));
   });
   // A later field noun cannot conceal negation attached to an actual use/set/buy verb.
-  return roles.at(-1)?.index ?? lastMatch(QUANTITY_FIELD_ROLE, before);
+  return Math.max(roles.at(-1)?.index ?? -1, replacementQuantityRole(before)?.index ?? -1, roles.length ? -1 : lastMatch(QUANTITY_FIELD_ROLE, before));
 }
 
 function currentQuantityRole(text, index) {
   const before = text.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
-  const intent = quantityIntentIndex(before), historic = lastMatch(PAST_COUNT_ROLE, before);
+  const intent = quantityIntentIndex(before), replacement = replacementQuantityRole(before);
+  const historic = lastMatch(PAST_COUNT_ROLE, replacement?.index === intent ? before.slice(0, intent) : before);
   if (intent >= 0 && /\b(?:not|never|no|don't|dont|doesn't|doesnt|won't|wont|wouldn't|wouldnt|shouldn't|shouldnt|can't|cant|cannot|mustn't|mustnt|shan't|shant|couldn't|couldnt|no need to)(?:\s+(?:ever|actually|really|currently|now|please|to|exactly)){0,3}\s*$/i.test(before.slice(0, intent))) return false;
   if (historic < 0) return true;
   return intent > historic && /[,;]|\b(?:now|today|instead|actually|current|new|this time|this event|this order)\b|\band\s+(?:I|we)\b/i.test(before.slice(historic, intent));
@@ -112,11 +117,11 @@ function genericQuantityCandidates(text, allowCitedPhrase = false) {
     if (!words || number.value <= 12 && /^\s*(?:a\.?m\.?|p\.?m\.?)\b/i.test(after)) continue;
     const tokens = words[1].split(/\s+/), phrase = [];
     for (const token of tokens) {
-      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|due|instead|rather)$/i.test(token)) break;
+      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|made|constructed|manufactured|finished|please|due|instead|rather)$/i.test(token)) break;
       if (/^of$/i.test(token) && !(phrase.length === 1 && /^pairs?$/i.test(phrase[0]))) break;
       phrase.push(token);
     }
-    if (!phrase.length || phrase.length > 9 || phrase.some((word, index) => (QUANTITY_ROLE_WORD.test(word) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(word)) && !/^of$/i.test(word) && !(index === phrase.length - 1 && index > 0 && /^(?:boxes|cases|cartons|bundles|sets)$/i.test(word))) ||
+    if (!phrase.length || phrase.length > 9 || phrase.some((word) => /^(?:suppliers?|vendors?)$/i.test(word)) || phrase.some((word, index) => (QUANTITY_ROLE_WORD.test(word) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(word)) && !/^of$/i.test(word) && !(index === phrase.length - 1 && index > 0 && /^(?:boxes|cases|cartons|bundles|sets)$/i.test(word))) ||
       /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)$/i.test(phrase[0]) ||
       /^(?:percent|percentage|sizes?|prints?|printing|colou?rs?|logos?|designs?|sku|inches?|centimeters?|centimetres?|mm|cm|hours?|days?|weeks?|months?|years?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(phrase.at(-1))) continue;
     const sourceTokens = [...words[1].matchAll(/\S+/g)], lastToken = sourceTokens[phrase.length - 1];
@@ -128,7 +133,21 @@ function genericQuantityCandidates(text, allowCitedPhrase = false) {
   return found;
 }
 
-function quantityCandidates(text, priorQuantityKnown = false, allowCitedPhrase = false) {
+function hasBuyingContext(text) {
+  return [...text.matchAll(/\b(?:buy|order|need|needs|want|require|purchase|procure|get|quantity|qty|count)\b/gi)].some((match) => {
+    const end = match.index + match[0].length;
+    const clause = text.slice(0, end).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+    return quantityIntentIndex(clause) === clause.length - match[0].length && currentQuantityRole(text, end);
+  });
+}
+
+function shortQuantityReply(text) {
+  const values = numberMatches(text);
+  return values.length === 1 && values[0].index === text.search(/\S/) &&
+    new RegExp(`^\\s*${NUMBER_PATTERN}\\s+[a-z]+(?:[-'][a-z]+)*(?:\\s+[a-z]+(?:[-'][a-z]+)*){0,7}(?:\\s*,\\s*please)?\\s*[.!]?\\s*$`, 'i').test(text);
+}
+
+function quantityCandidates(text, priorQuantityKnown = false, allowCitedPhrase = false, inheritedBuyerRole = false) {
   const found = [], oneEach = /\b(?:one|a)\s+(?:\w+\s+){0,4}(?:shirt|tee|mug|bag|badge|bottle|kit|meal|blanket|jacket)\s+(?:for\s+)?each\b|\bone\s+per\s+(?:volunteer|participant|person)\b/i.test(text);
   if (oneEach) {
     for (const match of text.matchAll(new RegExp(`\\b(${NUMBER_PATTERN})\\s+(?:volunteers?|participants?|people)\\b`, 'gi'))) found.push({ value: numberWords(match[1]), index: match.index, end: match.index + match[0].length });
@@ -144,7 +163,7 @@ function quantityCandidates(text, priorQuantityKnown = false, allowCitedPhrase =
         numericRoleAllowed(text, match.index, match.index + match[1].length) && !/^\s+(?:colors?|colours?|prints?|designs?|sizes?|per\b|for each\b)/i.test(text.slice(end))) found.push({ value: numberWords(match[1]), index: match.index, end });
     }
   }
-  found.push(...genericQuantityCandidates(text, allowCitedPhrase));
+  found.push(...genericQuantityCandidates(text, allowCitedPhrase || inheritedBuyerRole && shortQuantityReply(text)));
   for (const match of text.matchAll(new RegExp(`\\b(?:quantity|qty|count)(?:\\s+(?:is|of|should be))?\\s*[:=]?\\s*(${NUMBER_PATTERN})\\b`, 'gi'))) {
     const index = match.index + match[0].lastIndexOf(match[1]);
     if (!/\b(?:print|color|colour|design|size)\s*$/i.test(text.slice(0, match.index)) && numericRoleAllowed(text, index, index + match[1].length)) found.push({ value: numberWords(match[1]), index, end: index + match[1].length });
@@ -208,9 +227,9 @@ function budgetCandidates(text) {
 }
 
 function latestFieldValue(turns, field) {
-  let quantity = null, budget = null, hadGoods = false;
+  let quantity = null, budget = null, hadGoods = false, buyingContext = false;
   for (const text of turns) {
-    const quantities = quantityCandidates(text, quantity !== null), budgets = budgetCandidates(text);
+    const quantities = quantityCandidates(text, quantity !== null, false, buyingContext), budgets = budgetCandidates(text);
     const bare = /^\s*([\d,]+(?:\.\d{1,2})?|[a-z -]+)\s*[.!]?\s*$/i.exec(text);
     const bareValue = bare ? numberWords(bare[1]) : NaN;
     if (quantities.length) quantity = selectCandidate(quantities, text);
@@ -222,6 +241,7 @@ function latestFieldValue(turns, field) {
     } else if (BUDGET_WORD.test(text) && /(?:\$|\bUSD)\s*-|\b(?:unknown|undecided|no budget|not sure)\b/i.test(text)) budget = null;
     else if (hadGoods && budget === null && quantity !== null && !quantities.length && Number.isFinite(bareValue) && bareValue >= 1) budget = Math.round(bareValue * 100);
     hadGoods ||= GOODS.test(text);
+    buyingContext ||= hasBuyingContext(text);
   }
   return field === 'quantity' ? quantity : budget;
 }
@@ -268,7 +288,7 @@ const MONTH_NAMES = `${MONTHS.join('|')}|${MONTHS.map((month) => month.slice(0, 
 const ORDINAL_PATTERN = ORDINALS.slice(1).map((word) => word.replace('-', '[ -]')).join('|');
 const DATE_ANCHOR = new RegExp(`\\b\\d{4}-\\d{2}-\\d{2}(?=T|\\b)|\\b(?:${MONTH_NAMES})\\.?\\s+(?:the\\s+)?(?:\\d{1,2}|${ORDINAL_PATTERN})\\b|\\b(?:\\d{1,2}(?:st|nd|rd|th)?|${ORDINAL_PATTERN})(?:\\s+of)?\\s+(?:${MONTH_NAMES})\\b|\\b(?:${DAYS.join('|')}|today|tomorrow|next week)\\b`, 'i');
 const CLOCK_ANCHOR = /\d{1,2}:\d{2}|\b(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*(?:a\.?m\.?|p\.?m\.?)\b|\b(?:noon|midnight)\b/i;
-const ZONE_ANCHOR = /[+-]\d{2}:\d{2}|\b(?:UTC|GMT|Pacific|PST|PDT|Eastern|EST|EDT|Central|CST|CDT|Mountain|MST|MDT|IST|Tokyo|London|New York|Los Angeles)\b|\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/i;
+const ZONE_ANCHOR = /[+-]\d{2}:\d{2}|\b(?:UTC|GMT|Pacific|PST|PDT|Eastern|EST|EDT|Central|CST|CDT|Mountain|MST|MDT|IST|Tokyo|London|New York|Los Angeles)\b|\b(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/i;
 
 function specificationUpdate(text, previous) {
   if (retainedClause(text)) {
@@ -308,9 +328,9 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
     if (clauses.some(isBudgetUpdate) && (index === 0 || budgetChanged || !budgetCandidates(text).length)) latest.budget = index;
     for (const clause of clauses) {
       const deliveryChange = !retainedClause(clause) && CORRECTION.test(clause) && /\b(?:deliver|delivery|deadline)\b/i.test(clause);
-      if (DATE_ANCHOR.test(clause) || deliveryChange && /\bdate\b/i.test(clause) || deliveryChange && !CLOCK_ANCHOR.test(clause) && !ZONE_ANCHOR.test(clause) && !/\b(?:same|keep|unchanged)\b/i.test(clause)) latest.delivery_date = index;
+      if (DATE_ANCHOR.test(clause) || deliveryChange && /\bdate\b/i.test(clause) || deliveryChange && !CLOCK_ANCHOR.test(clause) && !hasZoneAnchor(clause) && !/\b(?:same|keep|unchanged)\b/i.test(clause)) latest.delivery_date = index;
       if (CLOCK_ANCHOR.test(clause) || deliveryChange && /\btime\b/i.test(clause) && !/\btime\s*zone\b/i.test(clause)) latest.delivery_time = index;
-      if (ZONE_ANCHOR.test(clause) || deliveryChange && /\b(?:timezone|time zone|zone|offset)\b/i.test(clause)) latest.time_zone = index;
+      if (hasZoneAnchor(clause) || deliveryChange && /\b(?:timezone|time zone|zone|offset)\b/i.test(clause)) latest.time_zone = index;
     }
     if (index === 0 && GOODS.test(text) || clauses.some((clause) => specificationUpdate(clause, previous))) latest.specification = index;
     previous += '\n' + text;
@@ -319,7 +339,7 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
   const proofChecks = { quantity: (text) => quantityCandidates(text, true, true).length > 0 || /^\s*\d+\s*$/.test(text),
     budget: (text) => budgetCandidates(text).length > 0 || /^\s*\d+(?:\.\d{1,2})?\s*$/.test(text),
     specification: (text) => SPEC_FEATURE.test(text) || new RegExp(`\\b${ITEM_WORDS}\\b`, 'i').test(text),
-    delivery_date: (text) => DATE_ANCHOR.test(text), delivery_time: (text) => CLOCK_ANCHOR.test(text), time_zone: (text) => ZONE_ANCHOR.test(text) };
+    delivery_date: (text) => DATE_ANCHOR.test(text), delivery_time: (text) => CLOCK_ANCHOR.test(text), time_zone: (text) => hasZoneAnchor(text) };
   for (const [field, index] of Object.entries(latest)) {
     const clauses = String(evidence[sourceField[field]] ?? '').split('\n').filter(Boolean);
     // A later explicit restatement can prove an unchanged numeric value. It must still
@@ -336,13 +356,18 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
     const removed = new RegExp(`\\b(?:instead of|rather than|without|no|not|avoid|exclude|do not use|don't use)\\s+(?:the\\s+)?(${featureWords}(?:\\s+${featureWords}){0,4})`, 'gi');
     for (const match of turns[lastSpec].matchAll(removed)) if (containsPositivePhrase(specification, match[1])) missing.push('specification');
   }
+  if (latestDeliveryZonePolicy(turns)?.unresolved) missing.push('time_zone');
   return { missingFields: [...new Set(missing)], currency: goalCurrencyContext(turns) };
 }
 
 export function quantityIsGrounded(value, evidence, turns = [evidence]) {
   if (!Number.isSafeInteger(value) || !evidence || latestFieldValue(turns, 'quantity') !== value) return false;
   const cited = quantityCandidates(evidence, turns.some((turn) => quantityCandidates(turn).length), true);
-  return cited.some((candidate) => candidate.value === value && (!candidate.generic || turns.some((turn) => quantityCandidates(turn).some((actual) => actual.value === value && turn.slice(actual.index, actual.end) === evidence.slice(candidate.index, candidate.end))))) || /^\s*[\d,]+\s*$/.test(evidence) && numberWords(evidence) === value;
+  return cited.some((candidate) => candidate.value === value && (!candidate.generic || turns.some((turn, index) => quantityCandidates(turn, index > 0, false, turns.slice(0, index).some(hasBuyingContext)).some((actual) => {
+    if (actual.value !== value) return false;
+    const whole = turn.slice(actual.index, actual.end), citation = evidence.slice(candidate.index, candidate.end);
+    return whole === citation || whole.startsWith(citation) && /^\s/.test(whole.slice(citation.length));
+  })))) || /^\s*[\d,]+\s*$/.test(evidence) && numberWords(evidence) === value;
 }
 
 export function budgetIsGrounded(cents, evidence, turns = [evidence]) {
@@ -476,8 +501,86 @@ export function resolveLocalDelivery({ date, time, timeZone, offset = '' } = {})
   return candidates.length === 1 ? { status: 'ok', instant: candidates[0], candidates } : { status: 'fold', candidates };
 }
 
+
+let cityClockIndex = null;
+function namedCityClockZones(text) {
+  if (!/\b(?:time|timezone|zone)\b/i.test(text)) return [];
+  if (cityClockIndex === null) {
+    const aliases = new Map();
+    for (const value of Intl.supportedValuesOf('timeZone')) {
+      const city = value.split('/').at(-1).replaceAll('_', ' ').toLowerCase(), zone = canonicalZone(value);
+      if (!zone || !/^[a-z][a-z -]{2,60}$/.test(city)) continue;
+      if (!aliases.has(city)) aliases.set(city, new Set());
+      aliases.get(city).add(zone);
+    }
+    const names = [...aliases.keys()].sort((a, b) => b.length - a.length).map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    cityClockIndex = { aliases, pattern: new RegExp(`\\b(${names.join('|')})\\s+(?:time(?:\\s*zone)?|timezone)\\b|\\b(?:time\\s*zone|timezone)\\s+(?:is\\s+|of\\s+)?(${names.join('|')})\\b`, 'gi') };
+  }
+  return [...new Set([...text.matchAll(cityClockIndex.pattern)].flatMap((match) => [...cityClockIndex.aliases.get((match[1] ?? match[2]).toLowerCase())]))];
+}
+
+
+const NON_NAMED_TIME_WORDS = new Set(('instead unchanged please am pm delivery local organization organisation organizational company org configured default current same given supplied requested specified exact clock our your my their its own server wall noon midnight what which the a this that time zone for to as at details information setting settings').split(' '));
+
+/** Unknown explicit zone names cannot silently become the organization's default, even beside a valid offset. */
+export function hasUnknownZoneReference(text) {
+  const iana = [...text.matchAll(/\b(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/gi)];
+  if (iana.some((match) => !canonicalZone(match[0]))) return true;
+  if (!/\b(?:time|timezone|zone)\b/i.test(text)) return false;
+  namedCityClockZones(text); // Initializes the supported city-name index without geocoding.
+  const spans = [...text.matchAll(cityClockIndex.pattern), ...iana].map((match) => [match.index, match.index + match[0].length]);
+  const aliases = new Set([...Object.keys(ZONES), ...Object.keys(ZONE_OFFSETS)].map((name) => name.toLowerCase()));
+  const references = [
+    /\b([A-Za-z][A-Za-z_-]*)\s+(?:time(?:\s*zone)?|timezone)\b/gi,
+    /\b(?:time\s*zone|timezone)\s*(?:(?:is|of)\s+|[:=]\s*)?([A-Za-z][A-Za-z_-]*)\b/gi,
+  ];
+  return references.some((pattern) => [...text.matchAll(pattern)].some((match) => {
+    const name = match[1].toLowerCase(), end = match.index + match[0].length;
+    const nameStart = match.index + match[0].lastIndexOf(match[1]), nameEnd = nameStart + match[1].length;
+    if (/^(?:utc|gmt)-$/.test(name) && /^\d{2}:\d{2}\b/.test(text.slice(end))) return false;
+    if (NON_NAMED_TIME_WORDS.has(name) || aliases.has(name) || spans.some(([start, stop]) => nameStart >= start && nameEnd <= stop)) return false;
+    // Possessive generic wording describes the configured organization clock, not a city alias.
+    if (name === 's' && /\b(?:organi[sz]ation|company|org)'s\s+time(?:\s*zone)?$/i.test(text.slice(Math.max(0, match.index - 25), end))) return false;
+    return true;
+  }));
+}
+
+function organizationZoneConfirmation(text) {
+  return /^\s*(?:please\s+)?(?:use|switch\s+to|choose)\s+(?:(?:the|our)\s+)?(?:organi[sz]ation(?:'s)?|company|configured|default)\s+time\s*zone\b/i.test(text.replaceAll('’', "'"));
+}
+
+function hasZoneAnchor(text) {
+  return ZONE_ANCHOR.test(text) || namedCityClockZones(text).length > 0 || hasUnknownZoneReference(text) || organizationZoneConfirmation(text);
+}
+
+
+function deniedDeliveryZone(text) {
+  const normalized = text.replaceAll('’', "'");
+  namedCityClockZones(normalized);
+  const references = [
+    ...normalized.matchAll(new RegExp(ZONE_ANCHOR.source, 'gi')),
+    ...(cityClockIndex ? [...normalized.matchAll(cityClockIndex.pattern)] : []),
+    ...normalized.matchAll(/\b(?:organi[sz]ation(?:'s)?|company|configured|default)\s+time\s*zone\b/gi),
+  ];
+  return references.some((match) => {
+    const before = normalized.slice(Math.max(0, match.index - 100), match.index), after = normalized.slice(match.index + match[0].length);
+    return /\b(?:not|never|no|don't|dont|doesn't|doesnt|won't|wont|wouldn't|wouldnt|shouldn't|shouldnt|can't|cant|cannot|mustn't|mustnt|shan't|shant|couldn't|couldnt|avoid|exclude|instead of|rather than)(?:\s+(?:use|using|choose|choosing|select|selecting|switch|switching|set|setting|need|to|the|our|this|that|a|an|ever|actually|really|please|from|in)){0,5}\s*$/i.test(before) ||
+      /^\s*(?:time(?:\s*zone)?\s*)?(?:is\s+)?(?:not\s+(?:allowed|permitted|acceptable|correct)|forbidden|unacceptable)\b/i.test(after);
+  });
+}
+
+/** A later explicit zone choice supersedes earlier zone policy; vague preservation words cannot clear it. */
+export function latestDeliveryZonePolicy(turns) {
+  let policy = null;
+  for (const [index, text] of turns.entries()) {
+    const denied = deniedDeliveryZone(text), unknown = hasUnknownZoneReference(text);
+    if (hasZoneAnchor(text) || denied) policy = { index, text, unknown, denied, unresolved: unknown || denied, organizationDefault: organizationZoneConfirmation(text) };
+  }
+  return policy;
+}
+
 function namedZones(text) {
-  const found = [];
+  const found = [...namedCityClockZones(text)];
   const zoneText = text.replace(/\b(?:UTC|GMT)[+-]\d{2}:\d{2}\b/gi, '');
   for (const [alias, zone] of Object.entries(ZONES)) if (new RegExp(`\\b${alias}\\b`, 'i').test(zoneText)) found.push(zone);
   for (const match of text.matchAll(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g)) {
@@ -558,15 +661,19 @@ export function groundedDelivery(local, deadline, evidence, { now, timeZone, tur
   // Contradictions within that last buyer turn are still checked together and refused.
   const latestClockTurn = Array.isArray(turns) ? (turns.findLast((turn) => CLOCK_ANCHOR.test(turn)) ?? null) : null;
   const clockText = latestClockTurn === null ? text : evidence.filter((clause) => latestClockTurn.includes(clause) && CLOCK_ANCHOR.test(clause)).join('\n');
+  const zonePolicy = Array.isArray(turns) ? latestDeliveryZonePolicy(turns) : null;
+  const zoneText = zonePolicy ? evidence.filter((clause) => zonePolicy.text.includes(clause) && hasZoneAnchor(clause)).join('\n') : text;
+  if (zonePolicy && !zoneText) return { status: 'invalid', field: 'time_zone' };
   const iso = strictIsoInstant(deadline);
   if (!iso) return { status: 'invalid', field: 'delivery_date' };
-  const named = namedZones(text), zone = canonicalZone(local.timeZone);
-  const explicitIana = [...text.matchAll(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g)].some((match) => canonicalZone(match[0]));
-  if (/\b(?:CST|IST|CET|CEST|BST|JST|AEST|AEDT|NZST|NZDT|NST|NDT|HST|AKST|AKDT)\b/i.test(text) && !explicitIana && !/(?:[+-]\d{2}:\d{2}|\b(?:UTC|GMT)\b)/i.test(text)) return { status: 'invalid', field: 'time_zone' };
-  const numericOffsets = [...text.matchAll(/[+-]\d{2}:\d{2}\b/g)].map((match) => match[0]);
-  const abbreviationText = text.replace(/\b(?:UTC|GMT)(?=[+-]\d{2}:\d{2})/gi, '');
+  if (zonePolicy?.unresolved || deniedDeliveryZone(zoneText) || hasUnknownZoneReference(zoneText)) return { status: 'invalid', field: 'time_zone' };
+  const named = namedZones(zoneText), zone = canonicalZone(local.timeZone);
+  const explicitIana = [...zoneText.matchAll(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g)].some((match) => canonicalZone(match[0]));
+  if (/\b(?:CST|IST|CET|CEST|BST|JST|AEST|AEDT|NZST|NZDT|NST|NDT|HST|AKST|AKDT)\b/i.test(zoneText) && !explicitIana && !/(?:[+-]\d{2}:\d{2}|\b(?:UTC|GMT)\b)/i.test(zoneText)) return { status: 'invalid', field: 'time_zone' };
+  const numericOffsets = [...zoneText.matchAll(/[+-]\d{2}:\d{2}\b/g)].map((match) => match[0]);
+  const abbreviationText = zoneText.replace(/\b(?:UTC|GMT)(?=[+-]\d{2}:\d{2})/gi, '');
   const abbreviationOffsets = Object.entries(ZONE_OFFSETS).filter(([alias]) => alias !== 'CST' && new RegExp(`\\b${alias}\\b`, 'i').test(abbreviationText)).map(([, offset]) => offset);
-  const literalZulu = [...text.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z\b/g)].length ? ['Z'] : [];
+  const literalZulu = [...zoneText.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z\b/g)].length ? ['Z'] : [];
   const offsets = [...numericOffsets, ...abbreviationOffsets, ...literalZulu];
   if (offsets.some((offset) => parseOffset(offset) === null)) return { status: 'invalid', field: 'time_zone' };
   const sourceOffsets = [...new Map(offsets.map((offset) => [parseOffset(offset), offset])).values()];
@@ -576,7 +683,7 @@ export function groundedDelivery(local, deadline, evidence, { now, timeZone, tur
   if (sourceOffsets.length && local.offset && parseOffset(sourceOffsets[0]) !== parseOffset(local.offset)) return { status: 'invalid', field: 'time_zone' };
   const literals = [...text.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})\b/g)].map((match) => match[0]);
   // A single literal timestamp is authoritative on its own; contradictory source constraints are checked first.
-  if (!named.length && !first && !second && literals.some((value) => strictIsoInstant(value) === iso)) return { status: 'ok', instant: iso };
+  if (!named.length && !first && !second && literals.some((value) => (!zonePolicy || zonePolicy.text.includes(value)) && strictIsoInstant(value) === iso)) return { status: 'ok', instant: iso };
   if (!named.length && sourceOffsets.length && !first && !second) {
     const offset = sourceOffsets[0], localNow = now + parseOffset(offset) * 60000;
     if (!dateIsGrounded(local.date, text, localNow, 'UTC')) return { status: 'invalid', field: 'delivery_date' };

@@ -1,0 +1,19 @@
+{
+  "evidenceClass": "OFFLINE COUNTERFACTUAL REPLAY OF EXPOSED, PREVIOUSLY CAPTURED MODEL DRAFTS. Not fresh inference, a holdout or a new model-performance estimate.",
+  "actualNewProviderCalls": 0,
+  "originalPrimaryPreserved": true,
+  "counts": {
+    "modelCorrectTasks": 24,
+    "baselineCorrectTasks": 17,
+    "modelControls": 6,
+    "baselineControls": 6,
+    "errors": 0
+  },
+  "sourceHashes": {
+    "src/goal-grounding.js": "93439d2dbd66955a3e8302e0d2dd4294aa37a87927c63484d7c631c1ff79de7f",
+    "src/goal-intake.js": "c803ea6ccedd27742204fc23dd73ee78327eb4991228b8352ab86de2bb28d091",
+    "scripts/goal-intake-eval.js": "511f3b5199d9ed3fce8bb2f4186196c86c678d659be154c21d42fae5f8724fcc",
+    "scripts/conversation-goal-eval.js": "53a26f03f6553f09ba6c0e07e0d8af6d31e4b12fe730c4c3e6d630b7407c2e23"
+  },
+  "interpretation": "Counterfactual normalization/scoring of previously captured drafts on exposed cases, not a fresh inference run, fresh holdout, or general AI performance estimate. Original paid regression17/24 vs14/24 and its failed gate remain unchanged."
+}
