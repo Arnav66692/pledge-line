@@ -1,0 +1,57 @@
+{
+  "sourceCommit": "bff14304b2c173c45c9f403b700e199c1b63e41c",
+  "durationSeconds": 73.0,
+  "recording": "One uninterrupted original-speed hosted browser sequence, sampled at target2frames/second with gstack and encoded at12fps using recorded elapsed frame times. No UI frame fabrication, scenario substitution or time compression.",
+  "editing": "Added original offline Samantha narration, English caption track and scope labels. No music. The first portion is disposable mock PayPal rehearsal with the real application logic. Final portion verifies a retained actual sandbox receipt and rejects an edited copy, without a new payment or PayPal query.",
+  "scope": "Four rehearsal situations: covered, no consent, changed charge and unresolved refund. Actual historical donor financial acceptance remains separate. No live funds, new AI requests, new PayPal payments, provider outage, voice study or independent user benefit demonstrated.",
+  "sourceMovieSha256": "6867e747edf11b13ca84571eca968c5e3a5bc36ac3a26d81e448147b56ba7960",
+  "sha256": "2d46e15ce3e74c2a20b03231774d84a0c01b49a9df30f782f40901064ec68317",
+  "bytes": 1556047,
+  "captionsSha256": "160d2b580495e4ec39e26f65a840474f11e1097841de7b8592e926aeded86e41",
+  "captureFrames": 145,
+  "failedExploratoryTake": "A prior private take stopped before receipt verification because the evidence deep link hid its chapter. It is preserved privately; product deep-link repair preceded this successful take.",
+  "scenes": [
+    {
+      "id": "intro",
+      "startSeconds": 5.852,
+      "narration": "A small nonprofit's donor cannot afford this month's gift. Pledge Line can complete eligible sponsor-backed relief, then show the record. This is a disposable rehearsal, not a payment.",
+      "narrationDurationSeconds": 10.619819
+    },
+    {
+      "id": "covered",
+      "startSeconds": 17.554,
+      "narration": "The line reads a twenty-five dollar charge and asks for separate consent. The sponsor payment confirms before the donor refund. The monthly gift stays active.",
+      "narrationDurationSeconds": 8.916916
+    },
+    {
+      "id": "no_consent",
+      "startSeconds": 27.319,
+      "narration": "A request isn't consent. Without a separate yes, no financial attempt follows.",
+      "narrationDurationSeconds": 5.012245
+    },
+    {
+      "id": "changed_charge",
+      "startSeconds": 33.189,
+      "narration": "If the charge changes after the offer, the old yes cannot approve the new amount. Fresh reads stop the payment.",
+      "narrationDurationSeconds": 6.196735
+    },
+    {
+      "id": "refund_unknown",
+      "startSeconds": 40.359,
+      "narration": "An uncertain refund stays unresolved. The sponsor capture remains visible, and the line does not claim success or return funds it cannot reconcile.",
+      "narrationDurationSeconds": 8.564807
+    },
+    {
+      "id": "original",
+      "startSeconds": 50.472,
+      "narration": "The rehearsal uses mock records. This separate signed receipt comes from an actual twenty-five dollar sponsor capture and donor refund in PayPal's sandbox. Verify the original.",
+      "narrationDurationSeconds": 10.472653
+    },
+    {
+      "id": "edited",
+      "startSeconds": 61.953,
+      "narration": "Now change the receipt amount. The original signature cannot vouch for edited content. This proves receipt integrity under the app's key, not PayPal certification.",
+      "narrationDurationSeconds": 9.491973
+    }
+  ]
+}

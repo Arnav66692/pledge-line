@@ -1,0 +1,159 @@
+{
+  "reviewer": "relief_rubric_a",
+  "assessment": "One fresh sandbox hackathon prototype review",
+  "reviewedAt": "2026-11-06",
+  "sourcePacket": {
+    "path": ".acceptance/relief-review-packet-20261106.md",
+    "sha256": "b911ca59b9574372db2f837fdb02a406625bd70bc2e0f18c105a3c940055fd53",
+    "hashVerified": true
+  },
+  "scale": {
+    "minimum": 1,
+    "maximum": 10,
+    "increment": 0.5,
+    "equalWeights": true,
+    "internalConventionNotDevpostPrescribed": true
+  },
+  "criteria": [
+    {
+      "criterion": "Technological Implementation",
+      "score": 8.5,
+      "reason": "Substantial implemented transaction orchestration: retained sandbox records show consented pause/resume, capture-before-refund with ACTIVE subscription, paid invoice and verified duplicate webhook handling, restart-preserved receipt, and completed two-leg purchasing. Current rehearsal invokes the call service, gate, checker and receipts with isolated mocks; test source covers six scenarios, isolation and HTTP restrictions. Cancellation repair preserves separate consent. Mixed AI performance remains a material limit: donor gate failed despite 11/12 versus rules 6/12, purchase drafting failed 11/24 versus rules 14/24, and model routing takes seconds.",
+      "evidence": [
+        "src/rehearsal.js",
+        "src/call.js:458",
+        "src/intent-guards.js",
+        "test/rehearsal.test.js",
+        "test/cancellation-choice.test.js",
+        "docs/results/donor-route-fresh-2026-11-06.json",
+        "docs/results/functional-acceptance-2026-11-05/donor.json",
+        "docs/results/functional-acceptance-2026-11-05/receipt.json",
+        "docs/results/functional-acceptance-2026-11-05/invoice-webhook.json",
+        "docs/results/guarded-checkout-2026-11-05.json"
+      ]
+    },
+    {
+      "criterion": "Design",
+      "score": 8,
+      "reason": "Native desktop shows a coherent restrained hierarchy: scenario controls, large outcome, readable financial totals, active gift and conversation. Native 390px image has readable stacked controls and full-width action without evident horizontal overflow. HTML/JS include semantic controls, status announcements, focus handling and expandable technical details. Six explained scenarios followed by transcript and records make a long mobile journey; this is an observed layout tradeoff, not an established user failure.",
+      "evidence": [
+        ".acceptance/rehearsal-evidence/hosted-desktop-native.png",
+        ".acceptance/rehearsal-evidence/hosted-mobile-native.png",
+        "web/rehearsal.html",
+        "web/rehearsal.css",
+        "web/rehearsal.js"
+      ]
+    },
+    {
+      "criterion": "Potential Impact",
+      "score": 7.5,
+      "reason": "A specific, intelligible donor-care problem and actual sandbox relief mechanism: give a hard month back while preserving the monthly relationship, after sponsor confirmation. Fundraising context supports relevance of recurring giving but does not establish app benefit. No independent target-user observations, retention/time-saving effects, willingness to pay or sponsor economics/partnership are established. These limit confidence without making a study or production launch mandatory hackathon features.",
+      "evidence": [
+        ".acceptance/relief-review-packet-20261106.md",
+        "docs/results/functional-acceptance-2026-11-05/donor.json",
+        "web/rehearsal.html"
+      ]
+    },
+    {
+      "criterion": "Innovation/Idea",
+      "score": 8,
+      "reason": "Thoughtful combination of conversational supported actions, fresh separate exact consent, sponsor-funded hardship relief, authoritative readback, sentence evidence, signed receipt and explicit unknown outcomes. Conventional recurring-gift management and receipts already exist in the acknowledged alternatives. Controlled suppliers and one merchant do not demonstrate an independent marketplace. Mixed AI gates and a better deterministic purchasing plan limit claims of proven AI-specific advantage.",
+      "evidence": [
+        ".acceptance/relief-review-packet-20261106.md",
+        "src/rehearsal.js",
+        "docs/results/donor-route-fresh-2026-11-06.json",
+        "docs/results/guarded-checkout-2026-11-05.json"
+      ]
+    },
+    {
+      "criterion": "Presentation",
+      "score": 8,
+      "reason": "Clear donor-first framing and anonymous current-code rehearsal make the mechanism inspectable. Financial totals, actual checkout image and receipt verification offer strong visible proof. Demo HTML carefully distinguishes recording, later checkout, simulation and signature scope. The strongest proof remains distributed across rehearsal, film, screenshot/readbacks and receipt; the described film omits later completed purchasing. Full video was not watched in this review.",
+      "evidence": [
+        "web/demo.html",
+        "web/rehearsal.html",
+        ".acceptance/rehearsal-evidence/hosted-desktop-native.png",
+        "web/demo-assets/guarded-checkout-20261105.png",
+        ".acceptance/relief-review-packet-20261106.md"
+      ]
+    }
+  ],
+  "materialDeductions": [
+    {
+      "id": 1,
+      "affects": [
+        "Technological Implementation",
+        "Innovation/Idea"
+      ],
+      "deduction": "AI-specific effectiveness is uneven: the fresh donor gate failed with one wrong mutation route; exposed-case cancellation repair does not erase it. Purchase drafting trails its deterministic baseline, and the better price is supplied by the deterministic guard rather than demonstrated model superiority.",
+      "evidence": [
+        "docs/results/donor-route-fresh-2026-11-06.json",
+        "docs/DONOR-ROUTING-2026-11-06.md",
+        "docs/results/guarded-checkout-2026-11-05.json",
+        ".acceptance/relief-review-packet-20261106.md"
+      ]
+    },
+    {
+      "id": 2,
+      "affects": [
+        "Potential Impact"
+      ],
+      "deduction": "Target-user benefit and sponsor funding remain hypotheses despite demonstrated sandbox mechanics. Independent use, retention/time savings, willingness to pay and sponsor partnership are not established; equal gross coverage incurs fees.",
+      "evidence": [
+        ".acceptance/relief-review-packet-20261106.md",
+        "src/rehearsal.js",
+        ".acceptance/rehearsal-evidence/hosted-desktop-native.png"
+      ]
+    },
+    {
+      "id": 3,
+      "affects": [
+        "Design",
+        "Presentation"
+      ],
+      "deduction": "High information load and a distributed proof journey limit immediate synthesis: six scenario explanations precede transcript/records in the mobile stack, while current simulated relief, recording, later actual checkout and receipt require separate inspection. No observed user confusion is claimed.",
+      "evidence": [
+        ".acceptance/rehearsal-evidence/hosted-desktop-native.png",
+        ".acceptance/rehearsal-evidence/hosted-mobile-native.png",
+        "web/rehearsal.html",
+        "web/demo.html",
+        "web/demo-assets/guarded-checkout-20261105.png"
+      ]
+    }
+  ],
+  "totals": {
+    "raw": 40,
+    "rawMaximum": 50,
+    "linearMultiplier": 1.8,
+    "converted": 72,
+    "convertedMaximum": 90
+  },
+  "imagesInspected": [
+    {
+      "path": ".acceptance/rehearsal-evidence/hosted-desktop-native.png",
+      "detail": "original",
+      "observation": "1440px native desktop covered result, amounts, ACTIVE gift, conversation and simulation/fee disclosure"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/hosted-mobile-native.png",
+      "detail": "original",
+      "observation": "390px stacked form and running state; image alone does not show completed unresolved result"
+    },
+    {
+      "path": "web/demo-assets/guarded-checkout-20261105.png",
+      "detail": "original",
+      "observation": "Retained sandbox capture cards $396.50 and $277.65, controlled supplier/test-funds disclaimers"
+    }
+  ],
+  "limits": [
+    "One assessment. No prior subjective-score reports opened and no target grade used.",
+    "Only fixed packet and listed evidence/source, plus requested review skill, were read. No browsing, model/provider calls, credentials, app mutation or tests run.",
+    "Retained JSON and packet are records, not fresh independent provider queries. Packet reports 1023 tests, 1014 pass, 9 optional skips, 0 fail; the rehearsal document records an earlier 1018-test run. These are mock-provider suites, not real transaction counts.",
+    "Rehearsal is current-code isolated simulation, rules routing, fixed clock, no production persistence/microphone/model execution.",
+    "Earlier $676.25 checkout included restart. Later $674.15 checkout had no new restart. Suppliers share an owned sandbox merchant; no independent suppliers/goods fulfillment established.",
+    "Fresh routing fixture author was another agent in the same system, not external donors or a random population sample. Original failed evaluations remain failed.",
+    "Full video was not watched. Original-resolution images are viewport captures and do not establish the entire page behavior.",
+    "No production funds, onboarding, SLA or independent study required for scoring. Compliance/public release/eligibility/deadline are separate and remain unverified where packet states.",
+    "source-command-review-pr read at ~/.agents/skills/source-command-review-pr/SKILL.md. Role-required agent-self-evaluation SKILL.md was not found under ~/.agents/skills or ~/.codex/skills."
+  ]
+}

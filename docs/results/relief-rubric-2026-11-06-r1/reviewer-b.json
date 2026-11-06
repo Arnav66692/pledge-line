@@ -1,0 +1,98 @@
+{
+  "assessment": "Fresh internal sandbox hackathon prototype review; one assessment, no prior subjective grades inspected",
+  "reviewer": "relief_rubric_b",
+  "date": "2026-11-06",
+  "sourcePacket": {
+    "path": ".acceptance/relief-review-packet-20261106.md",
+    "sha256": "b911ca59b9574372db2f837fdb02a406625bd70bc2e0f18c105a3c940055fd53",
+    "hashIndependentlyVerified": true
+  },
+  "scoringConvention": "Five equally weighted user-supplied Devpost criteria; internal 1-to-10 scale in half-point increments. The scale and equal weights are not represented as Devpost-prescribed.",
+  "criteria": [
+    {
+      "criterion": "Technological Implementation",
+      "score": 8.5,
+      "reason": "Substantial working integration: retained actual sandbox capture/refund, pause/resume, paid invoice and verified duplicate webhook records; restart-surviving receipt and earlier split checkout. Inspected call.js confirms fresh offered-term reads, confirmed sponsor funding before refund, read-only lost-response recovery and open unknown outcomes. rehearsal.js invokes the actual call service with isolated mocks, and its tests cover all six scenarios, concurrency and HTTP dependency isolation. The AI reliability and latency limitations in D1 prevent a top score; mock test count is not transaction count.",
+      "evidence": ["src/call.js:665", "src/call.js:751", "src/rehearsal.js", "test/rehearsal.test.js", "docs/results/functional-acceptance-2026-11-05/donor.json", "docs/results/functional-acceptance-2026-11-05/invoice-webhook.json", "docs/results/functional-acceptance-2026-11-05/receipt.json", "docs/results/functional-acceptance-2026-11-05/checkout.json"],
+      "materialDeductionIds": ["D1"]
+    },
+    {
+      "criterion": "Design",
+      "score": 8.0,
+      "reason": "The native desktop image has coherent typography, restrained color, strong financial outcome hierarchy, specific scenario labels and readable conversation. The 390-pixel image shows clean wrapping and clear loading feedback. Source provides labels, fieldset/legend, live status, focus management and progressively disclosed execution evidence. D3 limits the score: the full mobile viewport is occupied by scenario controls before the outcome, and the long evidence conversation plus separate purchasing surface makes the experience heavier than the central donor task needs.",
+      "evidence": [".acceptance/rehearsal-evidence/hosted-desktop-native.png", ".acceptance/rehearsal-evidence/hosted-mobile-native.png", "web/demo-assets/guarded-checkout-20261105.png", "web/rehearsal.html", "web/rehearsal.css", "web/rehearsal.js"],
+      "materialDeductionIds": ["D3"]
+    },
+    {
+      "criterion": "Potential Impact",
+      "score": 7.5,
+      "reason": "A concrete after-hours donor-care problem, an inspectable sponsor-funded relief mechanism, and preserving an active monthly gift make a credible prototype use case. The packet's fundraising context supports audience relevance, not app effectiveness. D2 limits confidence in magnitude and adoption: no independent donor/nonprofit observations, sponsor willingness or measured support/retention benefit are established. This is a deduction for untested impact assumptions, not a demand for a production launch or independent study.",
+      "evidence": [".acceptance/relief-review-packet-20261106.md#Impact and alternatives", "docs/results/functional-acceptance-2026-11-05/donor.json", "web/rehearsal.html"],
+      "materialDeductionIds": ["D2"]
+    },
+    {
+      "criterion": "Innovation/Idea",
+      "score": 8.0,
+      "reason": "The strongest distinction is the combination of conversational hardship relief, sponsor-first funding, separate exact consent, authoritative financial readback, sentence evidence and a verifiable signed record. That is a thoughtful application-level combination beyond ordinary recurring-gift controls, which the packet correctly acknowledges already exist. D1 limits the AI-specific contribution: purchase drafting fails its fresh baseline gate, and guarded prices demonstrate a deterministic guard rather than AI-specific savings. The fresh donor semantic-routing advantage is encouraging but still fails its registered mutation-safety gate.",
+      "evidence": [".acceptance/relief-review-packet-20261106.md#AI role and mixed evaluation results", ".acceptance/relief-review-packet-20261106.md#Impact and alternatives", "docs/results/donor-route-fresh-2026-11-06.json", "docs/results/guarded-checkout-2026-11-05.json", "web/demo.html"],
+      "materialDeductionIds": ["D1"]
+    },
+    {
+      "criterion": "Presentation",
+      "score": 8.5,
+      "reason": "The primary relief story is understandable, and the credential-free six-case rehearsal lets a reviewer inspect behavior directly. Prominent simulation labels, fee disclosure, retained negative evaluations and separate actual sandbox proof are unusually clear. demo.html supplies a short working-app recording with captions and provenance, receipt verification and separately labeled later checkout evidence. D3 keeps the score below excellent: the narrative spans donor care and a separate supply desk, while the short film omits the later checkout execution and the supplied phone screenshot captures loading rather than a completed result. Video existence/content descriptions are packet/source evidence; I did not watch the full recording.",
+      "evidence": ["web/demo.html:15", "web/demo.html:16", "web/demo.html:25", "web/rehearsal.html", ".acceptance/rehearsal-evidence/hosted-desktop-native.png", ".acceptance/rehearsal-evidence/hosted-mobile-native.png", "web/demo-assets/guarded-checkout-20261105.png"],
+      "materialDeductionIds": ["D3"]
+    }
+  ],
+  "materialDeductions": [
+    {
+      "id": "D1",
+      "appliesTo": ["Technological Implementation", "Innovation/Idea"],
+      "finding": "The incremental AI value is mixed and not yet consistently reliable: fresh donor routing is 11/12 versus rules 6/12 but has one wrong mutation route and fails its registered gate; the packet reports fresh purchase drafting 11/24 versus rules 14/24, also failed. Routing adds seconds of latency, and negotiation does not establish AI-specific savings.",
+      "improvement": "On a new frozen synthetic set, demonstrate the repaired donor flow's correct actions and compare its response time; separately report purchase drafting against its unchanged baseline without relabeling earlier failures.",
+      "evidence": ["docs/results/donor-route-fresh-2026-11-06.json", "docs/DONOR-ROUTING-2026-11-06.md", "test/cancellation-choice.test.js", ".acceptance/relief-review-packet-20261106.md#AI role and mixed evaluation results"],
+      "qualification": "The cancellation policy repair and its five tests are real evidence of a fix, not a fresh model win. No payment occurred in the failed routing evaluation; models do not authorize payments."
+    },
+    {
+      "id": "D2",
+      "appliesTo": ["Potential Impact"],
+      "finding": "The mechanism works in sandbox, but its key product assumptions remain unobserved with target users and sponsors; there is no demonstrated retention, time-saving, adoption or sponsor-economic benefit.",
+      "improvement": "Observe a small number of nonprofit staff and donors using the existing rehearsal, and test whether a prospective sponsor understands and accepts the gross-amount-plus-fee funding proposition.",
+      "evidence": [".acceptance/relief-review-packet-20261106.md#Impact and alternatives", "web/rehearsal.html"],
+      "qualification": "A hackathon prototype need not run production payments or an independent study; the absence simply bounds confidence in the proposed impact."
+    },
+    {
+      "id": "D3",
+      "appliesTo": ["Design", "Presentation"],
+      "finding": "Evidence is clear but spread across a long donor rehearsal, a separate supply desk, the short recording and later checkout proof. At phone width the six-scenario form fills the provided viewport before results, and that screenshot shows only the running state.",
+      "improvement": "Make the completed primary donor outcome easier to reach on a phone and provide one concise guided donor-relief walkthrough, with purchasing and deeper evidence linked as secondary material.",
+      "evidence": [".acceptance/rehearsal-evidence/hosted-mobile-native.png", ".acceptance/rehearsal-evidence/hosted-desktop-native.png", "web/rehearsal.css", "web/demo.html:15", "web/demo.html:16", "web/demo-assets/guarded-checkout-20261105.png"],
+      "qualification": "This is a hierarchy and narrative-density deduction, not a claim of broken mobile layout or a judgment of an unwatched film's production quality."
+    }
+  ],
+  "imagesInspected": [
+    { "path": ".acceptance/rehearsal-evidence/hosted-desktop-native.png", "method": "view_image, original resolution", "observed": "1440-pixel native viewport; completed simulated relief with $25 sponsor capture, $25 donor refund and active monthly gift; readable split layout." },
+    { "path": ".acceptance/rehearsal-evidence/hosted-mobile-native.png", "method": "view_image, original resolution", "observed": "390-pixel native viewport; no visible horizontal clipping; uncertain-refund scenario selected, disabled run button and running message. Completed result is outside this image's evidence." },
+    { "path": "web/demo-assets/guarded-checkout-20261105.png", "method": "view_image, original resolution", "observed": "1280 by 720 checkout viewport; two sandbox capture-confirmed panels for $396.50 and $277.65; controlled supplier and no-fulfillment labels visible." }
+  ],
+  "evidenceLimits": [
+    "Read only the fixed neutral packet and its allowed source/evidence, plus review-workflow instructions. No prior subjective-score reports opened.",
+    "No browser, app mutation, credentials, API spending, new inference or provider requests. No tests rerun; test source inspected and suite results treated as retained reported evidence.",
+    "Full video not watched. Static native viewports do not establish all page states, voice recognition or observed usability.",
+    "The rehearsal uses rules routing, a fixed virtual clock, mock PayPal and an isolated in-memory ledger. It tests current shared logic, not model quality, restart persistence or actual external payment responses.",
+    "Historical provider artifacts report actual PayPal sandbox events, not live funds, independently certified fulfillment or external suppliers. Three controlled endpoints share one owned sandbox merchant.",
+    "Packet reports 1023 tests, 1014 pass and 9 optional skips after the five cancellation regressions; the earlier rehearsal document reports 1018 tests, 1009 pass and 9 skips. These are temporally consistent reports, not independent transaction executions.",
+    "Fundraising and competitor context were supplied by the fixed packet and not independently browsed in this review. No inferred product outcomes, first-ever claim or population-accuracy claim.",
+    "Public release and submission status remain unestablished; rules/eligibility/deadline are unverified. These are separate compliance limits, not invented production requirements or separate scoring criteria.",
+    "The mandatory default agent-self-evaluation skill file was absent at the catalog-adjacent path and was not found under the two local skill roots searched. This artifact follows the explicitly requested five Devpost criteria."
+  ],
+  "totals": {
+    "sum": 40.5,
+    "maximum": 50,
+    "linearMultiplier": 1.8,
+    "scaledTotal": 72.9,
+    "scaledMaximum": 90,
+    "calculation": "8.5 + 8.0 + 7.5 + 8.0 + 8.5 = 40.5; 40.5 * 1.8 = 72.9"
+  }
+}

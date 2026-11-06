@@ -1,0 +1,28 @@
+{
+  "method": "Three fresh separate Codex reviewer contexts, same factual packet and full-resolution original UI images. Not actual Claude API assessments, human reviewers, official scores or a guarantee. Prior subjective grades and desired result excluded. Five equally weighted1..10criteria mappedlinearlyto90, internalconvention.",
+  "sourceCommit": "039b99f30f5d87ad194bbf29dc4aefcf7fa1b9cf",
+  "evidenceSha256": "b911ca59b9574372db2f837fdb02a406625bd70bc2e0f18c105a3c940055fd53",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "totalOutOf50": 40.0,
+      "linearOutOf90": 72.0
+    },
+    {
+      "reviewer": "b",
+      "totalOutOf50": 40.5,
+      "linearOutOf90": 72.9
+    },
+    {
+      "reviewer": "c",
+      "totalOutOf50": 40.0,
+      "linearOutOf90": 72.0
+    }
+  ],
+  "medianOutOf90": 72.0,
+  "rangeOutOf90": [
+    72.0,
+    72.9
+  ],
+  "limitation": "Screenshots/transcript/code inspected, full video/audio not watched. Phone screenshot captured running form, not finished unknown result. Later mobile UX and new recording not assessed in this round."
+}

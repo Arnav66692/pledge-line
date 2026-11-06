@@ -17,3 +17,13 @@ Validation on November 6:
 - Desktop and 390-pixel browser checks showed the covered and unresolved states with no horizontal overflow. A review found a stale result after a subsequent failure. The fix clears the old result before dispatch and was independently approved.
 
 The local raw suite log is `.acceptance/rehearsal-full-suite-20261106.log`. Historical scores and failed AI evaluations remain unchanged. This feature alone establishes no new judging score.
+
+## Delivery refinements
+
+The phone uses a native situation selector and brings the completed result into view. The conversation remains available in a disclosure, initially closed on phones. All six desktop radio choices and mobile options stay synchronized. Navigation and footer links have 44-pixel target heights. Old results clear before a subsequent request, including failed requests.
+
+The receipt link now opens the correct evidence chapter on a cold `/demo#verify` load and on a known fragment change, without making a verification or payment request. Unknown initial fragments fall back to the first chapter. Two additional tests cover these behaviors. The current full suite records **1,025 tests, 1,016 passed, nine optional integration skips, zero failures**. A previous static-page assertion failed when the historical-only scope wording was updated, then passed with the current scope assertion and additional film integrity checks.
+
+All six hosted rehearsal scenarios returned HTTP200 and passed their checks on the accepted runtime. Health and readiness returned HTTP200. Five hosted UI assets matched local source hashes. The first diagnostic probe returned no saved value and queried incorrect `/health` and `/ready` paths, which returned404. The corrected probe used `/healthz` and `/readyz`. No model or payment operation was performed by either probe.
+
+The demo now leads with a [73-second recording](../web/demo-assets/relief-demo-20261106.mp4), [English captions](../web/demo-assets/relief-demo-20261106.vtt) and [provenance](../web/demo-assets/relief-demo-20261106-provenance.txt). This is one uninterrupted original-speed hosted browser sequence sampled at two frames per second, with original offline narration and persistent scope labels added. It shows four disposable relief scenarios, then checks a retained actual sandbox receipt and rejects an edited copy. It makes no new payment, PayPal query or model request. The movie fully decoded with no errors and its byte and caption hashes are checked by the suite. Original capture source was `bff1430`. An earlier private take stopped when the old receipt deep link hid its chapter, which led to the navigation repair. Failed takes remain private evidence and are not substituted into this recording.

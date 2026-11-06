@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { createHash } from 'node:crypto';
 import { loadConfig } from '../src/config.js';
 import { buildDeps, createServer } from '../src/server.js';
 import { tempLedgerPath } from './helpers.js';
@@ -15,7 +16,7 @@ test('guided evidence page is available without a PIN and cannot start a payment
   try {
     const page = await fetch(base + '/demo');
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /Recorded PayPal sandbox outcomes/);
+    assert.match(await page.text(), /retained PayPal sandbox outcomes/);
     assert.equal((await fetch(base + '/demo', { method: 'POST' })).status, 405);
     const receipt = JSON.parse(await (await fetch(base + '/demo-assets/covered-month-receipt.txt')).text());
     assert.equal(receipt.call.paypal, 'sandbox');
@@ -31,6 +32,18 @@ test('guided evidence page is available without a PIN and cannot start a payment
     assert.equal(checkoutImage.status, 200);
     assert.equal(checkoutImage.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await checkoutImage.arrayBuffer()), fs.readFileSync(new URL('../web/demo-assets/guarded-checkout-20261105.png', import.meta.url)));
+    const film = await fetch(base + '/demo-assets/relief-demo-20261106.mp4');
+    assert.equal(film.status, 200);
+    assert.match(film.headers.get('content-type'), /video\/mp4/);
+    const filmBytes = Buffer.from(await film.arrayBuffer());
+    assert.equal(filmBytes.subarray(4, 8).toString(), 'ftyp');
+    const filmProof = await (await fetch(base + '/demo-assets/relief-demo-20261106-provenance.txt')).json();
+    assert.ok(filmProof.durationSeconds > 0 && filmProof.durationSeconds < 180);
+    assert.equal(filmProof.bytes, filmBytes.length);
+    assert.equal(filmProof.sha256, createHash('sha256').update(filmBytes).digest('hex'));
+    const captions = await fetch(base + '/demo-assets/relief-demo-20261106.vtt');
+    assert.equal(captions.status, 200);
+    assert.equal(createHash('sha256').update(await captions.text()).digest('hex'), filmProof.captionsSha256);
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
 

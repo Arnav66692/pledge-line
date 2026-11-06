@@ -5,3 +5,4 @@
 .checkout-evidence{padding:1rem 0 0}.checkout-evidence h2{margin-bottom:1rem}.checkout-evidence>p{max-width:800px}.checkout-evidence .recording img{display:block;width:100%;max-width:1100px;height:auto;margin:1.5rem 0}
 
 .try-relief{padding:2rem 0 2.5rem;border-top:1px solid var(--ink);margin-bottom:2rem}.try-relief h2{font-size:clamp(1.8rem,3vw,2.8rem);margin-bottom:1rem}.try-relief p{max-width:760px}.try-relief>a{display:inline-block;margin:.2rem 0 1rem}
+header nav a,footer a{display:inline-flex;align-items:center;min-height:44px}
