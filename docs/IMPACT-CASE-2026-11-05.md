@@ -33,4 +33,4 @@ When willing participants are available, use the same three tasks for each parti
 
 For nonprofit operators, measure whether a task is resolved without staff intervention, whether the financial result is understood, and the operational cost per resolved eligible task. Compare against the existing service process. Evaluate sponsor cost and fees separately from donor retention. A retained ACTIVE status in a test is not a retention uplift.
 
-The user asked to finish the software before participating. No self-reported study results or invented testimonials have been substituted for that missing evidence.
+Independent target-user usability and outcome studies have not been conducted. No testimonials or measured product benefits are claimed.

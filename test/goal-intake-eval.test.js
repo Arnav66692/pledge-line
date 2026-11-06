@@ -721,3 +721,88 @@ test('baseline does not confuse the America IANA region with an AM suffix after 
   const am = deterministicGoalDraft(input('Buy 37 mugs under USD 270. Deliver February 16, 2027 at 10:25 AM America/Los_Angeles. Use one supplier.'));
   assert.equal(am.ready, true); assert.equal(am.rfq.deadline, '2027-02-16T18:25:00.000Z');
 });
+
+test('baseline independently binds sourcing and explicit order adjustments while excluding inch properties', () => {
+  const finish = 'Budget USD 230. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  const prior = `Source 29 fine mesh strainers. ${finish}`;
+  assert.equal(deterministicGoalDraft(input(prior)).ready, true);
+  for (const verb of ['Increase', 'Reduce', 'Change', 'Adjust']) {
+    const draft = deterministicGoalDraft({ ...input(`${verb} the order to 21 strainers. Keep the other requirements.`), priorGoals: [prior] });
+    assert.equal(draft.ready, true, verb); assert.equal(draft.rfq.quantity, 21, verb);
+  }
+  assert.equal(deterministicGoalDraft(input(`Do not source 29 fine mesh strainers. ${finish}`)).ready, false);
+  for (const dimension of ['15 inch tablets', '15 inches wide', '15inch tablets']) {
+    const draft = deterministicGoalDraft(input(`I need 29 zippered felt covers for ${dimension}, in charcoal gray. ${finish}`));
+    assert.equal(draft.ready, true, dimension); assert.equal(draft.rfq.quantity, 29, dimension);
+  }
+});
+
+test('baseline independently handles passive supplier policy and unqualified overall purchase budgets', () => {
+  const start = 'Buy 29 white ceramic bowls. Overall budget USD 230. Deliver 2026-11-23 at 3 PM Pacific. ';
+  for (const action of ['Splitting', 'Dividing', 'Distributing', 'Sharing']) {
+    const allowed = deterministicGoalDraft(input(start + `${action} this order among suppliers is allowed.`));
+    assert.equal(allowed.ready, true, action); assert.equal(allowed.rfq.allowSplit, true, action);
+    const denied = deterministicGoalDraft(input(start + `${action} this order among suppliers is not permitted.`));
+    assert.equal(denied.ready, true, action); assert.equal(denied.rfq.allowSplit, false, action);
+    assert.equal(deterministicGoalDraft(input(start + `If ${action.toLowerCase()} this order among suppliers is allowed, ask again.`)).ready, false);
+    const information = deterministicGoalDraft(input(start + `${action} this order details among suppliers is allowed.`));
+    assert.equal(information.ready && information.rfq.allowSplit, false);
+  }
+  assert.equal(deterministicGoalDraft(input(start.replace('Overall budget', 'Overall event budget'))).ready, false);
+});
+
+test('baseline resolves complete Pacific IANA names without treating their region as a second zone', () => {
+  for (const [timeZone, deadline] of [['Pacific/Honolulu', '2026-11-23T20:15:00.000Z'], ['Pacific/Auckland', '2026-11-22T21:15:00.000Z']]) {
+    const text = `Buy 29 canvas aprons. Budget USD 230. Deliver November 23, 2026 at 10:15 ${timeZone} time. Use one supplier.`;
+    const draft = deterministicGoalDraft({ ...input(text), timeZone });
+    assert.equal(draft.ready, true, timeZone); assert.equal(draft.rfq.deadline, deadline, timeZone);
+    assert.equal(deterministicGoalDraft({ ...input(text + ' Use Pacific time as well.'), timeZone }).ready, false);
+  }
+});
+
+test('baseline projects only a grounded unambiguous component replacement into its current brief', () => {
+  const prior = 'Buy 29 glass jars with COPPER LIDS. Budget USD 230. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  const reply = 'Replace the copper lids with steel lids. The 29 jars, budget, deadline, and supplier requirement stay the same.';
+  const result = deterministicGoalDraft({ ...input(reply), priorGoals: [prior] });
+  assert.equal(result.ready, true); assert.match(result.rfq.specification, /steel lids/); assert.doesNotMatch(result.rfq.specification, /copper/i);
+  assert.equal(result.authorizesPayment, false);
+  for (const goal of ['Replace the copper lids with painted copper lids.', 'Replace the copper lids with steel handles.']) {
+    assert.equal(deterministicGoalDraft({ ...input(goal), priorGoals: [prior] }).ready, false, goal);
+  }
+});
+
+test('baseline independently distinguishes a sourcing request from nominal stock reports', () => {
+  const finish = 'Budget USD 230. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const goods of ['fine mesh strainers', 'blue cotton shirts']) for (const prefix of ['Our source has', 'The source lists', 'This source currently offers']) {
+    const text = `${prefix} 31 ${goods} available. ${finish}`;
+    assert.equal(deterministicGoalDraft(input(text)).ready, false, text);
+  }
+  for (const request of ['Source 31 fine mesh strainers.', 'Please source 31 fine mesh strainers.', 'We need to source 31 fine mesh strainers.']) {
+    const draft = deterministicGoalDraft(input(request + ' ' + finish));
+    assert.equal(draft.ready, true, request); assert.equal(draft.rfq.quantity, 31, request);
+  }
+});
+
+test('baseline requires a supplier target for ambiguous passive sharing and distribution', () => {
+  const start = 'Buy 31 canvas aprons. Budget USD 230. Deliver 2026-11-23 at 3 PM Pacific. ';
+  for (const action of ['Sharing', 'Distributing', 'Dividing']) for (const target of ['our accountant', 'the finance team']) {
+    const draft = deterministicGoalDraft(input(start + `${action} this order is allowed with ${target}.`));
+    assert.equal(draft.ready, true); assert.equal(draft.rfq.allowSplit, false, `${action}: ${target}`);
+  }
+  const suppliers = deterministicGoalDraft(input(start + 'Sharing this order among suppliers is allowed.'));
+  assert.equal(suppliers.ready, true); assert.equal(suppliers.rfq.allowSplit, true);
+});
+
+test('baseline refuses a component replacement when the old component was suffix-excluded', () => {
+  for (const suffix of ['are forbidden', 'are not allowed', 'are not acceptable', 'aren’t permitted', 'are explicitly prohibited',
+    'are never allowed', 'must not be used', 'cannot be used', 'can’t be used', 'shouldn’t be purchased', 'have never been permitted',
+    'would not be appropriate', 'are no longer allowed', 'are required to never be used']) {
+    const prior = `Buy 31 white glass jars, copper lids ${suffix}. Budget USD 230. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.`;
+    const draft = deterministicGoalDraft({ ...input('Replace the copper lids with steel lids.'), priorGoals: [prior] });
+    assert.equal(draft.ready, false, suffix); assert.match(draft.clarification, /goods specification/, suffix);
+  }
+  const prior = 'Buy 31 white glass jars with copper lids, which are required, and plastic sleeves must not be used. Budget USD 230. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  const draft = deterministicGoalDraft({ ...input('Replace the copper lids with steel lids.'), priorGoals: [prior] });
+  assert.equal(draft.ready, true); assert.match(draft.rfq.specification, /steel lids, which are required/);
+  assert.doesNotMatch(draft.rfq.specification, /copper/); assert.match(draft.rfq.specification, /plastic sleeves must not be used/);
+});

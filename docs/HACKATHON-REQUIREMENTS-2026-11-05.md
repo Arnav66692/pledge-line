@@ -20,9 +20,9 @@ For clarity, extracting just the five published category names from the historic
 
 | Historical review | Original nine-category median | Median subtotal for the five published categories /50 |
 | --- | ---: | ---: |
-| [Accepted-release desk panel](STINGY-JUDGES-2026-11-05.md) | 68/90 | 34/50 |
-| [First upgrade desk panel](STINGY-JUDGES-2026-11-05-UPGRADE1.md) | 68/90 | 37/50 |
-| [Actual text-only Claude panel](STINGY-JUDGES-2026-11-05-FINAL-CLAUDE.md) | 58.5/90 | 34/50 |
+| Accepted-release desk panel | 68/90 | 34/50 |
+| First upgrade desk panel | 68/90 | 37/50 |
+| Actual text-only Claude panel | 58.5/90 | 34/50 |
 
 The accepted-release and actual-Claude five-category subtotals were identical. The first-upgrade desk panel was more favorable on those categories, but also used a different reviewer method and evidence access. The change in the nine-category totals cannot establish a software regression. The next assessment uses the supplied official categories, the revised working build, actual UI images and its recorded workflow, with historical failures and current limitations retained.
 

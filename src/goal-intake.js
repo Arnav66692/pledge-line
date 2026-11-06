@@ -1,4 +1,4 @@
-import { budgetIsGrounded, canonicalZone, groundedDelivery, latestSourceIssues, quantityIsGrounded, sourceClauses, splitPolicy, strictIsoInstant } from './goal-grounding.js';
+import { budgetIsGrounded, canonicalZone, groundedDelivery, latestSourceIssues, projectSpecification, quantityIsGrounded, sourceClauses, splitPolicy, strictIsoInstant } from './goal-grounding.js';
 
 const EVIDENCE_FIELDS = ['quantity', 'budget', 'specification', 'delivery', 'split'];
 const DELIVERY_FIELDS = ['date', 'time', 'timeZone', 'offset'];
@@ -89,7 +89,7 @@ export function normalizeGoalDraft(input, context) {
   const missing = [];
   if (clauses.quantity?.length !== 1 || !quantityIsGrounded(input.quantity, clauses.quantity.join('\n'), turns)) missing.push('quantity');
   if (clauses.budget?.length !== 1 || !budgetIsGrounded(input.budgetCents, clauses.budget.join('\n'), turns)) missing.push('budget');
-  const specification = clauses.specification?.join(' ') ?? '';
+  const specification = projectSpecification(clauses.specification?.join(' ') ?? '', turns) ?? '';
   if (specification.length < 8 || specification.length > 1000) missing.push('specification');
   const activeSource = latestSourceIssues(result.sourceEvidence, turns, specification, input.localDelivery);
   missing.push(...activeSource.missingFields);

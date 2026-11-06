@@ -45,12 +45,12 @@ const MONEY_UNIT = /\$|\b(?:USD|U\.?S\.? dollars?|dollars?|euros?|EUR|GBP|CAD|AU
 const HISTORIC = /\b(?:previous|prior|historical|old|original|vendor|supplier|quot(?:e|ed)|estimate|invoice|reserved?|earmarked)\b/gi;
 const BUDGET_ROLE = /\b(?:final\s+(?:budget|cap|ceiling|limit)|budget|cap|ceiling|maximum|limit|all[- ]in|total|spend(?:ing)?|under|up to|no more than|not exceed|remaining|remainder|leaving|left for|use|allocate(?:d)?)\b/gi;
 const NON_CURRENCY_WORDS = new Set(['for', 'the', 'and', 'cap', 'max', 'buy', 'get', 'qty', 'sku', 'now', 'was', 'our', 'use', 'its', 'tax', 'all']);
-const GLOBAL_BUDGET_SCOPE = '(?:(?:overall|organization-wide|company-wide)(?:\\s+(?:event|program|project|operating|annual|quarterly)){0,2}|program|project)';
+const GLOBAL_BUDGET_SCOPE = '(?:overall(?:\\s+(?:event|program|project|operating|annual|quarterly)){1,2}|(?:organization-wide|company-wide)(?:\\s+(?:event|program|project|operating|annual|quarterly)){0,2}|program|project)';
 const GLOBAL_FUND = new RegExp(`\\b${GLOBAL_BUDGET_SCOPE}\\s+(?:budget|fund|balance)\\b`, 'i');
 
 // Scope correction intent to the clause naming the field, rather than another field's edit.
 function intentClauses(text) {
-  return text.split(/[;\n]+|[.!?]\s+|,\s+(?=(?:keep|retain|preserve|leave|same|unchanged|change|replace|revise|update|adjust|raise|lower|increase|decrease|use|make|set)\b)|[, ]*\b(?:and|but)\s+(?=(?:keep|retain|preserve|leave|change|replace|revise|update|adjust|raise|lower|increase|decrease)\b)|,\s+(?=(?:(?:the|our)\s+)?(?:budget|cap|ceiling|limit|delivery|deadline|date|time|quantity|count|goods|specification|design|material|colou?r|print|split|supplier)\b)/i).map((clause) => clause.trim()).filter(Boolean);
+  return text.split(/[;\n]+|[.!?]\s+/).flatMap((sentence) => retainedClause(sentence) ? [sentence] : sentence.split(/,\s+(?=(?:keep|retain|preserve|leave|same|unchanged|change|replace|revise|update|adjust|raise|lower|increase|decrease|use|make|set)\b)|[, ]*\b(?:and|but)\s+(?=(?:keep|retain|preserve|leave|change|replace|revise|update|adjust|raise|lower|increase|decrease)\b)|,\s+(?=(?:(?:the|our)\s+)?(?:budget|cap|ceiling|limit|delivery|deadline|date|time|quantity|count|goods|specification|design|material|colou?r|print|split|supplier)\b)/i)).map((clause) => clause.trim()).filter(Boolean);
 }
 
 function retainedClause(text) {
@@ -92,7 +92,7 @@ function numericRoleSpans(text) {
   record('clock', /\b(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*[ap]\.?m\.?\b/gi);
   record('zone', /\b(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/gi);
   record('size', /\b[abc](?:10|[0-9])\b/gi);
-  record('measurement', /(?<!\d)\d+(?:\.\d+)?\s*(?:mm|cm|kg|ml|oz|ft|m|g|l|inches?|feet|yards?)(?=\b|(?:wide|long|high|tall|thick|deep)\b)/gi, (match) => !apparelSizeDescriptor(text, match));
+  record('measurement', /(?<!\d)\d+(?:\.\d+)?\s*(?:mm|cm|kg|ml|oz|ft|m|g|l|inch(?:es)?|feet|yards?)(?=\b|(?:wide|long|high|tall|thick|deep)\b)/gi, (match) => !apparelSizeDescriptor(text, match));
   record('temperature', /(?<!\d)\d+(?:\.\d+)?\s*°\s*[CF]\b/gi);
   record('temperature', /\b(?:heat[- ]resistant(?:\s+to)?|temperature(?:\s+(?:rating|of|is))?|rated(?:\s+(?:to|for))?)\s+\d+(?:\.\d+)?\s*(?:°\s*)?[CF]\b/gi);
   record('money', MONEY);
@@ -123,7 +123,7 @@ function numericRoleAllowed(text, index, end) {
     !/(?:[-/.,]|\d:)$/.test(before) && !/^(?:[-/]|:\d|[.,]\d)/.test(after);
 }
 
-const PURCHASE_COUNT_ROLE = /\b(?:buy|order|need|needs|want|require|purchase|procure|get|keep|retain|use|set)\b/gi;
+const PURCHASE_COUNT_ROLE = /\b(?:buy|order|need|needs|want|require|purchase|procure|source|get|keep|retain|use|set)\b/gi;
 const QUANTITY_FIELD_ROLE = /\b(?:complete quantity|quantity|qty|count)\b/gi;
 const PAST_COUNT_ROLE = /\b(?:previous|prior|historical|old|original|last year|last time|invoice|quoted?|estimate|vendor|supplier|used to|last (?:order|purchase|invoice|request))\b/gi;
 
@@ -131,19 +131,27 @@ function replacementQuantityRole(before) {
   return /\b(?:replace|replaces|replaced)\s+(?:(?:this|that|the|our|previous|earlier|old)\s+)?(?:order|purchase)\s*:\s*$/i.exec(before);
 }
 
+function adjustedQuantityRole(before) {
+  return /\b(?:increase|decrease|raise|lower|reduce|change|revise|adjust|update|set|make)\s+(?:(?:the|this|our|that)\s+)?(?:order|purchase|quantity|qty|count)\s+(?:to|at|as)\s*$/i.exec(before);
+}
+
 function quantityIntentIndex(before) {
   const roles = [...before.matchAll(PURCHASE_COUNT_ROLE)].filter((match) => {
+    if (/^source$/i.test(match[0])) return !/\b(?:a|an|the|our|their|its|that|this|my|your|his|her)\s*$/i.test(before.slice(0, match.index)) &&
+      !/^\s+(?:has|have|is|are|was|were|lists?|shows?|stocks?|reports?|says?|offers?|can\s+(?:supply|provide))\b/i.test(before.slice(match.index + match[0].length));
     if (!/^(?:order|purchase)$/i.test(match[0])) return true;
     return !/\b(?:a|an|the|our|their|its|that|this|old|previous|historical|original)\s*$/i.test(before.slice(0, match.index)) &&
       !/^\s+(?:of|for|was|is|had|contained|shows?)\b/i.test(before.slice(match.index + match[0].length));
   });
   // A later field noun cannot conceal negation attached to an actual use/set/buy verb.
-  return Math.max(roles.at(-1)?.index ?? -1, replacementQuantityRole(before)?.index ?? -1, roles.length ? -1 : lastMatch(QUANTITY_FIELD_ROLE, before));
+  return Math.max(roles.at(-1)?.index ?? -1, replacementQuantityRole(before)?.index ?? -1, adjustedQuantityRole(before)?.index ?? -1, roles.length ? -1 : lastMatch(QUANTITY_FIELD_ROLE, before));
 }
 
 function currentQuantityRole(text, index) {
   const before = text.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
   const intent = quantityIntentIndex(before), replacement = replacementQuantityRole(before);
+  const stockSource = lastMatch(/\bsource\s+(?:(?:currently|now|reportedly)\s+)?(?:has|have|lists?|shows?|stocks?|reports?|says?|offers?|can\s+(?:supply|provide))\b/gi, before);
+  if (stockSource >= 0 && stockSource >= intent) return false;
   const historic = lastMatch(PAST_COUNT_ROLE, replacement?.index === intent ? before.slice(0, intent) : before);
   if (intent >= 0 && /\b(?:not|never|no|don't|dont|doesn't|doesnt|won't|wont|wouldn't|wouldnt|shouldn't|shouldnt|can't|cant|cannot|mustn't|mustnt|shan't|shant|couldn't|couldnt|no need to)(?:\s+(?:ever|actually|really|currently|now|please|to|exactly)){0,3}\s*$/i.test(before.slice(0, intent))) return false;
   if (historic < 0) return true;
@@ -172,7 +180,7 @@ function genericQuantityCandidates(text, allowCitedPhrase = false) {
       /^\s*(?:[,;.!?]|$|\b(?:with|containing|each)\b)/i.test(text.slice(packageEnd));
     if (!phrase.length || phrase.length > 9 || phrase.some((word) => /^(?:suppliers?|vendors?)$/i.test(word)) || phrase.some((word, index) => (QUANTITY_ROLE_WORD.test(word) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(word)) && !/^of$/i.test(word) && !(purchasedUnit && index === 0) && !(index === phrase.length - 1 && index > 0 && /^(?:boxes|cases|cartons|bundles|sets)$/i.test(word))) ||
       /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)$/i.test(phrase[0]) && !purchasedUnit ||
-      /^(?:percent|percentage|sizes?|prints?|printing|colou?rs?|logos?|designs?|sku|inches?|centimeters?|centimetres?|mm|cm|hours?|days?|weeks?|months?|years?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(phrase.at(-1))) continue;
+      /^(?:percent|percentage|sizes?|prints?|printing|colou?rs?|logos?|designs?|sku|inch(?:es)?|centimeters?|centimetres?|mm|cm|hours?|days?|weeks?|months?|years?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(phrase.at(-1))) continue;
     const sourceTokens = [...words[1].matchAll(/\S+/g)], lastToken = sourceTokens[phrase.length - 1];
     const phraseEnd = number.end + words[0].indexOf(words[1]) + lastToken.index + lastToken[0].length;
     if (/[a-z0-9'_-]/i.test(text[phraseEnd] ?? '')) continue;
@@ -183,7 +191,7 @@ function genericQuantityCandidates(text, allowCitedPhrase = false) {
 }
 
 function hasBuyingContext(text) {
-  return [...text.matchAll(/\b(?:buy|order|need|needs|want|require|purchase|procure|get|quantity|qty|count)\b/gi)].some((match) => {
+  return [...text.matchAll(/\b(?:buy|order|need|needs|want|require|purchase|procure|source|get|quantity|qty|count)\b/gi)].some((match) => {
     const end = match.index + match[0].length;
     const clause = text.slice(0, end).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
     return quantityIntentIndex(clause) === clause.length - match[0].length && currentQuantityRole(text, end);
@@ -431,6 +439,42 @@ function containsPositivePhrase(text, phrase) {
   return false;
 }
 
+/** Project one explicit component replacement while keeping original quotes separate as provenance. */
+export function projectSpecification(specification, turns) {
+  if (typeof specification !== 'string' || specification.length > 4000 || !Array.isArray(turns) || turns.length > 4 || turns.some((turn) => typeof turn !== 'string' || turn.length > 1000)) return null;
+  const word = "[a-z]+(?:[-'][a-z]+)*", phrase = `${word}(?:\\s+${word}){0,5}`;
+  const directive = new RegExp(`^\\s*(?:(?:please|actually|now)\\s*[:,]?\\s*)?replace\\s+(?:the\\s+)?(${phrase}?)\\s+with\\s+(?:the\\s+)?(${phrase})\\s*$`, 'i');
+  const replacements = [];
+  let earlier = '';
+  for (const turn of turns) {
+    for (const clause of turn.matchAll(/[^.!?;\n]+/g)) {
+      const match = directive.exec(clause[0]);
+      if (match) replacements.push({ old: match[1], replacement: match[2], clause: clause[0].trim(), earlier: earlier + turn.slice(0, clause.index) });
+    }
+    earlier += '\n' + turn;
+  }
+  if (!replacements.length) return specification;
+  if (replacements.length !== 1) return null;
+  const change = replacements[0], oldWords = change.old.toLowerCase().split(/\s+/), newWords = change.replacement.toLowerCase().split(/\s+/);
+  const literal = (words, flags = 'gi') => new RegExp(`\\b${words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+')}\\b`, flags);
+  if (oldWords.length < 2 || newWords.length < 2 || oldWords.at(-1) !== newWords.at(-1) || literal(oldWords, 'i').test(change.replacement) || literal(newWords, 'i').test(change.old)) return null;
+  const oldSources = [...change.earlier.matchAll(literal(oldWords))];
+  if (oldSources.length !== 1) return null;
+  const oldSource = oldSources[0], before = change.earlier.slice(0, oldSource.index).split(/[.!?;\n]/).at(-1);
+  if (!hasBuyingContext(before) || !containsPositivePhrase(before + oldSource[0], change.old)) return null;
+  const after = change.earlier.slice(oldSource.index + oldSource[0].length).split(/[.!?;\n]/)[0];
+  const predicate = after.replace(/^\s*,?\s*(?:(?:which|that)\s+)?/i, '').replaceAll('’', "'")
+    .replace(/\b(?:is|are|was|were|wo|ca|could|should|would|must|sha|do|does|did|have|has|had|need|dare|ai)n't\b/gi, 'not');
+  const predicatePrefix = '(?:is|are|was|were|be|been|being|has|have|had|will|would|shall|should|must|may|might|can|could|do|does|did|to|ever|always|now|however|[a-z]+ly|allowed|permitted|required|supposed|expected)';
+  if (new RegExp(`^(?:${predicatePrefix}\\s+){0,6}(?:not|never|cannot|no\\s+longer|forbidden|prohibited|disallowed|excluded|unacceptable)\\b`, 'i').test(predicate)) return null;
+  const sourceClause = change.earlier.slice(0, oldSource.index + oldSource[0].length).split(/[.!?;\n]/).at(-1);
+  if (new Set(quantityCandidates(sourceClause).map((candidate) => candidate.index)).size > 1) return null;
+  if (!specification.includes(change.clause) && !literal(newWords, 'i').test(specification)) return null;
+  const projected = specification.replaceAll(change.clause, change.replacement);
+  if ([...projected.matchAll(literal(oldWords))].length > 1) return null;
+  return projected.replace(literal(oldWords), change.replacement);
+}
+
 /** Require current proof for every recognized updated field; unknown associations remain review-only clarification. */
 export function latestSourceIssues(evidence, turns, specification, localDelivery = null) {
   const latest = {}, missing = [], context = numericFieldContext(turns);
@@ -503,6 +547,7 @@ export function splitPolicy(turns) {
   const supplierSubject = '(?:few|multiple|several|different|two or more)\\s+(?:suppliers|vendors)';
   const information = '(?:quotes?|prices?|pricing|costs?|totals?|information|details?|specifications?|status|history|data|plans?|briefs?|documents?|files?)';
   const orderObject = `(?:this|the)\\s+(?:order|purchase)\\b(?!(?:['’]s)?\\s+${information}\\b)`;
+  const passiveDistribution = `(?:splitting\\s+${orderObject}(?:\\s+${distributionTarget})?|(?:dividing|distributing|sharing)\\s+${orderObject}\\s+${distributionTarget})`;
   const activeOrder = `(?:share|split|divide|distribute|fulfill|fulfil)\\s+${orderObject}`;
   const distributionObject = `(?:${orderObject}\\s+)?${distributionTarget}`;
   const negatives = [
@@ -514,6 +559,7 @@ export function splitPolicy(turns) {
     new RegExp(`\\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\\s+(?:\\w+\\s+){0,6}${distributed}\\s+${distributionObject}\\b`, 'gi'),
     new RegExp(`\\b${supplierSubject}\\s+(?:may not|must not|will not|cannot|can't|can not|do not|don't|dont|should not|not)\\s+${activeOrder}`, 'gi'),
     new RegExp(`\\b(?:no|not|never)\\s+${supplierSubject}\\s+(?:may|can)\\s+${activeOrder}`, 'gi'),
+    new RegExp(`\\b${passiveDistribution}\\s+(?:is\\s+)?(?:not\\s+(?:allowed|okay|ok|fine|permitted|acceptable)|forbidden|unacceptable)\\b`, 'gi'),
   ];
   const positives = [
     /\b(?:may|can|allow|permit)\s+(?:\w+\s+){0,2}split(?:ting)?\b/gi,
@@ -522,6 +568,7 @@ export function splitPolicy(turns) {
     new RegExp(`\\b(?:${many}|across ${party})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted|acceptable)\\b`, 'gi'),
     new RegExp(`\\b(?:may|can|allow|permit|(?:okay|ok|fine|permitted|allowed|acceptable)\\s+to)\\s+(?:\\w+\\s+){0,2}${distributed}\\s+${distributionObject}\\b`, 'gi'),
     new RegExp(`\\b${supplierSubject}\\s+(?:may|can)\\s+${activeOrder}`, 'gi'),
+    new RegExp(`\\b${passiveDistribution}\\s+(?:is\\s+)?(?:allowed|okay|ok|fine|permitted|acceptable)\\b`, 'gi'),
   ];
   for (const [turnIndex, turn] of turns.entries()) {
     // Keep offsets unchanged so interpretation can normalize contractions while citations retain the buyer's exact text.
@@ -702,7 +749,7 @@ export function latestDeliveryZonePolicy(turns) {
 
 function namedZones(text) {
   const found = [...namedCityClockZones(text)];
-  const zoneText = text.replace(/\b(?:UTC|GMT)[+-]\d{2}:\d{2}\b/gi, '');
+  const zoneText = text.replace(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g, (match) => ' '.repeat(match.length)).replace(/\b(?:UTC|GMT)[+-]\d{2}:\d{2}\b/gi, '');
   for (const [alias, zone] of Object.entries(ZONES)) if (new RegExp(`\\b${alias}\\b`, 'i').test(zoneText)) found.push(zone);
   for (const match of text.matchAll(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g)) {
     const zone = canonicalZone(match[0]); if (zone) found.push(zone);

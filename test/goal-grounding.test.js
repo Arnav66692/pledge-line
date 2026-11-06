@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetIsGrounded, canonicalZone, goalCurrencyContext, groundedDelivery, hasUnknownZoneReference, numberWords, quantityIsGrounded, resolveLocalDelivery, sourceClauses, splitPermission, splitPolicy, strictIsoInstant } from '../src/goal-grounding.js';
+import { budgetIsGrounded, canonicalZone, goalCurrencyContext, groundedDelivery, hasUnknownZoneReference, numberWords, projectSpecification, quantityIsGrounded, resolveLocalDelivery, sourceClauses, splitPermission, splitPolicy, strictIsoInstant } from '../src/goal-grounding.js';
 import { normalizeGoalDraft } from '../src/goal-intake.js';
 
 const now = Date.parse('2026-11-05T20:00:00Z');
@@ -934,4 +934,115 @@ test('known goods stated as contents cannot resolve an uncertain purchased unit'
   const purchase = 'Purchase 19 packs, with 12 blue cotton shirts in each pack.';
   assert.equal(quantityIsGrounded(19, '19 packs', [uncertain, purchase]), true);
   assert.equal(quantityIsGrounded(12, '12 blue cotton shirts', [uncertain, purchase]), false);
+});
+
+test('sourcing and explicit order adjustments bind counts without reviving denied or historical requests', () => {
+  const prior = 'Source 29 fine mesh strainers under USD 230 total.';
+  assert.equal(quantityIsGrounded(29, '29 fine mesh strainers', [prior]), true);
+  for (const verb of ['Increase', 'Reduce', 'Change', 'Adjust']) {
+    const reply = `${verb} the order to 21 strainers.`;
+    assert.equal(quantityIsGrounded(21, reply, [prior, reply]), true, reply);
+    assert.equal(quantityIsGrounded(29, '29 fine mesh strainers', [prior, reply]), false, reply);
+    assert.equal(quantityIsGrounded(21, `Do not ${reply.toLowerCase()}`, [prior, `Do not ${reply.toLowerCase()}`]), false, reply);
+  }
+  assert.equal(quantityIsGrounded(29, '29 fine mesh strainers', ['Do not source 29 fine mesh strainers.']), false);
+  assert.equal(quantityIsGrounded(21, '21 strainers', ['Our previous invoice says increase the order to 21 strainers.']), false);
+});
+
+test('singular and plural inch properties cannot compete with the actual goods count', () => {
+  for (const dimension of ['15 inch tablets', '15 inches wide', '15inch tablets']) {
+    const text = `I need 29 zippered felt covers for ${dimension}, in charcoal gray.`;
+    assert.equal(quantityIsGrounded(29, '29 zippered felt covers', [text]), true, dimension);
+    assert.equal(quantityIsGrounded(15, dimension, [text]), false, dimension);
+  }
+});
+
+test('passive distribution permission binds to the order and respects negative and conditional policy', () => {
+  for (const action of ['Splitting', 'Dividing', 'Distributing', 'Sharing']) {
+    assert.equal(splitPermission([`${action} this order among suppliers is allowed.`]), 'allow', action);
+    assert.equal(splitPermission([`${action} this order among suppliers is not permitted.`]), 'deny', action);
+    assert.notEqual(splitPermission([`If ${action.toLowerCase()} this order among suppliers is allowed, ask again.`]), 'allow', action);
+    assert.notEqual(splitPermission([`${action} this order details among suppliers is allowed.`]), 'allow', action);
+  }
+});
+
+test('an unqualified overall purchase budget is distinct from a scoped organization fund', () => {
+  const direct = 'Buy 29 glass bottles. The overall budget is USD 230 total.';
+  assert.equal(budgetIsGrounded(23000, 'The overall budget is USD 230 total', [direct]), true);
+  for (const scope of ['overall event', 'overall annual operating', 'company-wide']) {
+    const text = `Buy 29 glass bottles. The ${scope} budget is USD 230 total.`;
+    assert.equal(budgetIsGrounded(23000, `The ${scope} budget is USD 230 total`, [text]), false, scope);
+  }
+});
+
+test('whole IANA tokens do not also activate regional aliases', () => {
+  for (const [timeZone, deadline] of [['Pacific/Honolulu', '2026-11-23T20:15:00.000Z'], ['Pacific/Auckland', '2026-11-22T21:15:00.000Z']]) {
+    const text = `Deliver 2026-11-23 at 10:15 ${timeZone} time.`, local = { date: '2026-11-23', time: '10:15', timeZone, offset: '' };
+    assert.equal(groundedDelivery(local, deadline, [text], { now, timeZone, turns: [text] }).status, 'ok', timeZone);
+    const conflict = text + ' Use Pacific time as well.';
+    assert.notEqual(groundedDelivery(local, deadline, [conflict], { now, timeZone, turns: [conflict] }).status, 'ok', timeZone);
+  }
+});
+
+test('component replacement projects a current specification while keeping source citations unchanged', () => {
+  const prior = goal.replace('white cotton shirts', 'white cotton shirts with COPPER BUTTONS');
+  const reply = 'Replace the copper buttons with steel buttons. The 100 shirts, design, total budget, deadline, and one-supplier requirement stay the same.';
+  const input = raw(); input.evidence.specification = 'white cotton shirts with COPPER BUTTONS\nReplace the copper buttons with steel buttons.';
+  const result = normalized(input, reply, { priorGoals: [prior] });
+  assert.equal(result.ready, true); assert.match(result.rfq.specification, /steel buttons/); assert.doesNotMatch(result.rfq.specification, /copper/i);
+  assert.equal(result.sourceEvidence.specification, input.evidence.specification);
+  assert.equal(result.rfq.budgetCents, 80000); assert.equal(result.authorizesPayment, false);
+  const stale = raw(); stale.evidence.specification = 'white cotton shirts with COPPER BUTTONS';
+  assert.equal(normalized(stale, reply, { priorGoals: [prior] }).ready, false);
+});
+
+test('component projection refuses overlap or ambiguous objects and does not execute negative or conditional directives', () => {
+  const prior = 'Buy 29 glass jars with copper lids.';
+  for (const reply of ['Do not replace the copper lids with steel lids.', 'If available, replace the copper lids with steel lids.']) {
+    const specification = prior + ' ' + reply;
+    assert.equal(projectSpecification(specification, [prior, reply]), specification, reply);
+  }
+  for (const reply of ['Replace the copper lids with painted copper lids.', 'Replace the copper lids with steel handles.']) {
+    assert.equal(projectSpecification(prior + ' ' + reply, [prior, reply]), null, reply);
+  }
+  const ambiguous = 'Buy 29 glass jars with copper lids and 12 tins with copper lids.', reply = 'Replace the copper lids with steel lids.';
+  assert.equal(projectSpecification(ambiguous + ' ' + reply, [ambiguous, reply]), null);
+  assert.equal(projectSpecification('Buy jars with copper lids.', ['Buy jars with copper lids.', reply]), null, 'A stale citation cannot supply current replacement evidence.');
+});
+
+test('nominal source inventory reports do not supply a purchasing count', () => {
+  for (const goods of ['fine mesh strainers', 'blue cotton shirts']) for (const prefix of ['Our source has', 'The source lists', 'This source currently offers']) {
+    const text = `${prefix} 31 ${goods} available. Budget USD 230.`;
+    assert.equal(quantityIsGrounded(31, `31 ${goods}`, [text]), false, text);
+  }
+  for (const text of ['Source 31 fine mesh strainers.', 'Please source 31 fine mesh strainers.', 'We need to source 31 fine mesh strainers.']) {
+    assert.equal(quantityIsGrounded(31, '31 fine mesh strainers', [text]), true, text);
+  }
+});
+
+test('passive document sharing cannot authorize fulfillment across suppliers', () => {
+  for (const action of ['Sharing', 'Distributing', 'Dividing']) for (const target of ['our accountant', 'the finance team']) {
+    assert.notEqual(splitPermission([`${action} this order is allowed with ${target}.`]), 'allow', `${action}: ${target}`);
+  }
+  assert.equal(splitPermission(['Splitting this order is allowed.']), 'allow');
+  assert.equal(splitPermission(['Sharing this order among suppliers is allowed.']), 'allow');
+});
+
+test('replacement projection cannot transfer a suffix exclusion to the new component', () => {
+  for (const suffix of ['are forbidden', 'are not allowed', 'are not acceptable', 'aren’t permitted', 'are explicitly prohibited',
+    'are never allowed', 'must not be used', 'cannot be used', 'can’t be used', 'shouldn’t be purchased', 'have never been permitted',
+    'would not be appropriate', 'are no longer allowed', 'are required to never be used']) {
+    const prior = goal.replace('white cotton shirts', `white cotton shirts, copper buttons ${suffix}`);
+    const reply = 'Replace the copper buttons with steel buttons.';
+    const input = raw(); input.evidence.specification = `white cotton shirts, copper buttons ${suffix}\n${reply}`;
+    const result = normalized(input, reply, { priorGoals: [prior] });
+    assert.equal(result.ready, false, suffix); assert.ok(result.missingFields.includes('specification'), suffix);
+    assert.equal(result.sourceEvidence.specification, input.evidence.specification, suffix);
+    assert.equal(projectSpecification(input.evidence.specification, [prior, reply]), null, suffix);
+  }
+  const prior = 'Buy 31 white glass jars with copper lids, which are required, and plastic sleeves must not be used.';
+  const reply = 'Replace the copper lids with steel lids.';
+  const specification = projectSpecification(prior + ' ' + reply, [prior, reply]);
+  assert.ok(specification); assert.match(specification, /steel lids, which are required/); assert.doesNotMatch(specification, /copper/);
+  assert.match(specification, /plastic sleeves must not be used/);
 });
