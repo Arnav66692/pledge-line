@@ -128,6 +128,30 @@ test('baseline independently recognizes shared-order permission, denial and unre
   }
 });
 
+test('baseline distinguishes supplier-subject order permission from sharing quotes or details', () => {
+  const complete = 'Buy 72 ceramic mugs under USD 800 total. Deliver 2026-11-13 at 5 PM Pacific.';
+  for (const permission of ['Several suppliers may share the order.', 'A few vendors can split this purchase.',
+    'Different suppliers may divide this order.', 'Two or more vendors can distribute the purchase.', 'Multiple vendors may share this order.']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${permission}`));
+    assert.equal(draft.ready, true, permission); assert.equal(draft.rfq.allowSplit, true);
+  }
+  for (const denial of ['Several suppliers may not share the order.', "A few vendors don't split this purchase.",
+    'Different suppliers cannot divide the order.', 'No multiple vendors may distribute the purchase.']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${denial}`));
+    assert.equal(draft.ready, true, denial); assert.equal(draft.rfq.allowSplit, false);
+    assert.ok(!draft.assumptions.includes('single_supplier_default'));
+  }
+  for (const conditional of ['Several suppliers may share the order if I confirm.', 'Different vendors can divide this order after buyer approval.']) {
+    assert.equal(deterministicGoalDraft(input(`${complete} ${conditional}`)).ready, false, conditional);
+  }
+  for (const phrase of ['Several suppliers may share quotes.', 'Multiple vendors can share pricing information.',
+    "Different suppliers may share the order's details.", 'A few vendors can split the quote.', 'Several suppliers may split the order price.']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${phrase}`));
+    assert.equal(draft.ready, true, phrase); assert.equal(draft.rfq.allowSplit, false);
+    assert.ok(draft.assumptions.includes('single_supplier_default'));
+  }
+});
+
 test('baseline refuses impossible calendar dates and unchosen DST gaps or folds', () => {
   for (const deadline of ['2027-02-30T12:00:00Z', '2027-03-14 at 2:30 AM Pacific', '2026-11-01 at 1:30 AM Pacific']) {
     const draft = deterministicGoalDraft({ goal: `Buy 60 cotton shirts under USD 800, deliver ${deadline}.`,

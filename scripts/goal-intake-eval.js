@@ -173,14 +173,19 @@ function deadlineOf(goal, now, timeZone) {
 function explicitSplitPermission(turns) {
   const supplier = '(?:suppliers?|vendors?)', plural = `(?:multiple|several|more than one|two or more) ${supplier}`;
   const sharing = `(?:shared|divided|distributed|share|divide|distribute)\\s+(?:among|across|between)\\s+(?:(?:multiple|several|two or more)\\s+)?${supplier}`;
+  const group = '(?:few|multiple|several|different|two or more)\\s+(?:suppliers|vendors)';
+  const nonGoods = '(?:quotes?|prices?|pricing|costs?|totals?|information|details?|specifications?|status|history|data|plans?|briefs?|documents?|files?)';
+  const orderVerb = `(?:share|split|divide|distribute)\\s+(?:this|the)\\s+(?:order|purchase)\\b(?!(?:['’]s)?\\s+${nonGoods}\\b)`;
   const denyPatterns = [
     /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
     new RegExp(`\\b(?:no more than|not more than|at most) one ${supplier}\\b|\\b(?:no|not|never)\\s+(?:${plural}|across ${supplier})\\b`, 'gi'),
     new RegExp(`\\b(?:not|don't|dont|cannot|can't|can not|may not|must not)\\s+(?:allow(?:ing)?|permit(?:ting)?|approv(?:e|ing)|use)(?:\\s+\\w+){0,4}\\s+(?:split(?:ting|s)?|${plural}|across ${supplier})\\b`, 'gi'),
     new RegExp(`\\b(?:split(?:ting|s)?|${plural})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|forbidden)\\b`, 'gi'),
     new RegExp(`\\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\\s+(?:\\w+\\s+){0,6}${sharing}\\b`, 'gi'),
+    new RegExp(`\\b${group}\\s+(?:may not|must not|will not|cannot|can't|can not|do not|don't|dont|should not)\\s+${orderVerb}`, 'gi'),
+    new RegExp(`\\b(?:no|not|never)\\s+${group}\\s+(?:may|can)\\s+${orderVerb}`, 'gi'),
   ];
-  const allowPattern = new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}split(?:ting)?\\b|\\bsplit(?:ting)?(?:\\s+\\w+){0,3}\\s+(?:allowed|okay|ok|fine|permitted)\\b|\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${plural}|across ${supplier})\\b|\\b(?:${plural}|across ${supplier})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted)\\b|\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}${sharing}\\b`, 'gi');
+  const allowPattern = new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}split(?:ting)?\\b|\\bsplit(?:ting)?(?:\\s+\\w+){0,3}\\s+(?:allowed|okay|ok|fine|permitted)\\b|\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${plural}|across ${supplier})\\b|\\b(?:${plural}|across ${supplier})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted)\\b|\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}${sharing}\\b|\\b${group}\\s+(?:may|can)\\s+${orderVerb}`, 'gi');
   let permission = 'unspecified';
   for (const turn of turns) {
     const signals = [];
@@ -193,7 +198,10 @@ function explicitSplitPermission(turns) {
       for (const match of clause.matchAll(/\b(?:one|single) (?:supplier|vendor)\b/gi)) {
         if (!/\b(?:more than|at least|not|not only)\s*$/i.test(clause.slice(0, match.index))) denied.push({ index: match.index, end: match.index + match[0].length });
       }
-      const allowed = [...clause.matchAll(allowPattern)].filter((match) => !denied.some((item) => match.index < item.end && item.index < match.index + match[0].length));
+      const allowed = [...clause.matchAll(allowPattern)]
+        .filter((match) => !denied.some((item) => match.index < item.end && item.index < match.index + match[0].length))
+        .filter((match) => !/\bsplit(?:ting)?$/i.test(match[0]) ||
+          !new RegExp(`^\\s+(?:(?:this|the|our|an?)\\s+)?(?:(?:order|purchase)(?:['’]s)?\\s+)?${nonGoods}\\b`, 'i').test(clause.slice(match.index + match[0].length)));
       signals.push(...[...denied.map((item) => ({ value: 'deny', clause, index: item.index })),
         ...allowed.map((match) => ({ value: 'allow', clause, index: match.index }))].sort((first, second) => first.index - second.index));
     }

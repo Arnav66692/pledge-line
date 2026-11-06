@@ -135,6 +135,37 @@ test('shared, divided and distributed supplier permissions retain denial and con
   assert.equal(splitPermission(['The order was shared among suppliers']), 'unspecified');
 });
 
+test('supplier-subject order permissions preserve provenance without granting information sharing', () => {
+  for (const phrase of ['Several suppliers may share the order', 'A few vendors can split this purchase',
+    'Different suppliers may divide this order', 'Two or more vendors can distribute the purchase', 'Multiple vendors may share this order']) {
+    assert.equal(splitPermission([phrase]), 'allow', phrase);
+    const input = raw(); input.allowSplit = true;
+    const accepted = normalized(input, goal.replace('Use one supplier', phrase));
+    assert.equal(accepted.ready, true, phrase); assert.equal(accepted.rfq.allowSplit, true);
+    assert.equal(accepted.sourceEvidence.split, phrase);
+    input.allowSplit = false;
+    assert.equal(normalized(input, goal.replace('Use one supplier', phrase)).ready, false, 'Flag disagreement still asks.');
+  }
+  for (const phrase of ['Several suppliers may not share the order', "A few vendors don't split this purchase",
+    'Different suppliers cannot divide the order', 'No multiple vendors may distribute the purchase']) {
+    assert.equal(splitPermission([phrase]), 'deny', phrase);
+    const input = raw(); input.allowSplit = true;
+    assert.equal(normalized(input, goal.replace('Use one supplier', phrase)).ready, false, phrase);
+    input.allowSplit = false;
+    const denied = normalized(input, goal.replace('Use one supplier', phrase));
+    assert.equal(denied.ready, true, phrase); assert.equal(denied.rfq.allowSplit, false);
+  }
+  for (const phrase of ['Several suppliers may share the order if I confirm', 'Different vendors can divide this order after buyer approval']) {
+    assert.equal(splitPermission([phrase]), 'conflict', phrase);
+  }
+  for (const phrase of ['Several suppliers may share quotes', 'Multiple vendors can share pricing information',
+    "Different suppliers may share the order's details", 'A few vendors can split the quote', 'Several suppliers may split the order price']) {
+    assert.equal(splitPermission([phrase]), 'unspecified', phrase);
+    const input = raw(); input.allowSplit = true;
+    assert.equal(normalized(input, goal.replace('Use one supplier', phrase)).ready, false, phrase);
+  }
+});
+
 test('split permission respects surrounding negation, same-turn conflict and later explicit correction', () => {
   for (const phrase of ['Do not split.', "Don't split.", 'Don’t split.', 'No splits.', 'Use one supplier.', 'I am not allowing split orders across suppliers.',
     'We may not split across suppliers.', 'We cannot allow splitting.', 'You may not split the order.', "We can't permit splitting."]) assert.equal(splitPermission([phrase]), 'deny', phrase);

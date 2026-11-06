@@ -294,6 +294,9 @@ export function splitPolicy(turns) {
   let result = { permission: 'unspecified', source: '', turnIndex: null };
   const party = '(?:suppliers?|vendors?)', many = `(?:multiple|several|more than one|two or more) ${party}`;
   const distributed = '(?:shared|divided|distributed|share|divide|distribute)', distributionTarget = `(?:among|across|between)\\s+(?:(?:multiple|several|two or more)\\s+)?${party}`;
+  const supplierSubject = '(?:few|multiple|several|different|two or more)\\s+(?:suppliers|vendors)';
+  const information = '(?:quotes?|prices?|pricing|costs?|totals?|information|details?|specifications?|status|history|data|plans?|briefs?|documents?|files?)';
+  const activeOrder = `(?:share|split|divide|distribute)\\s+(?:this|the)\\s+(?:order|purchase)\\b(?!(?:['’]s)?\\s+${information}\\b)`;
   const negatives = [
     /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
     new RegExp(`\\b(?:no more than|not more than|at most) one ${party}\\b`, 'gi'),
@@ -301,6 +304,8 @@ export function splitPolicy(turns) {
     new RegExp(`\\b(?:not|don't|dont|cannot|can't|can not|may not|must not)\\s+(?:allow(?:ing)?|permit(?:ting)?|approv(?:e|ing)|use)(?:\\s+\\w+){0,4}\\s+(?:split(?:ting|s)?|${many}|across ${party})\\b`, 'gi'),
     new RegExp(`\\b(?:split(?:ting|s)?|${many})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|forbidden)\\b`, 'gi'),
     new RegExp(`\\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\\s+(?:\\w+\\s+){0,6}${distributed}\\s+${distributionTarget}\\b`, 'gi'),
+    new RegExp(`\\b${supplierSubject}\\s+(?:may not|must not|will not|cannot|can't|can not|do not|don't|dont|should not)\\s+${activeOrder}`, 'gi'),
+    new RegExp(`\\b(?:no|not|never)\\s+${supplierSubject}\\s+(?:may|can)\\s+${activeOrder}`, 'gi'),
   ];
   const positives = [
     /\b(?:may|can|allow|permit)\s+(?:\w+\s+){0,2}split(?:ting)?\b/gi,
@@ -308,6 +313,7 @@ export function splitPolicy(turns) {
     new RegExp(`\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${many}|across ${party})\\b`, 'gi'),
     new RegExp(`\\b(?:${many}|across ${party})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted)\\b`, 'gi'),
     new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}${distributed}\\s+${distributionTarget}\\b`, 'gi'),
+    new RegExp(`\\b${supplierSubject}\\s+(?:may|can)\\s+${activeOrder}`, 'gi'),
   ];
   for (const [turnIndex, turn] of turns.entries()) {
     const raw = String(turn), text = raw.replaceAll('’', "'"), signals = [];
@@ -324,7 +330,9 @@ export function splitPolicy(turns) {
         if (!/\b(?:more than|at least|not|not only)\s*$/i.test(clause.slice(0, match.index))) denied.push({ index: match.index, end: match.index + match[0].length });
       }
       const allowed = positives.flatMap((pattern) => [...clause.matchAll(pattern)].map((match) => ({ index: match.index, end: match.index + match[0].length })))
-        .filter((match) => !denied.some((deny) => match.index < deny.end && deny.index < match.end));
+        .filter((match) => !denied.some((deny) => match.index < deny.end && deny.index < match.end))
+        .filter((match) => !/\bsplit(?:ting)?$/i.test(clause.slice(match.index, match.end)) ||
+          !new RegExp(`^\\s+(?:(?:this|the|our|an?)\\s+)?(?:(?:order|purchase)(?:['’]s)?\\s+)?${information}\\b`, 'i').test(clause.slice(match.end)));
       for (const [permission, matches] of [['deny', denied], ['allow', allowed]]) for (const match of matches) {
         signals.push({ permission, source, index: start + match.index, end: start + match.end, clauseStart: start });
       }
