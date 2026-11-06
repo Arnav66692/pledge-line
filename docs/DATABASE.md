@@ -65,7 +65,7 @@ Applied SQL and checksums are immutable across all five migration histories. Eac
 node --env-file=.database.env src/server.js
 ```
 
-For an offline donor line, prefix that command with `PAYPAL_MODE=mock ROUTER_MODE=rules`; leave donor durability disabled if no database is wanted. For guarded AI, use `PAYPAL_MODE=mock ROUTER_MODE=anthropic node --env-file=.database.env --env-file=.ai.env src/server.js`. The complete sandbox release loads `.env` first, then `.database.env`, `.ai.env` and `.sandbox.env`, so empty template assignments cannot override private credentials. Select its durable donor and private hosted supplier flags in `.env`; see [the supplier guide](SUPPLIER-LAB.md) and [README deployment instructions](../README.md#deploy-the-sandbox-release-after-acceptance). External registry mode additionally loads its dedicated `.suppliers.env`. `npm start` loads `.env` only. These local commands do not deploy the service.
+For an offline donor line, prefix that command with `PAYPAL_MODE=mock ROUTER_MODE=rules`; leave donor durability disabled if no database is wanted. For guarded AI, use `PAYPAL_MODE=mock ROUTER_MODE=anthropic node --env-file=.database.env --env-file=.ai.env src/server.js`. The complete sandbox release loads `.env` first, then `.database.env`, `.ai.env` and `.sandbox.env`, so empty template assignments cannot override private credentials. Select its durable donor and private hosted supplier flags in `.env`; see [the supplier guide](SUPPLIER-LAB.md) and [deployment instructions](PROJECT_GUIDE.md#deploy-the-sandbox-release-after-acceptance). External registry mode additionally loads its dedicated `.suppliers.env`. `npm start` loads `.env` only. These local commands do not deploy the service.
 
 ## AI allocation and checkout stores
 
