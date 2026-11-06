@@ -28,6 +28,6 @@ The current full serial suite passed **1,019 tests**, with nine optional hosted 
 
 The paired task comparison used real model gateway requests and mock payments. The six public rehearsal situations use rules and mock payments. Separately retained donor, invoice, receipt, webhook and procurement evidence records actual PayPal sandbox activity. The distinctions are visible in the product and preserved evidence.
 
-The original completion allocation remains capped at $3 Anthropic / $0.10 Jev, with $0.131804 / $0.097335856 remaining after the task comparison and no pending requests. No cap or prior spending stop was reset or increased. These are application counters, not provider balances. No further inference was used for the viewer or review panels.
+The original completion allocation remains capped at $3 Anthropic / $0.10 Jev, with $0.131804 / $0.097335856 remaining after the task comparison and no pending requests. No cap or prior spending stop was reset or increased. These are application counters, not provider balances. No further Anthropic/Jev gateway inference was used for the viewer or rubric reviews. The rubric panels themselves used Codex reviewer contexts.
 
 Public source publication, YouTube upload and Devpost submission remain pending. The repository is private; complete event eligibility and official numeric weighting have not been established. Independent donor/sponsor validation and operational economics remain unmeasured.
