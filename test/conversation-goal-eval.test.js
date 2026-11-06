@@ -137,6 +137,23 @@ test('complete drafts need every declared goods fact and reject an unwanted posi
   assert.equal(checkConversationDraft(checked, value).correct, true, 'A literal exclusion is not a positive request.');
 });
 
+test('removed attributes are local exclusions while retained or denied removals stay positive', () => {
+  const checked = { expected: expected(), input: input() }, value = draft();
+  for (const ending of ['omit polyester', 'remove the polyester', 'replace polyester with cotton', 'replace polyester fabric with cotton']) {
+    value.rfq.specification = `White cotton shirts with one navy print; ${ending}.`;
+    assert.equal(checkConversationDraft(checked, value).forbiddenPositiveAttributes, 0, ending);
+  }
+  for (const ending of ['do not omit polyester', "don't remove the polyester", 'don’t omit polyester', 'don’t replace polyester with cotton', 'do not remove the old polyester',
+    'never replace polyester with cotton', 'replace cotton with polyester', 'replace cotton with polyester with a navy print', 'omit cotton then add polyester', 'polyester; omit polyester']) {
+    value.rfq.specification = `White cotton shirts with one navy print; ${ending}.`;
+    assert.equal(checkConversationDraft(checked, value).forbiddenPositiveAttributes, 1, ending);
+  }
+  value.rfq.specification = 'White cotton shirts with one navy print; omit cotton.';
+  assert.equal(checkConversationDraft(checked, value).missingFactIds.includes('material_cotton'), false, 'The independent earlier positive occurrence is retained.');
+  value.rfq.specification = 'White shirts with one navy print; omit cotton.';
+  assert.equal(checkConversationDraft(checked, value).missingFactIds.includes('material_cotton'), true);
+});
+
 test('clarification must address a labeled constraint and cannot smuggle a partial RFQ', () => {
   const checked = { expected: { ready: false, clarificationFor: ['time_zone'] }, input: input() };
   const value = { ready: false, rfq: null, clarification: 'Which timezone and UTC offset should I use?', assumptions: [], requiresReview: true, authorizesPayment: false, model: 'test' };

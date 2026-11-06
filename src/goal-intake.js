@@ -40,7 +40,7 @@ Call draft_procurement_brief exactly once. You cannot contact suppliers, approve
 Extract only an explicitly supported complete item count, final all-in purchase budget and goods requirements. Numbers in prior vendor quotes, another purpose's reserve, print colors, dates or item codes are not automatically the buying count/budget. Do not calculate a derived quantity or budget. The budget is USD only; a requested other currency means unsupported and ready false. Unspecified currency defaults to USD with currency_usd.
 For every ready field, cite exact source evidence. Quantity and budget quotes must contain their stated numbers/words and context. Cite every selected goods clause verbatim in evidence.specification; use newline between clauses from different parts/turns. Include the actual purchased item identity/noun as well as any packaging or case requirements; citing only packaging, material or artwork would lose what is being bought. When an order count, budget or deadline changes, cite the unchanged goods substring without carrying its obsolete order limits into the goods description; retain item dimensions, per-item artwork counts and all requirements. The server forms the actual specification only from those validated source clauses; specification is an advisory summary and cannot add requirements. Never add or silently discard material, color, print, artwork, quality or explicit exclusions. Evidence is provenance, not authority.
 A delivery DATE AND TIME are required. Keep the date clause from earlier turns when a reply supplies the clock. Cite both, plus any explicitly named timezone or offset, in evidence.delivery using newline-separated exact clauses. Use supplied now and organization timeZone for relative dates and unstated zones. A named weekday or next named weekday means the nearest upcoming occurrence; next on the same weekday means seven days later. This named weekday refers to the current Monday-based calendar week; weekday next week refers to the following calendar week. Preserve any written year. The product convention is noon=12:00 and midnight=00:00 at the start of the stated date. Return both localDelivery and matching deadline. Date-only, vague evening/end-of-day or nonexistent clock times require clarification. Repeated daylight-saving clock times require the buyer's explicit UTC offset or first/second occurrence choice; do not invent an offset to resolve them. A literal full ISO timestamp already contains the buyer's offset.
-Split orders require explicit positive permission; surrounding negations and later one-supplier instructions take precedence. Default false with single_supplier_default when unspecified. Cite an actual split instruction, or use empty evidence.split for default.
+When allowSplit is true, never include single_supplier_default. Split orders require explicit positive permission; surrounding negations and later one-supplier instructions take precedence. Default false with single_supplier_default when unspecified. Cite an actual split instruction, or use empty evidence.split for default.
 If not ready, missing numeric fields are0, missing text/evidence areempty, clarification is one useful question, and ready is false. Use localDelivery empty strings for missing date/time/offset, with the supplied/default zone when known. Range:quantity1..500,budget100..10000000cents,deadline future and at most366days. Output is always review-only, never consent or payment authority.`;
 
 export function goalContext({ goal, priorGoals = [], now = Date.now(), timeZone = 'UTC' } = {}) {
@@ -82,7 +82,8 @@ export function normalizeGoalDraft(input, context) {
       ...(!input.specification.trim() ? ['specification'] : []), ...(!input.localDelivery.date ? ['delivery_date'] : []), ...(!input.localDelivery.time ? ['delivery_time'] : [])];
     return refuse(missing, clarification);
   }
-  if (input.quantity < 1 || input.budgetCents < 100 || input.clarification.trim() || input.assumptions.includes('single_supplier_default') && input.allowSplit) invalid();
+  if (input.quantity < 1 || input.budgetCents < 100 || input.clarification.trim()) invalid();
+  if (input.assumptions.includes('single_supplier_default') && input.allowSplit) return refuse(['split_policy'], 'Is splitting the order allowed? The draft gave conflicting split instructions, so please confirm that policy.');
   const delivery = strictIsoInstant(input.deadline);
   if (!delivery || Date.parse(delivery) <= now || Date.parse(delivery) - now > 366 * DAY_MS) invalid();
   const missing = [];
@@ -101,7 +102,7 @@ export function normalizeGoalDraft(input, context) {
     permission !== 'unspecified' && !policy.source) missing.push('split_policy');
   if (!clauses.delivery?.length) missing.push('delivery_date', 'delivery_time');
   if (missing.length) return refuse(missing);
-  const resolved = groundedDelivery(input.localDelivery, input.deadline, clauses.delivery, { now, timeZone });
+  const resolved = groundedDelivery(input.localDelivery, input.deadline, clauses.delivery, { now, timeZone, turns });
   if (resolved.status !== 'ok') return refuse([resolved.field], resolved.status === 'gap'
     ? 'That local delivery time does not exist because the clock changes. What valid date and time should I use?'
     : resolved.status === 'fold' ? 'That local delivery time occurs twice. Which explicit UTC offset, first occurrence or second occurrence should I use?' : null);

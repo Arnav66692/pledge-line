@@ -174,12 +174,19 @@ export function validateConversationFixture(fixture, { fullSuite = true } = {}) 
 }
 
 function literalOccurrences(value, fragment) {
-  const target = value.toLowerCase(), needle = fragment.toLowerCase(), results = [];
+  const target = value.toLowerCase().replace(/’/g, "'"), needle = fragment.toLowerCase().replace(/’/g, "'"), results = [];
   for (let index = target.indexOf(needle); index !== -1; index = target.indexOf(needle, index + Math.max(1, needle.length))) {
     if (/^[a-z0-9]/.test(needle) && /[a-z0-9]/.test(target[index - 1] ?? '') || /[a-z0-9]$/.test(needle) && /[a-z0-9]/.test(target[index + needle.length] ?? '')) continue;
     const before = target.slice(Math.max(0, index - 50), index).split(/[.!?;\n]/).at(-1);
-    const negated = /\b(?:no|not|without|avoid|exclude|excluding|instead of|rather than)\s+(?:[a-z-]+\s+){0,3}$/.test(before);
-    const historical = /\b(?:previous|previously|earlier|old|rejected|last year|last time|used to)\b/.test(before);
+    const after = target.slice(index + needle.length, index + needle.length + 60).split(/[.!?;\n]/)[0];
+    // Count the removed side of a local instruction as an exclusion. Separate
+    // positive occurrences still count; a later directive cannot erase them.
+    const directive = /\b(?:omit|omitting|remove|removing|leave out|replace)\s+(?:[a-z-]+\s+){0,3}$/.exec(before);
+    const directiveDenied = directive && /\b(?:do not|don't|dont|never|not|cannot|can't|must not|should not)\s*$/.test(before.slice(0, directive.index));
+    const removed = directive && !directiveDenied && !/\b(?:and|then|but|add|include|keep|retain|use)\b/.test(directive[0]) &&
+      (!/^replace\b/.test(directive[0]) || !/\bwith\b/.test(directive[0]) && /^(?:\s+[a-z-]+){0,3}\s+with\b/.test(after));
+    const negated = Boolean(removed) || /\b(?:no|not|without|avoid|exclude|excluding|instead of|rather than)\s+(?:[a-z-]+\s+){0,3}$/.test(before) && !directiveDenied;
+    const historical = !directiveDenied && /\b(?:previous|previously|earlier|old|rejected|last year|last time|used to)\b/.test(before);
     results.push({ negated, historical });
   }
   return results;

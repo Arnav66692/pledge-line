@@ -78,7 +78,57 @@ function numericRoleAllowed(text, index, end) {
     !/(?:[-/.,]|\d:)$/.test(before) && !/^(?:[-/]|:\d|[.,]\d)/.test(after);
 }
 
-function quantityCandidates(text, priorQuantityKnown = false) {
+const PURCHASE_COUNT_ROLE = /\b(?:buy|order|need|needs|want|require|purchase|procure|get|keep|retain|use|set)\b/gi;
+const QUANTITY_FIELD_ROLE = /\b(?:complete quantity|quantity|qty|count)\b/gi;
+const PAST_COUNT_ROLE = /\b(?:previous|prior|historical|old|original|last year|last time|invoice|quoted?|estimate|vendor|supplier|used to)\b/gi;
+
+function quantityIntentIndex(before) {
+  const roles = [...before.matchAll(PURCHASE_COUNT_ROLE)].filter((match) => {
+    if (!/^(?:order|purchase)$/i.test(match[0])) return true;
+    return !/\b(?:a|an|the|our|their|its|that|this|old|previous|historical|original)\s*$/i.test(before.slice(0, match.index)) &&
+      !/^\s+(?:of|for|was|is|had|contained|shows?)\b/i.test(before.slice(match.index + match[0].length));
+  });
+  // A later field noun cannot conceal negation attached to an actual use/set/buy verb.
+  return roles.at(-1)?.index ?? lastMatch(QUANTITY_FIELD_ROLE, before);
+}
+
+function currentQuantityRole(text, index) {
+  const before = text.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+  const intent = quantityIntentIndex(before), historic = lastMatch(PAST_COUNT_ROLE, before);
+  if (intent >= 0 && /\b(?:not|never|no|don't|dont|doesn't|doesnt|won't|wont|wouldn't|wouldnt|shouldn't|shouldnt|can't|cant|cannot|mustn't|mustnt|shan't|shant|couldn't|couldnt|no need to)(?:\s+(?:ever|actually|really|currently|now|please|to|exactly)){0,3}\s*$/i.test(before.slice(0, intent))) return false;
+  if (historic < 0) return true;
+  return intent > historic && /[,;]|\b(?:now|today|instead|actually|current|new|this time|this event|this order)\b|\band\s+(?:I|we)\b/i.test(before.slice(historic, intent));
+}
+
+// A bounded purchase noun phrase needs a buyer count role; it is not a product catalog.
+// Separate packaging contents, prices, decorations, dimensions and calendar numbers remain ineligible.
+function genericQuantityCandidates(text, allowCitedPhrase = false) {
+  const found = [];
+  for (const number of numberMatches(text)) {
+    const before = text.slice(0, number.index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+    if ((!allowCitedPhrase && (quantityIntentIndex(before) < 0 || lastMatch(/\b(?:deliver(?:y|ed)?|deadline|date|time|budget|cap|spend|shipping|fee|print|logo|design|colou?r|sku|size)\b/gi, before) > quantityIntentIndex(before))) || !currentQuantityRole(text, number.index) ||
+      !numericRoleAllowed(text, number.index, number.end) || QUANTITY_PREFIX_ROLE.test(before)) continue;
+    const after = text.slice(number.end), words = /^\s+([a-z]+(?:[-'][a-z]+)*(?:\s+[a-z]+(?:[-'][a-z]+)*){0,20})/i.exec(after);
+    if (!words || number.value <= 12 && /^\s*(?:a\.?m\.?|p\.?m\.?)\b/i.test(after)) continue;
+    const tokens = words[1].split(/\s+/), phrase = [];
+    for (const token of tokens) {
+      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|due|instead|rather)$/i.test(token)) break;
+      if (/^of$/i.test(token) && !(phrase.length === 1 && /^pairs?$/i.test(phrase[0]))) break;
+      phrase.push(token);
+    }
+    if (!phrase.length || phrase.length > 9 || phrase.some((word, index) => (QUANTITY_ROLE_WORD.test(word) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(word)) && !/^of$/i.test(word) && !(index === phrase.length - 1 && index > 0 && /^(?:boxes|cases|cartons|bundles|sets)$/i.test(word))) ||
+      /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)$/i.test(phrase[0]) ||
+      /^(?:percent|percentage|sizes?|prints?|printing|colou?rs?|logos?|designs?|sku|inches?|centimeters?|centimetres?|mm|cm|hours?|days?|weeks?|months?|years?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(phrase.at(-1))) continue;
+    const sourceTokens = [...words[1].matchAll(/\S+/g)], lastToken = sourceTokens[phrase.length - 1];
+    const phraseEnd = number.end + words[0].indexOf(words[1]) + lastToken.index + lastToken[0].length;
+    if (/[a-z0-9'_-]/i.test(text[phraseEnd] ?? '')) continue;
+    if (/^\s+(?:per|for each)\b/i.test(text.slice(phraseEnd))) continue;
+    found.push({ ...number, end: phraseEnd, generic: true });
+  }
+  return found;
+}
+
+function quantityCandidates(text, priorQuantityKnown = false, allowCitedPhrase = false) {
   const found = [], oneEach = /\b(?:one|a)\s+(?:\w+\s+){0,4}(?:shirt|tee|mug|bag|badge|bottle|kit|meal|blanket|jacket)\s+(?:for\s+)?each\b|\bone\s+per\s+(?:volunteer|participant|person)\b/i.test(text);
   if (oneEach) {
     for (const match of text.matchAll(new RegExp(`\\b(${NUMBER_PATTERN})\\s+(?:volunteers?|participants?|people)\\b`, 'gi'))) found.push({ value: numberWords(match[1]), index: match.index, end: match.index + match[0].length });
@@ -94,15 +144,19 @@ function quantityCandidates(text, priorQuantityKnown = false) {
         numericRoleAllowed(text, match.index, match.index + match[1].length) && !/^\s+(?:colors?|colours?|prints?|designs?|sizes?|per\b|for each\b)/i.test(text.slice(end))) found.push({ value: numberWords(match[1]), index: match.index, end });
     }
   }
+  found.push(...genericQuantityCandidates(text, allowCitedPhrase));
   for (const match of text.matchAll(new RegExp(`\\b(?:quantity|qty|count)(?:\\s+(?:is|of|should be))?\\s*[:=]?\\s*(${NUMBER_PATTERN})\\b`, 'gi'))) {
     const index = match.index + match[0].lastIndexOf(match[1]);
     if (!/\b(?:print|color|colour|design|size)\s*$/i.test(text.slice(0, match.index)) && numericRoleAllowed(text, index, index + match[1].length)) found.push({ value: numberWords(match[1]), index, end: index + match[1].length });
+  }
+  for (const match of text.matchAll(new RegExp(`\\b(${NUMBER_PATTERN})\\s+(?:for|as)\\s+(?:the\\s+)?(?:complete\\s+)?(?:quantity|qty|count)\\b`, 'gi'))) {
+    if (numericRoleAllowed(text, match.index, match.index + match[1].length) && !QUANTITY_PREFIX_ROLE.test(text.slice(0, match.index))) found.push({ value: numberWords(match[1]), index: match.index, end: match.index + match[0].length });
   }
   if (!found.length && priorQuantityKnown && CORRECTION.test(text) && !MONEY_UNIT.test(text) && !BUDGET_WORD.test(text) && !/\b(?:date|deliver|deadline|time|print|color|colour|design|am|pm|suppliers?|split|splitting|payee|currency)\b/i.test(text)) {
     const values = numberMatches(text).filter((match) => numericRoleAllowed(text, match.index, match.end));
     if (values.length === 1) found.push(values[0]);
   }
-  return found.filter((item) => Number.isSafeInteger(item.value)).sort((a, b) => a.index - b.index);
+  return found.filter((item) => Number.isSafeInteger(item.value) && currentQuantityRole(text, item.index)).sort((a, b) => a.index - b.index);
 }
 
 function selectCandidate(candidates, text) {
@@ -262,7 +316,7 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
     previous += '\n' + text;
   }
   const sourceField = { quantity: 'quantity', budget: 'budget', specification: 'specification', delivery_date: 'delivery', delivery_time: 'delivery', time_zone: 'delivery' };
-  const proofChecks = { quantity: (text) => quantityCandidates(text, true).length > 0 || /^\s*\d+\s*$/.test(text),
+  const proofChecks = { quantity: (text) => quantityCandidates(text, true, true).length > 0 || /^\s*\d+\s*$/.test(text),
     budget: (text) => budgetCandidates(text).length > 0 || /^\s*\d+(?:\.\d{1,2})?\s*$/.test(text),
     specification: (text) => SPEC_FEATURE.test(text) || new RegExp(`\\b${ITEM_WORDS}\\b`, 'i').test(text),
     delivery_date: (text) => DATE_ANCHOR.test(text), delivery_time: (text) => CLOCK_ANCHOR.test(text), time_zone: (text) => ZONE_ANCHOR.test(text) };
@@ -287,8 +341,8 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
 
 export function quantityIsGrounded(value, evidence, turns = [evidence]) {
   if (!Number.isSafeInteger(value) || !evidence || latestFieldValue(turns, 'quantity') !== value) return false;
-  const cited = quantityCandidates(evidence, turns.some((turn) => quantityCandidates(turn).length));
-  return cited.some((candidate) => candidate.value === value) || /^\s*[\d,]+\s*$/.test(evidence) && numberWords(evidence) === value;
+  const cited = quantityCandidates(evidence, turns.some((turn) => quantityCandidates(turn).length), true);
+  return cited.some((candidate) => candidate.value === value && (!candidate.generic || turns.some((turn) => quantityCandidates(turn).some((actual) => actual.value === value && turn.slice(actual.index, actual.end) === evidence.slice(candidate.index, candidate.end))))) || /^\s*[\d,]+\s*$/.test(evidence) && numberWords(evidence) === value;
 }
 
 export function budgetIsGrounded(cents, evidence, turns = [evidence]) {
@@ -498,8 +552,13 @@ function dateIsGrounded(date, text, now, zone) {
   return absolute || weekdays.length > 0 || tomorrow || sameDay;
 }
 
-export function groundedDelivery(local, deadline, evidence, { now, timeZone }) {
-  const text = evidence.join('\n'), iso = strictIsoInstant(deadline);
+export function groundedDelivery(local, deadline, evidence, { now, timeZone, turns = null }) {
+  const text = evidence.join('\n');
+  // An explicitly cited later buyer clock supersedes an older clock while its date remains usable.
+  // Contradictions within that last buyer turn are still checked together and refused.
+  const latestClockTurn = Array.isArray(turns) ? (turns.findLast((turn) => CLOCK_ANCHOR.test(turn)) ?? null) : null;
+  const clockText = latestClockTurn === null ? text : evidence.filter((clause) => latestClockTurn.includes(clause) && CLOCK_ANCHOR.test(clause)).join('\n');
+  const iso = strictIsoInstant(deadline);
   if (!iso) return { status: 'invalid', field: 'delivery_date' };
   const named = namedZones(text), zone = canonicalZone(local.timeZone);
   const explicitIana = [...text.matchAll(/\b[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/g)].some((match) => canonicalZone(match[0]));
@@ -521,13 +580,13 @@ export function groundedDelivery(local, deadline, evidence, { now, timeZone }) {
   if (!named.length && sourceOffsets.length && !first && !second) {
     const offset = sourceOffsets[0], localNow = now + parseOffset(offset) * 60000;
     if (!dateIsGrounded(local.date, text, localNow, 'UTC')) return { status: 'invalid', field: 'delivery_date' };
-    if (!clockIsGrounded(local.time, text)) return { status: 'invalid', field: 'delivery_time' };
+    if (!clockIsGrounded(local.time, clockText)) return { status: 'invalid', field: 'delivery_time' };
     const selected = strictIsoInstant(`${local.date}T${local.time}${offset}`);
     return selected === iso ? { status: 'ok', instant: selected } : { status: 'invalid', field: 'delivery_time' };
   }
   if (!zone || named.length > 1 || zone !== (named[0] ?? canonicalZone(timeZone))) return { status: 'invalid', field: 'time_zone' };
   if (!dateIsGrounded(local.date, text, now, zone)) return { status: 'invalid', field: 'delivery_date' };
-  if (!clockIsGrounded(local.time, text)) return { status: 'invalid', field: 'delivery_time' };
+  if (!clockIsGrounded(local.time, clockText)) return { status: 'invalid', field: 'delivery_time' };
   const resolved = resolveLocalDelivery({ ...local, offset: '' });
   if (resolved.status === 'gap') return { status: 'gap', field: 'delivery_time' };
   if (!['ok', 'fold'].includes(resolved.status)) return { status: 'invalid', field: 'delivery_date' };

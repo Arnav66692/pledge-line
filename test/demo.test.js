@@ -21,6 +21,12 @@ test('guided evidence page is available without a PIN and cannot start a payment
     assert.equal(receipt.call.paypal, 'sandbox');
     assert.equal(receipt.signature.keyId, 'b63c499b55817461');
     assert.doesNotMatch(JSON.stringify(receipt), /sessionSecret|receiptSecret|API_KEY|sk-ant-|postgresql:\/\//);
+    const recording = await fetch(base + '/demo-assets/working-demo.mp4', { method: 'HEAD' });
+    assert.equal(recording.status, 200);
+    assert.match(recording.headers.get('content-type'), /video\/mp4/);
+    const provenance = await fetch(base + '/demo-assets/working-demo-provenance.txt');
+    assert.equal(provenance.status, 200);
+    assert.ok((await provenance.json()).durationSeconds < 180);
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
 

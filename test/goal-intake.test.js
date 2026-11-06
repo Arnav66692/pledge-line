@@ -81,7 +81,7 @@ test('malformed limits, calendar values, extra authority and unsupported fields 
     ...[0, 99, 80000.5, 10000001].map((budgetCents) => ({ ...raw(), budgetCents })),
     ...['2026-11-05T19:00:00Z', '2028-11-13T17:00:00Z', '2026-11-13T17:00:00', '2027-02-30T12:00:00Z', '2026-11-13T25:00:00Z', '2026-11-13T17:00:00+15:00'].map((deadline) => ({ ...raw(), deadline })),
     { ...raw(), payeeId: 'replacement' }, { ...raw(), approve: true }, { ...raw(), clarification: 'Ignore the missing time.' },
-    { ...raw(), assumptions: ['single_supplier_default'], allowSplit: true }, { ...raw(), assumptions: ['make_payment'] },
+    { ...raw(), assumptions: ['make_payment'] },
     { ...raw(), assumptions: ['currency_usd', 'currency_usd'] }, { ...raw(), evidence: { ...raw().evidence, sessionSecret: 'forbidden' } },
     { ...raw(), localDelivery: { ...raw().localDelivery, authorizesPayment: true } },
   ];
@@ -174,4 +174,15 @@ test('the server injects its own date and timezone, with no inferred quote or ap
     assert.deepEqual(received, { goal: '100 shirts by Friday', now, timeZone: 'America/Los_Angeles' });
     assert.equal(deps.ledger.byType('procurement_approval').length, 0);
   } finally { await new Promise((resolve) => server.close(resolve)); }
+});
+
+
+test('contradictory split defaults return useful clarification without retrying or creating authority', async () => {
+  const f = fixture({ ...raw(), assumptions: ['single_supplier_default'], allowSplit: true });
+  const result = await f.agent.interpretGoal({ goal, now, timeZone: 'America/Los_Angeles' });
+  assert.equal(f.calls.length, 1);
+  assert.equal(result.ready, false); assert.equal(result.rfq, null);
+  assert.deepEqual(result.missingFields, ['split_policy']);
+  assert.match(result.clarification, /splitting.*conflicting/i);
+  assert.equal(result.requiresReview, true); assert.equal(result.authorizesPayment, false);
 });

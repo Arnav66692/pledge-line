@@ -538,3 +538,53 @@ test('a not-at clock denial without a replacement must clarify rather than retai
   input.localDelivery.time = '18:00'; input.deadline = '2026-11-14T02:00:00.000Z';
   assert.equal(normalized(input, corrected, { priorGoals: [goal] }).ready, true);
 });
+
+
+test('explicit purchase counts ground catalog-free nouns while retaining numeric-role boundaries', () => {
+  for (const goods of ['ivory linen serviettes', 'ceramic ramekins', 'steel ladles', 'bamboo document trays', 'pairs of wool mittens', 'reusable storage boxes', 'cardboard storage boxes supplied flat']) {
+    const order = `Please order 73 ${goods} under USD 950 total. Deliver November 21, 2026 at 3 PM Pacific.`;
+    assert.equal(quantityIsGrounded(73, `73 ${goods}`, [order]), true, goods);
+  }
+  for (const phrase of ['Buy 3 print colors for linen serviettes', 'Order 8 packs of 12 ceramic ramekins',
+    'Order 73 ceramic ramekins per carton', 'Order SKU 73 ceramic ramekins', 'Order 73-inch document trays',
+    'Buy 73 ceramic ramekins or 82 ceramic ramekins', 'Buy 73 ceramic ramekins, deliver at 5 PM Pacific',
+    'Previous invoice shows 73 ceramic ramekins', 'Do not order 73 ceramic ramekins', 'The old order was 73 ceramic ramekins']) {
+    const candidate = /deliver at/.test(phrase) ? 5 : 73;
+    assert.equal(quantityIsGrounded(candidate, phrase), false, phrase);
+  }
+  assert.equal(quantityIsGrounded(73, 'Buy 73 ceramic ramekins at 5 PM Pacific'), true);
+  const historic = 'The historical invoice shows 146 mugs; this event needs 73 plain mugs under USD 950 total.';
+  assert.equal(quantityIsGrounded(73, '73 plain mugs', [historic]), true);
+  assert.equal(quantityIsGrounded(146, '146 mugs', [historic]), false);
+  const revision = 'Use 81 for the quantity instead.';
+  assert.equal(quantityIsGrounded(81, revision, [historic, revision]), true);
+  assert.equal(quantityIsGrounded(73, '73 plain mugs', [historic, revision]), false);
+});
+
+test('a later cited clock replaces the old clock while retaining its buyer-provided date', () => {
+  const input = raw(), update = 'Deliver at 2 PM Pacific instead; keep the date and every other limit.';
+  input.deadline = '2026-11-13T22:00:00.000Z'; input.localDelivery.time = '14:00';
+  input.evidence.delivery += '\nat 2 PM Pacific';
+  const result = normalized(input, update, { priorGoals: [goal] });
+  assert.equal(result.ready, true); assert.equal(result.rfq.deadline, input.deadline);
+  const stale = normalized(raw(), update, { priorGoals: [goal] });
+  assert.equal(stale.ready, false); assert.ok(stale.missingFields.includes('delivery_time'));
+});
+
+
+test('quantity roles retain modal and setting negations, historic document scope and financial units', () => {
+  const denied = ['We should not buy 67 ceramic ramekins', 'We shall not order 67 ceramic ramekins',
+    'We will not order 67 ceramic ramekins', 'We shouldn’t order 67 ceramic ramekins', 'We won’t order 67 ceramic ramekins',
+    'Do not use 67 for the quantity', 'Never use 67 for quantity', 'Do not set quantity 67'];
+  for (const text of denied) assert.equal(quantityIsGrounded(67, text), false, text);
+  for (const noun of ['ceramic ramekins', 'mugs']) {
+    const text = `The previous invoice was for an order of 67 ${noun}. Our budget is USD 920. Deliver November 23, 2026 at 3 PM Pacific. Use one supplier.`;
+    assert.equal(quantityIsGrounded(67, `67 ${noun}`, [text]), false, noun);
+  }
+  for (const unit of ['cents', 'euros', 'pounds', 'credits']) {
+    const text = `I need 67 ${unit} for parking. Buy ivory linen serviettes under USD 920 total. Deliver November 23, 2026 at 3 PM Pacific.`;
+    assert.equal(quantityIsGrounded(67, `67 ${unit}`, [text]), false, unit);
+  }
+  assert.equal(quantityIsGrounded(67, 'Use 67 for the quantity instead'), true);
+  assert.equal(quantityIsGrounded(67, 'Keep quantity 67'), true);
+});

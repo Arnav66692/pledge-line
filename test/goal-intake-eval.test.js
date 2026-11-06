@@ -431,3 +431,36 @@ test('malformed model fields do not leak arbitrary structured values into report
   assert.equal(result.summary.main_agent.malformed, 1);
   assert.doesNotMatch(JSON.stringify(result), /synthetic-private-marker/);
 });
+
+
+test('baseline independently grounds catalog-free purchase nouns and rejects incidental numeric roles', () => {
+  const finish = 'under USD 950 total. Deliver November 21, 2026 at 3 PM Pacific.';
+  for (const goods of ['ivory linen serviettes', 'ceramic ramekins', 'steel ladles', 'bamboo document trays', 'pairs of wool mittens', 'reusable storage boxes', 'cardboard storage boxes supplied flat']) {
+    const draft = deterministicGoalDraft(input(`Please order 73 ${goods} ${finish}`));
+    assert.equal(draft.ready, true, goods); assert.equal(draft.rfq.quantity, 73);
+  }
+  for (const phrase of ['3 print colors for linen serviettes', '8 packs of 12 ceramic ramekins', '73 ceramic ramekins per carton',
+    'SKU 73 ceramic ramekins', '73-inch document trays', '73 ceramic ramekins or 82 ceramic ramekins', 'not 73 ceramic ramekins']) {
+    assert.equal(deterministicGoalDraft(input(`Buy ${phrase} ${finish}`)).ready, false, phrase);
+  }
+  assert.equal(deterministicGoalDraft(input('Do not order 73 ceramic ramekins under USD 950 total. Deliver November 21, 2026 at 3 PM Pacific.')).ready, false);
+  assert.equal(deterministicGoalDraft(input('Buy 73 ceramic ramekins under USD 950 total, deliver at 5 PM Pacific on November 21, 2026.')).rfq.quantity, 73);
+  const first = `The historical invoice shows 146 mugs; this event needs 73 plain mugs ${finish}`;
+  assert.equal(deterministicGoalDraft(input(first)).rfq.quantity, 73);
+  const updated = deterministicGoalDraft({ ...input('Use 81 for the quantity instead.'), priorGoals: [first] });
+  assert.equal(updated.ready, true); assert.equal(updated.rfq.quantity, 81);
+});
+
+
+test('baseline independently preserves negated setting verbs and refuses historic or financial counts', () => {
+  const finish = 'Our budget is USD 920. Deliver November 23, 2026 at 3 PM Pacific. Use one supplier.';
+  for (const text of ['We should not buy 67 ceramic ramekins', 'We shall not order 67 ceramic ramekins',
+    'We will not order 67 ceramic ramekins', 'We shouldn’t order 67 ceramic ramekins', 'We won’t order 67 ceramic ramekins',
+    'Do not use 67 for the quantity', 'Never use 67 for quantity', 'Do not set quantity 67']) {
+    assert.equal(deterministicGoalDraft(input(`${text}. ${finish}`)).ready, false, text);
+  }
+  for (const noun of ['ceramic ramekins', 'mugs']) assert.equal(deterministicGoalDraft(input(`The previous invoice was for an order of 67 ${noun}. ${finish}`)).ready, false, noun);
+  for (const unit of ['cents', 'euros', 'pounds', 'credits']) assert.equal(deterministicGoalDraft(input(`I need 67 ${unit} for parking. Buy ivory linen serviettes. ${finish}`)).ready, false, unit);
+  assert.equal(deterministicGoalDraft(input(`Use 67 for the quantity instead; buy ivory linen serviettes. ${finish}`)).rfq.quantity, 67);
+  assert.equal(deterministicGoalDraft(input(`Keep quantity 67; buy ivory linen serviettes. ${finish}`)).rfq.quantity, 67);
+});

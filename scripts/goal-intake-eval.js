@@ -257,7 +257,53 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
       /^\s+(?:colou?rs?|prints?|designs?|sizes?|per\b|for each\b)/i.test(after)) continue;
     quantities.push({ value: number(match[1]), index: match.index });
   }
+  // Independently bind catalog-free item phrases to an explicit purchasing role.
+  // A phrase has at most nine words; packaging contents and non-order numeric roles ask again.
+  const countRole = /\b(?:buy|order|need|needs|want|require|purchase|procure|get|keep|retain|use|set)\b/gi;
+  const countField = /\b(?:quantity|qty|count)\b/gi;
+  const pastRole = /\b(?:previous|prior|historical|old|original|last year|last time|invoice|quoted?|estimate|vendor|supplier|used to)\b/gi;
+  const roleIndex = (pattern, text) => [...text.matchAll(pattern)].at(-1)?.index ?? -1;
+  const countIntent = (clause) => {
+    const verbs = [...clause.matchAll(countRole)].filter((match) => !/^(?:order|purchase)$/i.test(match[0]) ||
+      !/\b(?:a|an|the|our|their|its|that|this|old|previous|historical|original)\s*$/i.test(clause.slice(0, match.index)) &&
+      !/^\s+(?:of|for|was|is|had|contained|shows?)\b/i.test(clause.slice(match.index + match[0].length)));
+    return verbs.at(-1)?.index ?? roleIndex(countField, clause);
+  };
+  const countIsCurrent = (index) => {
+    const clause = goal.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+    const intent = countIntent(clause), historic = roleIndex(pastRole, clause);
+    if (intent >= 0 && /\b(?:not|never|no|don't|dont|doesn't|doesnt|won't|wont|wouldn't|wouldnt|shouldn't|shouldnt|can't|cant|cannot|mustn't|mustnt|shan't|shant|couldn't|couldnt|no need to)(?:\s+(?:ever|actually|really|currently|now|please|to|exactly)){0,3}\s*$/i.test(clause.slice(0, intent))) return false;
+    return historic < 0 || intent > historic && /[,;]|\b(?:now|today|instead|actually|current|new|this time|this event|this order)\b|\band\s+(?:I|we)\b/i.test(clause.slice(historic, intent));
+  };
+  for (const match of goal.matchAll(new RegExp(`\\b(${NUMBER})\\b`, 'gi'))) {
+    if (/^(?:and[ -]*)+$/i.test(match[1])) continue;
+    const before = goal.slice(0, match.index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+    const end = match.index + match[0].length, after = goal.slice(end);
+    if (countIntent(before) < 0 || roleIndex(/\b(?:deliver(?:y|ed)?|deadline|date|time|budget|cap|spend|shipping|fee|print|logo|design|colou?r|sku|size)\b/gi, before) > countIntent(before) || !countIsCurrent(match.index) ||
+      /(?:[$€£¥]\s*|\b(?:not|no|instead of|USD|EUR|GBP|CAD|AUD|JPY)\s*)$/i.test(before) ||
+      /\b(?:sku|price|cost|budget|date|time|size|print|colou?r|logo|design|january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:id|code|number|count))?\s*[:#=]?\s*$|\b(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)\s+of\s*$/i.test(before) ||
+      /(?:[-/.,]|\d:)$/.test(before) || /^(?:[-/]|:\d|[.,]\d)/.test(after)) continue;
+    const tail = /^\s+([a-z]+(?:[-'][a-z]+)*(?:\s+[a-z]+(?:[-'][a-z]+)*){0,20})/i.exec(after);
+    if (!tail || number(match[1]) <= 12 && /^\s*(?:a\.?m\.?|p\.?m\.?)\b/i.test(after)) continue;
+    const sourceWords = [...tail[1].matchAll(/\S+/g)], selected = [];
+    for (const token of sourceWords) {
+      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|due|instead|rather)$/i.test(token[0])) break;
+      if (/^of$/i.test(token[0]) && !(selected.length === 1 && /^pairs?$/i.test(selected[0][0]))) break;
+      selected.push(token);
+    }
+    if (!selected.length || selected.length > 9 || selected.some((token, index) => (countRoles.has(token[0].toLowerCase()) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(token[0])) && token[0].toLowerCase() !== 'of' &&
+      !(index === selected.length - 1 && index > 0 && /^(?:boxes|cases|cartons|bundles|sets)$/i.test(token[0]))) ||
+      /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)$/i.test(selected[0][0]) ||
+      /^(?:percent|percentage|sizes?|prints?|printing|colou?rs?|logos?|designs?|sku|inches?|centimeters?|centimetres?|mm|cm|hours?|days?|weeks?|months?|years?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(selected.at(-1)[0])) continue;
+    const last = selected.at(-1), phraseEnd = end + tail[0].indexOf(tail[1]) + last.index + last[0].length;
+    if (/[a-z0-9'_-]/i.test(goal[phraseEnd] ?? '') || /^\s+(?:per|for each)\b/i.test(goal.slice(phraseEnd))) continue;
+    quantities.push({ value: number(match[1]), index: match.index });
+  }
   for (const match of goal.matchAll(/\bquantity\s*[:=]?\s*(\d{1,3})\b/gi)) quantities.push({ value: Number(match[1]), index: match.index });
+  for (const match of goal.matchAll(new RegExp(`\\b(${NUMBER})\\s+(?:for|as)\\s+(?:the\\s+)?(?:complete\\s+)?(?:quantity|qty|count)\\b`, 'gi'))) {
+    const before = goal.slice(0, match.index);
+    if (!/(?:[$€£¥]\s*|\b(?:not|no|instead of|USD|EUR|GBP|CAD|AUD|JPY|print|colou?r|design|size)\s*)$/i.test(before)) quantities.push({ value: number(match[1]), index: match.index });
+  }
   const latestTurn = turns.at(-1);
   const latestClauses = latestTurn.split(/[;\n]+|[.!?]\s+|,\s+(?=(?:keep|retain|preserve|leave|change|replace|revise|update|adjust|raise|lower|increase|decrease)\b)|\b(?:and|but)\s+(?=(?:keep|retain|preserve|leave|change|replace|revise|update|adjust|raise|lower|increase|decrease)\b)/i);
   const bareReply = new RegExp(`^\\s*(?:(?:actually|instead)\\s*[:,]?\\s*)?(${NUMBER})(?:\\s+instead)?[.!]?\\s*$`, 'i').exec(latestTurn);
@@ -272,7 +318,7 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
   const incompleteQuantityEdit = latestClauses.some((clause) => /\b(?:change|replace|revise|update|adjust|raise|lower|increase|decrease)\b/i.test(clause) &&
     /\b(?:quantity|qty|count)\b/i.test(clause) && !/\b(?:keep|retain|preserve|leave|unchanged|do not change|don't change)\b/i.test(clause));
   if (incompleteQuantityEdit && !quantities.some((candidate) => candidate.index >= turnStarts.at(-1))) return refused('What is the new complete quantity?');
-  const quantity = choose(quantities, goal);
+  const quantity = choose(quantities.filter((candidate) => countIsCurrent(candidate.index)), goal);
   if (!integer(quantity, 1, 500)) return refused('What is the complete quantity?');
   const budgets = [];
   const currencyWords = '(?:USD|EUR|GBP|CAD|AUD|JPY|U\\.?S\\.? dollars?|Canadian dollars?|Australian dollars?|Japanese yen|dollars?|euros?|pounds?|yen)';
