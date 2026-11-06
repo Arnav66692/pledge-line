@@ -1,0 +1,96 @@
+{
+  "kind": "summary",
+  "arms": {
+    "rules": {
+      "expectedCases": 12,
+      "ran": 12,
+      "complete": 7,
+      "controlsComplete": 6,
+      "naturalComplete": 1,
+      "errors": 0,
+      "notRun": 0,
+      "unapprovedWrites": 0,
+      "wrongWrites": 0,
+      "checkerProblems": 0
+    },
+    "composed": {
+      "expectedCases": 12,
+      "ran": 12,
+      "complete": 12,
+      "controlsComplete": 6,
+      "naturalComplete": 6,
+      "errors": 0,
+      "notRun": 0,
+      "unapprovedWrites": 0,
+      "wrongWrites": 0,
+      "checkerProblems": 0
+    }
+  },
+  "completed": true,
+  "runFailure": false,
+  "passed": true,
+  "providerRequestAttempts": {
+    "anthropic": 11,
+    "jev": 11
+  },
+  "before": {
+    "scope": "pledge-line-functional-20261105",
+    "stopped": false,
+    "reason": null,
+    "provider": null,
+    "providerBalanceVerified": false,
+    "allocationUnit": "USD nanodollars",
+    "accounts": {
+      "anthropic": {
+        "allocationNanos": 3000000000,
+        "usedNanos": 2815838000,
+        "remainingNanos": 184162000
+      },
+      "jev": {
+        "allocationNanos": 100000000,
+        "usedNanos": 2373546,
+        "remainingNanos": 97626454
+      }
+    },
+    "pendingRequests": [],
+    "apiKeyOnly": true,
+    "autoRechargeManagedByProvider": true,
+    "credentialsConfigured": {
+      "anthropic": true,
+      "jev": true
+    }
+  },
+  "after": {
+    "scope": "pledge-line-functional-20261105",
+    "stopped": false,
+    "reason": null,
+    "provider": null,
+    "providerBalanceVerified": false,
+    "allocationUnit": "USD nanodollars",
+    "accounts": {
+      "anthropic": {
+        "allocationNanos": 3000000000,
+        "usedNanos": 2868196000,
+        "remainingNanos": 131804000
+      },
+      "jev": {
+        "allocationNanos": 100000000,
+        "usedNanos": 2664144,
+        "remainingNanos": 97335856
+      }
+    },
+    "pendingRequests": [],
+    "apiKeyOnly": true,
+    "autoRechargeManagedByProvider": true,
+    "credentialsConfigured": {
+      "anthropic": true,
+      "jev": true
+    }
+  },
+  "knownSharedAllocationDeltaNanos": {
+    "anthropic": 52358000,
+    "jev": 290598
+  },
+  "limits": "Independently authored synthetic task fixture. Two direct control utterances exactly overlap the earlier routing set. Natural tasks are not exact matches against the prior Nov6 12case routing fixture; broader earlier fixtures were not exhaustively audited. New outcome/state/consent oracles, not12unseenlanguagecases. Composed router includes model and deterministic guards, notpurecausalLLMablation. All payments mocked. Historical routing/purchase failures unchanged.",
+  "recordedAt": "2026-11-06T10:16:48.667Z"
+}

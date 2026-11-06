@@ -1,0 +1,15 @@
+{
+  "comparison": "Exact case-insensitive text against prior November6 donor routing fixture, before any inference. New tasks add state, consent, execution and outcome oracles; no claim all utterances are unseen. No labels or gates changed.",
+  "matches": [
+    {
+      "case": "control-resume",
+      "group": "direct_controls",
+      "priorCase": "control-resume"
+    },
+    {
+      "case": "control-hardship",
+      "group": "direct_controls",
+      "priorCase": "control-hardship"
+    }
+  ]
+}

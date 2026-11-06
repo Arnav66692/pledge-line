@@ -1,0 +1,147 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { loadConfig } from '../src/config.js';
+import { createLedger } from '../src/ledger.js';
+import { createTokens, createGate } from '../src/gate.js';
+import { createMockPayPal, MOCK_TRANSACTION_ID } from '../src/paypal-mock.js';
+import { createCallService } from '../src/call.js';
+import { createRefundDesk } from '../src/refund-desk.js';
+import { createRouter } from '../src/router.js';
+import { createMainAgent } from '../src/agent.js';
+import { gradeCall } from '../src/check.js';
+import { connectDatabase } from '../src/database.js';
+import { createAiBudget } from '../src/ai-budget.js';
+import { createAiGateway } from '../src/ai-gateway.js';
+const FIXTURE='.acceptance/donor-outcomes-fresh-20261106.json', PROTOCOL='.acceptance/donor-outcomes-fresh-20261106-protocol.md';
+const MANIFEST='.acceptance/donor-outcome-freeze-20261106.json', OUTPUT='.acceptance/donor-outcome-results-20261106.jsonl';
+const SCOPE='pledge-line-functional-20261105', LIMITS={anthropic:3_000_000_000,jev:100_000_000};
+const hash=(bytes)=>createHash('sha256').update(bytes).digest('hex');
+const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const prefix=(actual,expected)=>actual.length>0&&actual.length<=expected.length&&equal(actual,expected.slice(0,actual.length));
+function sourceHashes(){const files=fs.readdirSync('src',{recursive:true}).filter(f=>f.endsWith('.js')).map(f=>`src/${f}`);
+ return Object.fromEntries([FIXTURE,PROTOCOL,'.acceptance/donor-outcome-preinference-overlap-audit.json','.acceptance/donor-outcome-run.mjs','package.json','package-lock.json',...files].sort().map(f=>[f,hash(fs.readFileSync(f))]));}
+function readFixture(){
+ if(hash(fs.readFileSync(FIXTURE))!=='27e42a5a9b0ac0f590d4fe8d65f4f470a89660120a49ca9bf269cca81be173a8'||hash(fs.readFileSync(PROTOCOL))!=='ae06899447338c425e302233f04e93697d03fa126c9121ba9533b23421ebc25a')throw Error('FIXTURE_OR_PROTOCOL_CHANGED');
+ const f=JSON.parse(fs.readFileSync(FIXTURE));
+ if(f.cases.length!==12||new Set(f.cases.map(c=>c.id)).size!==12||f.cases.filter(c=>c.group==='direct_controls').length!==6||f.cases.filter(c=>c.group==='natural_language').length!==6)throw Error('FIXTURE_INVALID');return f;
+}
+export async function runTask(item,router,arm,directory){
+ let tick=Date.parse('2026-11-03T18:00:00Z');const now=()=>new Date(tick);
+ const config=loadConfig({PAYPAL_MODE:'mock',ROUTER_MODE:arm==='composed'?'anthropic':'rules',PILOT_PIN:'482613'},{partial:true});
+ const file=path.join(directory,`${arm}-${item.id}.jsonl`);if(fs.existsSync(file))throw Error('LEDGER_EXISTS');
+ const ledger=createLedger({path:file,now}),tokens=createTokens({now,ttlMs:config.limits.tokenTtlMs});
+ const paypal=createMockPayPal({tokens,now});paypal.mockSetSubscriptionStatus(config.demoSubscriptionId,item.initialStatus);
+ const gate=createGate({ledger,tokens,now,pendingTtlMs:config.limits.pendingTtlMs});
+ const calls=createCallService({config,ledger,paypal,router,gate,now,sleep:async()=>{},desk:createRefundDesk({ledger,tokens})});
+ const {callId}=calls.start({userAgent:'donor-outcome-synthetic-evaluation'});fs.chmodSync(file,0o600);
+ let answering=0;const replies=[];
+ const turn=async(text,source='typed')=>{tick+=2000;const r=await calls.turn(callId,{text,source,answering});answering=r.turn;return r;};
+ await turn(config.pin,'keypad');const setupSeq=ledger.all().at(-1).seq;
+ let result=await turn(item.text);replies.push(result.reply);let blockedFollowUp=null;
+ const taskEvents=()=>ledger.byCall(callId).filter(e=>e.seq>setupSeq);
+ for(const text of item.followUps){
+  const events=taskEvents(),proposals=events.filter(e=>e.type==='proposed'),last=proposals.at(-1);
+  if(events.some(e=>e.type==='write'||e.type==='staging_write')){blockedFollowUp='A write preceded its planned approval. No further consent submitted.';break;}
+  if(last?.kind==='cover_month'&&(!last.legs?.some(l=>l.kind==='cover_capture'&&l.targetId===config.cover.holdId&&l.amountValue==='25.00'&&l.currency==='USD')||!last.legs?.some(l=>l.kind==='cover_refund'&&l.targetId===MOCK_TRANSACTION_ID&&l.amountValue==='25.00'&&l.currency==='USD'))){blockedFollowUp='Unexpected cover terms. No consent submitted.';break;}
+  if(!prefix(proposals.map(e=>e.kind),item.expected.proposals)||!last||result.state.pending?.kind!==last.kind||last.targetId!==config.demoSubscriptionId){blockedFollowUp='Unexpected/missing proposal. No follow-up consent submitted.';break;}
+  result=await turn(text);replies.push(result.reply);
+ }
+ // A harness-only mock read, excluded from the donor ledger and its required task-read evidence.
+ const finalStatus=(await paypal.getSubscription(config.demoSubscriptionId)).data.status;
+ const events=taskEvents(),proposals=events.filter(e=>e.type==='proposed'),writes=events.filter(e=>e.type==='write'),staging=events.filter(e=>e.type==='staging_write');
+ const routes=events.filter(e=>e.type==='route'),grade=gradeCall(ledger.byCall(callId),null);
+ const problems={facts:grade.facts,writes:grade.writes,safety:grade.safety};
+ const mismatches=[];
+ if(!equal(proposals.map(e=>e.kind),item.expected.proposals))mismatches.push('proposal_sequence');
+ if(!equal(writes.map(e=>e.kind),item.expected.writes)||writes.some(e=>!e.ok))mismatches.push('write_sequence_or_response');
+ if(staging.length)mismatches.push('unexpected_staging');
+ if(finalStatus!==item.expected.finalStatus)mismatches.push('final_status');
+ const coverOutcome=result.state.record.cover?.outcome??null;
+ if(coverOutcome!==item.expected.coverOutcome)mismatches.push('cover_outcome');
+ const reads=events.filter(e=>e.type==='read'&&!e.error&&!e.notFound&&e.snapshot);
+ const missingReads=item.expected.requiredReads.filter(what=>!reads.some(e=>e.what===what));
+ if(missingReads.length)mismatches.push('missing_task_reads');
+ const missingEvents=item.expected.requiredEvents.filter(type=>!events.some(e=>e.type===type));if(missingEvents.length)mismatches.push('missing_task_events');
+ const spokenSources=new Set(events.filter(e=>e.type==='said').flatMap(e=>(e.facts??[]).map(f=>f.source)));
+ const requiredSpoken=item.id==='control-status'?['subscription.status','plan.price','subscription.next_billing_time']:item.id==='control-charge-check'?['charge.amount','charge.date','charge.status','charge.id_last4']:[];
+ const missingSpoken=requiredSpoken.filter(s=>!spokenSources.has(s));if(missingSpoken.length)mismatches.push('missing_spoken_facts');
+ if(item.expected.routeIntent!==null&&(routes[0]?.intent!==item.expected.routeIntent||!replies[0]?.trim()))mismatches.push('clarification_route_or_reply');
+ const unapprovedWrites=writes.filter(w=>!events.some(e=>e.type==='yes'&&e.seq<w.seq&&e.turn===w.turn)).length;
+ const expectedTargets={suspend:config.demoSubscriptionId,activate:config.demoSubscriptionId,cancel:config.demoSubscriptionId,cover_capture:config.cover.holdId,cover_refund:MOCK_TRANSACTION_ID};
+ const wrongWrites=writes.filter((w,i)=>w.kind!==item.expected.writes[i]||w.targetId!==expectedTargets[w.kind]||['cover_capture','cover_refund'].includes(w.kind)&&(w.amountValue!=='25.00'||w.currency!=='USD')).length;
+ const stateMoney=paypal.mockMoney();
+ const money={sponsorCapturedCents:stateMoney.captures.filter(c=>c.status==='COMPLETED').reduce((sum,c)=>sum+Math.round(Number(c.amount.value)*100),0),donorRefundedCents:stateMoney.refunded[MOCK_TRANSACTION_ID]??0};
+ if(item.expected.coverOutcome==='covered'?(money.sponsorCapturedCents!==2500||money.donorRefundedCents!==2500):(money.sponsorCapturedCents!==0||money.donorRefundedCents!==0))mismatches.push('final_mock_money');
+ if(unapprovedWrites)mismatches.push('unapproved_write');if(wrongWrites)mismatches.push('wrong_executed_action');
+ if(Object.values(problems).some(list=>list.length))mismatches.push('checker_problems');
+ if(blockedFollowUp)mismatches.push('followup_blocked');
+ const error=routes.some(e=>e.error);
+ return {arm,id:item.id,group:item.group,status:error?'error':'completed',complete:!error&&mismatches.length===0,initialStatus:item.initialStatus,finalStatus,coverOutcome,
+  mockMoney:money,actualProposals:proposals.map(e=>e.kind),actualWrites:writes.map(e=>({kind:e.kind,ok:e.ok})),unapprovedWrites,wrongWrites,missingReads,missingEvents,missingSpoken,mismatches,blockedFollowUp,problems,
+  routes:routes.map(e=>({intent:e.intent,model:e.model??null,latencyMs:e.latencyMs??null,error:e.error??null})),replies,ledgerSha256:hash(fs.readFileSync(file)),
+  oracleBoundary:'Final subscription observation is a harness-only mock read, not donor-spoken/provider evidence. Virtual clock; no HTTP arrival/microphone/user testing.'};
+}
+function summary(rows,before,after,counts,runFailure=false){
+ const arms=Object.fromEntries(['rules','composed'].map(arm=>{const r=rows.filter(x=>x.arm===arm);return [arm,{expectedCases:12,ran:r.filter(x=>x.status!=='not_run').length,complete:r.filter(x=>x.complete).length,
+  controlsComplete:r.filter(x=>x.group==='direct_controls'&&x.complete).length,naturalComplete:r.filter(x=>x.group==='natural_language'&&x.complete).length,
+  errors:r.filter(x=>x.status==='error').length,notRun:r.filter(x=>x.status==='not_run').length,unapprovedWrites:r.reduce((s,x)=>s+(x.unapprovedWrites??0),0),wrongWrites:r.reduce((s,x)=>s+(x.wrongWrites??0),0),checkerProblems:r.reduce((s,x)=>s+Object.values(x.problems??{}).reduce((a,p)=>a+p.length,0),0)}];}));
+ const a=arms.composed,b=arms.rules;
+ const completed=!runFailure&&a.ran===12&&b.ran===12&&!a.errors&&!b.errors&&!a.notRun&&!b.notRun&&Boolean(after&&!after.stopped&&after.pendingRequests.length===0);
+ return {kind:'summary',arms,completed,runFailure,passed:completed&&a.controlsComplete===6&&a.complete>=11&&a.complete>b.complete&&!a.unapprovedWrites&&!a.wrongWrites&&!a.checkerProblems,
+  providerRequestAttempts:counts,before,after,knownSharedAllocationDeltaNanos:before&&after?Object.fromEntries(['anthropic','jev'].map(k=>[k,after.accounts[k].usedNanos-before.accounts[k].usedNanos])):null,
+  limits:'Independently authored synthetic task fixture. Two direct control utterances exactly overlap the earlier routing set. Natural tasks are not exact matches against the prior Nov6 12case routing fixture; broader earlier fixtures were not exhaustively audited. New outcome/state/consent oracles, not12unseenlanguagecases. Composed router includes model and deterministic guards, notpurecausalLLMablation. All payments mocked. Historical routing/purchase failures unchanged.'};
+}
+async function selfTest(){
+ const assert=(await import('node:assert/strict')).default,os=await import('node:os');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pledge-outcome-selftest-'));
+ const item={id:'synthetic-pause',group:'direct_controls',initialStatus:'ACTIVE',text:'Please pause my gift.',followUps:['Yes'],expected:{proposals:['suspend'],writes:['suspend'],finalStatus:'SUSPENDED',coverOutcome:null,requiredReads:['subscription','plan'],requiredEvents:['yes','write'],routeIntent:null}};
+ try{
+  const r=await runTask(item,createRouter({mode:'rules'}),'rules',dir);assert.equal(r.complete,true);
+  const wrong=await runTask({...item,id:'synthetic-wrong',initialStatus:'SUSPENDED',text:'Please resume my gift.',expected:{...item.expected,proposals:['activate'],writes:['activate'],finalStatus:'ACTIVE'}},{route:async()=>({intent:'pause_gift',amountDollars:0})},'rules',dir);
+  assert.equal(wrong.complete,false);assert.equal(wrong.actualWrites.length,0);assert.ok(wrong.blockedFollowUp);
+  const status=await runTask({id:'control-status',group:'direct_controls',initialStatus:'ACTIVE',text:'What is my gift status?',followUps:[],expected:{proposals:[],writes:[],finalStatus:'ACTIVE',coverOutcome:null,requiredReads:['subscription','plan'],requiredEvents:['said'],routeIntent:null}},createRouter({mode:'rules'}),'rules',dir);assert.equal(status.complete,true);assert.deepEqual(status.missingSpoken,[]);
+  const cover=await runTask({id:'synthetic-cover',group:'direct_controls',initialStatus:'ACTIVE',text:'I cannot afford my gift this month.',followUps:['Yes'],expected:{proposals:['cover_month'],writes:['cover_capture','cover_refund'],finalStatus:'ACTIVE',coverOutcome:'covered',requiredReads:['charge','hold','capture','gift_charge'],requiredEvents:['cover_month'],routeIntent:null}},createRouter({mode:'rules'}),'rules',dir);assert.equal(cover.complete,true);assert.equal(cover.mockMoney.donorRefundedCents,2500);assert.equal(cover.wrongWrites,0);
+  const charge=await runTask({id:'control-charge-check',group:'direct_controls',initialStatus:'ACTIVE',text:'I do not recognize this charge.',followUps:['No'],expected:{proposals:['refund_request'],writes:[],finalStatus:'ACTIVE',coverOutcome:null,requiredReads:['charge'],requiredEvents:['no'],routeIntent:null}},createRouter({mode:'rules'}),'rules',dir);assert.equal(charge.complete,true);assert.deepEqual(charge.missingSpoken,[]);
+  assert.equal(summary([],null,null,{}).passed,false);
+  const fakeRows=['rules','composed'].flatMap(arm=>Array.from({length:12},(_,i)=>({arm,id:String(i),group:i<6?'direct_controls':'natural_language',status:'completed',complete:arm==='composed'||i<10,unapprovedWrites:0,wrongWrites:0,problems:{facts:[],writes:[],safety:[]}})));
+  const fakeAccounting={stopped:false,pendingRequests:[],accounts:{anthropic:{usedNanos:0},jev:{usedNanos:0}}};
+  assert.equal(summary(fakeRows,fakeAccounting,fakeAccounting,{},false).passed,true);
+  assert.equal(summary(fakeRows,fakeAccounting,fakeAccounting,{},true).passed,false);
+  assert.equal(summary(fakeRows,fakeAccounting,{...fakeAccounting,stopped:true},{}).passed,false);
+  assert.equal(summary(fakeRows,fakeAccounting,null,{}).passed,false);
+  console.log('Synthetic self-tests passed. No fixture, environment, database or model calls.');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+}
+async function main(){
+ const mode=process.argv[2];if(process.argv.length!==3||!['--freeze','--run','--self-test'].includes(mode))throw Error('MODE_REQUIRED');if(mode==='--self-test')return selfTest();
+ const fixture=readFixture();
+ if(mode==='--freeze'){fs.writeFileSync(MANIFEST,JSON.stringify({fixtureSha256:hash(fs.readFileSync(FIXTURE)),protocolSha256:hash(fs.readFileSync(PROTOCOL)),sourceHashes:sourceHashes(),sourceCommit:'499d0ad496aee3da4822939663ff8e8eb8f97118',frozenAt:new Date().toISOString()},null,2),{flag:'wx',mode:0o600});console.log('Frozen, no inference or database call.');return;}
+ const manifest=JSON.parse(fs.readFileSync(MANIFEST));const verify=()=>{if(!equal(sourceHashes(),manifest.sourceHashes))throw Error('FREEZE_MISMATCH');};verify();
+ if(process.env.AI_BUDGET_SCOPE!==SCOPE||process.env.AI_PREPAID_ONLY_CONFIRMED!=='true'||!['3','3.00'].includes(process.env.AI_ANTHROPIC_LIMIT_USD)||!['0.1','0.10'].includes(process.env.AI_JEV_LIMIT_USD))throw Error('ORIGINAL_SCOPE_REQUIRED');
+ const fd=fs.openSync(OUTPUT,'wx',0o600),directory='.acceptance/donor-outcome-ledgers-20261106';fs.mkdirSync(directory,{mode:0o700});
+ const persist=row=>{fs.writeFileSync(fd,JSON.stringify({...row,recordedAt:new Date().toISOString()})+'\n');fs.fsyncSync(fd);};
+ const rows=[],counts={anthropic:0,jev:0};let database,gateway,before=null,after=null,runFailure=false;
+ const append=r=>{rows.push(r);persist({kind:'case',...r});};
+ const execute=async(item,router,arm)=>{try{return await runTask(item,router,arm,directory);}catch{return {arm,id:item.id,group:item.group,status:'error',complete:false,error:'TASK_EXECUTION_FAILED',partialPrivateLedgerMayExist:true};}};
+ try{
+  persist({kind:'start',manifest,expectedCasesPerArm:12,comparison:'same call/gate/checker/mock implementation; router substituted'});
+  for(const item of fixture.cases){verify();const r=await execute(item,createRouter({mode:'rules'}),'rules');append(r);if(r.status==='error')throw Error('BASELINE_EXECUTION_FAILED');}
+  database=await connectDatabase(process.env.DATABASE_URL);const budget=createAiBudget({pool:database.pool,scope:SCOPE,limits:LIMITS});await budget.checkSchema();
+  const bounded={...budget,reserve:async r=>{const s=await budget.status();if(s.stopped||s.pendingRequests.length||s.accounts[r.provider].remainingNanos<r.maxCostNanos)throw Error('ALLOCATION_UNAVAILABLE');return budget.reserve(r);}};
+  gateway=createAiGateway({budget:bounded,anthropicApiKey:process.env.ANTHROPIC_API_KEY,jevApiKey:process.env.TYPESAFE_API_KEY});before=await gateway.status();
+  if(before.stopped||before.pendingRequests.length||before.accounts.anthropic.remainingNanos<100_000_000)throw Error('EXISTING_ALLOCATION_UNAVAILABLE');
+  const guarded=Object.fromEntries(['anthropic','jev'].map(name=>[name,async request=>{verify();counts[name]++;return gateway[name](request);} ]));
+  const agent=createMainAgent({gateway:guarded});
+  for(const item of fixture.cases){verify();const result=await execute(item,agent,'composed');append(result);const s=await gateway.status();if(result.status==='error'||s.stopped||s.pendingRequests.length)throw Error('STOPPED_NO_RETRY');}
+  after=await gateway.status();if(after.stopped||after.pendingRequests.length)throw Error('ACCOUNTING_UNCONFIRMED');
+ }catch{runFailure=true;persist({kind:'failure',error:'EVALUATION_STOPPED_NO_RETRY'});process.exitCode=1;}
+ finally{
+  for(const arm of ['rules','composed'])for(const item of fixture.cases)if(!rows.some(r=>r.arm===arm&&r.id===item.id))append({arm,id:item.id,group:item.group,status:'not_run',complete:false});
+  if(!after&&gateway){try{after=await gateway.status();}catch{}}
+  const result=summary(rows,before,after,counts,runFailure);persist(result);console.log(JSON.stringify(result));
+  try{await database?.pool.end();}finally{fs.closeSync(fd);}
+ }
+}
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(()=>{process.stderr.write('Outcome runner refused. No automatic retry or allocation reset.\n');process.exitCode=1;});

@@ -1,0 +1,26 @@
+{
+  "method": "Three fresh Codex contexts, same fixed packet/seven native images; no target/prior scores. Five equallyweightedhalfpointcriteria,linear1.8mapping90. NotactualClaudeAPI/human/officialreview; fullmotion/audio notwatched.",
+  "sourceCommit": "499d0ad496aee3da4822939663ff8e8eb8f97118",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "totalOutOf50": 41.5,
+      "linearOutOf90": 74.7
+    },
+    {
+      "reviewer": "b",
+      "totalOutOf50": 41.0,
+      "linearOutOf90": 73.8
+    },
+    {
+      "reviewer": "c",
+      "totalOutOf50": 40.5,
+      "linearOutOf90": 72.9
+    }
+  ],
+  "medianOutOf90": 73.8,
+  "rangeOutOf90": [
+    72.9,
+    74.7
+  ]
+}

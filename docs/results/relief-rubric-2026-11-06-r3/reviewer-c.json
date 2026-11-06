@@ -1,0 +1,117 @@
+{
+  "reviewer": "focused_assessment_c",
+  "date": "2026-11-06",
+  "assessmentCount": 1,
+  "scope": "Internal sandbox hackathon prototype assessment; not an official Devpost score or production readiness decision.",
+  "rubric": {
+    "criteria": ["Technological Implementation", "Design", "Potential Impact", "Innovation/Idea", "Presentation"],
+    "minimum": 1,
+    "maximum": 10,
+    "increment": 0.5,
+    "equalWeights": true,
+    "scaleAndWeightingAreInternalConventions": true,
+    "defaultEvaluatorSkill": "Not found under the catalog skill roots; supplied Devpost criteria used."
+  },
+  "packetHash": "caed35005fc05b897f43a62a2e4b23b265fef79044371004f9b2595b102a8794",
+  "hashVerification": {
+    "manifest": ".acceptance/relief-review-focused-manifest-20261106.json",
+    "method": "Read every manifest file as bytes and compute SHA-256 using node:crypto; compare each digest to manifest.files.",
+    "manifestEntries": 76,
+    "filesRead": 76,
+    "matched": 76,
+    "mismatches": [],
+    "packetMatchesSuppliedHash": true,
+    "filmMatchesManifestAndProvenance": true,
+    "captionsMatchManifestAndProvenance": true,
+    "posterMatchesManifestAndProvenance": true,
+    "limitation": "Hash consistency establishes the inspected snapshot, not independent authenticity of historical provider claims. Historical result JSON outside the manifest was read but has no supplied manifest digest to compare."
+  },
+  "criteria": [
+    {
+      "name": "Technological Implementation",
+      "score": 8.5,
+      "reason": "A substantial functioning sandbox integration: retained donor pause/resume, sponsor-first $25 capture/refund with fresh reads and ACTIVE gift, paid $50 invoice plus verified/deduplicated webhook, restart-preserved receipt and two-leg purchasing. Current src/call.js:627-632, 667-690 and 706-780 bind proposals to the read charge, verify sponsor funding before refund, and preserve unknown outcomes. src/rehearsal.js genuinely invokes the call service, gate, checker and receipt builder against isolated rules/mock dependencies; its test source covers six scenarios, concurrent isolation and forbidden dependency injection. The principal technical deduction is the bounded and mixed AI performance in D1; the separate cancellation policy repair does not erase the frozen failure. The reported 1,016 passing tests are mock/local evidence, not 1,016 provider transactions."
+    },
+    {
+      "name": "Design",
+      "score": 8.5,
+      "reason": "The inspected native desktop and phone results have clear hierarchy, restrained visual styling and immediate financial state: captured sponsor amount, unresolved donor result and active subscription appear together on the phone. Disclosures keep the transcript and detailed evidence available without displacing the result. Current web/rehearsal.js clears prior results, focuses the result heading and scrolls completed phone results into view; synchronized native select/radios and visible keyboard-focus styles support interaction. D3 limits the otherwise polished evidence experience: the phone film shrinks a desktop interface to tiny text, and desktop donor dialogue is still lengthy. No independent usability finding is inferred."
+    },
+    {
+      "name": "Potential Impact",
+      "score": 7,
+      "reason": "Sponsor-backed relief while preserving a monthly gift addresses a concrete donor hardship and after-hours nonprofit support problem. The functioning mechanism and safe unresolved state make the proposed benefit plausible; audience context is appropriately restricted to the cited participant panels. D2 remains material: there is no observed independent donor/nonprofit benefit, time saving, retention effect, willingness to use/pay or established sponsor participation/economics. These are confidence limits on potential impact rather than mandatory production gates. Controlled suppliers and sandbox completion establish mechanism, not independent fulfillment or community benefit."
+    },
+    {
+      "name": "Innovation/Idea",
+      "score": 8,
+      "reason": "The distinctive combination is conversational completion of an exact supported action, sponsor-funded hardship relief, separate fresh consent, authoritative readback, sentence-level evidence and an independently checkable app-signed record. This is more specific than generic recurring-gift management, while the packet correctly acknowledges existing Donorbox/Givebutter capabilities. D1 limits the AI-specific novelty supported by results: fresh donor classification improves this small fixture but fails its registered gate; purchase drafting loses to rules and the successful price guard selects a deterministic plan. No AI price advantage, general superiority or first-ever claim is established."
+    },
+    {
+      "name": "Presentation",
+      "score": 8.5,
+      "reason": "The landing page presents one donor-relief story with direct rehearsal and recorded-receipt actions, a visible 73-second film and a closed optional evidence archive. Native images corroborate the initial desktop/phone layout and explicit simulation labels; film frames show covered, unresolved and edited-receipt rejection states. Captions/provenance clearly distinguish rules/mock execution from separately retained actual sandbox receipt evidence and limit app-key integrity claims. Current demo source and tests support receipt deep links without an automatic verification/payment call. D3 reduces the score because the embedded phone film's operational text is too small for comfortable reading; still-frame/transcript inspection cannot certify the motion/audio experience. Missing public YouTube/Devpost publication is recorded separately, without treating it as a missing working prototype feature."
+    }
+  ],
+  "materialDeductions": [
+    {
+      "id": "D1",
+      "criteria": ["Technological Implementation", "Innovation/Idea"],
+      "finding": "AI adds some demonstrated semantic coverage, but its reliable incremental value remains limited.",
+      "evidence": "docs/results/donor-route-fresh-2026-11-06.json summary: 11/12 AI versus 6/12 rules, one wrong mutation route, passed:false; four pending-consent cases with zero provider attempts. The frozen miss is pause refusal plus explicit cancellation. docs/DONOR-ROUTING-2026-11-06.md distinguishes the exposed-case policy repair from fresh validation. Packet retains purchase drafting 11/24 versus rules 14/24 and failed gate; guarded-checkout result selects deterministic $674.15 below the model's $676.25 candidate.",
+      "improvement": "Demonstrate the repaired donor policy on a newly frozen, independently authored synthetic set and establish a bounded AI task that passes its safety gate and improves on the unchanged baseline. Do not relabel or replace retained failures."
+    },
+    {
+      "id": "D2",
+      "criteria": ["Potential Impact"],
+      "finding": "The relief mechanism works in the sandbox, but its practical benefit and sponsor economics remain unmeasured.",
+      "evidence": "Packet Impact and alternatives explicitly reports no independent target-user observations, retention/time-saving/uplift, willingness-to-pay or sponsor partnership. Historical $25 sponsor gross capture incurs a $1.36 fee; the current simulated example separately shows $1.21. Audience fundraising statistics do not measure this app's effect.",
+      "improvement": "Observe representative donors and nonprofit staff using the existing prototype and measure task completion and comprehension; establish plausible sponsor funding and fee assumptions before claiming retention or operational benefit."
+    },
+    {
+      "id": "D3",
+      "criteria": ["Design", "Presentation"],
+      "finding": "The responsive result is legible, but the primary phone film still presents fine-grained desktop content at a very small scale, and the desktop dialogue is dense.",
+      "evidence": "focused-demo-phone-hosted-native.png displays the full 1280x900 desktop recording at roughly 359px width, making transaction dialogue and detail text tiny; final-desktop-complete-native.png shows a lengthy initial consent explanation. The separate final-mobile-complete-native.png is clearer and keeps the key money/status fields visible, so this deduction is confined to evidence readability rather than the completed phone result.",
+      "improvement": "Improve the existing demonstration's small-screen readability and condense repeated explanatory dialogue while preserving exact financial terms, fresh consent and explicit scope labels. Validate that viewers can understand the key evidence at the embedded phone size."
+    }
+  ],
+  "evidenceDistinctions": {
+    "actualProviderResults": "Retained PayPal sandbox donor changes, $25 sponsor capture/refund, $50 paid invoice and verified webhook, plus separate $676.25 restart checkout and later $674.15 guarded checkout. These are historical result records read here, not new provider calls by this reviewer. Controlled supplier endpoints share an owned sandbox merchant; no real funds or fulfillment established.",
+    "simulation": "Current anonymous rehearsal uses actual call/gate/checker/receipt code, isolated mock PayPal, in-memory ledger, rules routing, fixed virtual clock and zero external calls. The lead film records four such situations, then verifies a separate retained receipt without a new PayPal read/payment or model request.",
+    "failedEvaluations": "Fresh donor routing gate failed despite 11/12 correct; purchase drafting failed and AI negotiation savings are not demonstrated. Historical V4 routing and exposed-case repairs do not create a fresh current pass.",
+    "unknowns": "Independent human benefit, population accuracy, sponsor participation, independent fulfillment, full current Devpost eligibility/rules and final public submission are not established. Production onboarding, SLA and live money are not required for this sandbox assessment.",
+    "complianceSeparateFromScores": "Public YouTube/Devpost submission and refreshed public source release remain pending or unknown according to the packet; no standalone compliance score or invented production gate was added."
+  },
+  "imagesInspected": [
+    {"path": ".acceptance/rehearsal-evidence/final-desktop-complete-native.png", "detail": "original", "observed": "Covered simulation, sponsor/refund $25, Active gift and detailed transcript."},
+    {"path": ".acceptance/rehearsal-evidence/final-mobile-complete-native.png", "detail": "original", "observed": "Completed unresolved result, sponsor $25, Unresolved refund and Active gift visible together; closed conversation and checks below."},
+    {"path": ".acceptance/rehearsal-evidence/focused-demo-hosted-native.png", "detail": "original", "observed": "Single primary donor-relief story, two direct actions, film poster in desktop viewport and scope text."},
+    {"path": ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png", "detail": "original", "observed": "Phone primary story and full embedded film, with fine desktop text rendered small."},
+    {"path": ".acceptance/relief-film/covered-final.png", "detail": "original", "observed": "Covered $25 simulation with persistent SIMULATION. NO PAYMENTS. label."},
+    {"path": ".acceptance/relief-film/unknown-final.png", "detail": "original", "observed": "Uncertain refund remains unresolved with sponsor capture visible and gift Active."},
+    {"path": ".acceptance/relief-film/edited-final.png", "detail": "original", "observed": "Edited $25-to-$250 receipt rejected, app-key integrity limitation and recorded sandbox/no new payment label."}
+  ],
+  "sourceAndEvidenceInspected": [
+    "src/rehearsal.js", "src/call.js (targeted consent, cancellation, funding, refund, pending-turn and recovery sections)", "src/intent-guards.js",
+    "web/rehearsal.js", "web/rehearsal.html", "web/rehearsal.css", "web/demo.js", "web/demo.html", "web/demo.css",
+    "test/rehearsal.test.js", "test/cancellation-choice.test.js", "test/demo.test.js",
+    "docs/RELIEF-REHEARSAL-2026-11-06.md", "docs/DONOR-ROUTING-2026-11-06.md", "docs/results/donor-route-fresh-2026-11-06.json (summary and inspected cases)",
+    "docs/results/guarded-checkout-2026-11-05.json", "docs/results/functional-acceptance-2026-11-05/donor.json", "docs/results/functional-acceptance-2026-11-05/receipt.json", "docs/results/functional-acceptance-2026-11-05/checkout.json", "docs/results/functional-acceptance-2026-11-05/invoice.json", "docs/results/functional-acceptance-2026-11-05/invoice-webhook.json",
+    "web/demo-assets/relief-demo-20261106.vtt", "web/demo-assets/relief-demo-20261106-provenance.txt", "web/demo-assets/relief-demo-20261106.mp4 (byte/hash verification)"
+  ],
+  "viewLimits": [
+    "All seven required images viewed through view_image with detail original; static screenshots do not prove interactions or accessibility behavior.",
+    "Read captions/provenance and inspected three native film frames; did not watch full motion or listen to audio. Film duration, decode and playback claims remain supplied evidence rather than independently replayed verification.",
+    "No app mutation, browser session, external API call, paid inference, credential access, runtime-state access or new provider transaction. Tests were inspected, not rerun; suite totals are reported evidence.",
+    "No prior subjective-score reports or earlier assessment packets were opened. One assessment only; no target score supplied."
+  ],
+  "computedTotals": {
+    "scores": [8.5, 8.5, 7, 8, 8.5],
+    "sumOutOf50": 40.5,
+    "meanOutOf10": 8.1,
+    "multiplierTo90": 1.8,
+    "totalOutOf90": 72.9,
+    "formula": "(8.5 + 8.5 + 7 + 8 + 8.5) = 40.5/50; 40.5 * 1.8 = 72.9/90"
+  }
+}

@@ -1,0 +1,286 @@
+{
+  "assessmentId": "relief-focused-assessment-b-20261106",
+  "date": "2026-11-06",
+  "context": "One internal sandbox hackathon prototype assessment; supplied five Devpost criteria, equal weights, half-point increments. Internal numeric convention, not an official Devpost result.",
+  "rubric": {
+    "criteria": [
+      "Technological Implementation",
+      "Design",
+      "Potential Impact",
+      "Innovation/Idea",
+      "Presentation"
+    ],
+    "range": [
+      1,
+      10
+    ],
+    "increment": 0.5,
+    "equalWeights": true
+  },
+  "packetHash": "caed35005fc05b897f43a62a2e4b23b265fef79044371004f9b2595b102a8794",
+  "packetPath": ".acceptance/relief-review-focused-packet-20261106.md",
+  "hashVerification": {
+    "algorithm": "SHA-256",
+    "manifestPath": ".acceptance/relief-review-focused-manifest-20261106.json",
+    "manifestSha256": "2cab4c0780dbfae652b443c0a9d1694f2ffa6812869a95dc13da367129355cc4",
+    "listedFiles": 76,
+    "matchedFiles": 76,
+    "mismatches": [],
+    "packetMatchesAssignedHash": true,
+    "method": "Read each of all 76 listed files as bytes and calculated SHA-256 using node:crypto; no application execution."
+  },
+  "criteria": [
+    {
+      "name": "Technological Implementation",
+      "score": 8.5,
+      "reasons": [
+        "Substantial functioning integration, beyond a mock-only demo: retained actual PayPal sandbox pause/resume, sponsor capture/refund, invoice payment and verified duplicate webhook records; signed receipt survived a restart; separate supplier checkout completed two approved captures.",
+        "Current rehearsal directly composes createCallService, consent gate, mock PayPal, gradeCall and buildReceipts. call.js lines 706-780 revalidate exact terms, confirm sponsor funding before refund and establish completion through same-identity reads. Six isolated cases and concurrency/injection tests exercise meaningful boundaries.",
+        "Fresh donor routing is 11/12 versus rules 6/12 but failed the zero-wrong-mutation gate. Purchase drafting failed 11/24 versus rules 14/24, and guarded negotiation does not establish AI savings. Separate exposed-case cancellation repair does not erase evaluation failure."
+      ],
+      "deductionIds": [
+        "D1"
+      ],
+      "evidence": [
+        "src/rehearsal.js",
+        "src/call.js:458",
+        "src/call.js:706",
+        "src/call.js:750",
+        "test/rehearsal.test.js",
+        "test/cancellation-choice.test.js",
+        "docs/results/donor-route-fresh-2026-11-06.json",
+        "docs/results/functional-acceptance-2026-11-05/donor.json",
+        "docs/results/functional-acceptance-2026-11-05/invoice-webhook.json",
+        "docs/results/guarded-checkout-2026-11-05.json"
+      ]
+    },
+    {
+      "name": "Design",
+      "score": 8.5,
+      "reasons": [
+        "Consistent restrained typography, strong action hierarchy and plain-language outcome headings. Actual desktop and phone completed states put sponsor amount, donor result and Active gift together; the phone explicitly displays Unresolved instead of a false zero/refund completion.",
+        "Native phone selector, closed conversation disclosure, focus transfer, status region and substantial targets are visible in current source. Details retain the execution record without dominating the primary relief story.",
+        "Detailed proof still requires reading long transcript/technical explanations. The lead film preserves a wide desktop layout, so embedded phone playback makes scenario descriptions and transaction detail very small."
+      ],
+      "deductionIds": [
+        "D3"
+      ],
+      "evidence": [
+        "web/rehearsal.html",
+        "web/rehearsal.css",
+        "web/rehearsal.js",
+        ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+        ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+        ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png"
+      ]
+    },
+    {
+      "name": "Potential Impact",
+      "score": 7.5,
+      "reasons": [
+        "A concrete after-hours nonprofit need and useful mechanism: eligible donors receive hardship relief while the subscription remains active, with sponsor funding checked first. Audience statistics in the packet provide context without being represented as this product outcome.",
+        "The anonymous rehearsal allows immediate testing of bounded situations; retained sandbox payments establish feasibility of the mechanism.",
+        "No independent target-donor/nonprofit observations, saved staff time, retention uplift, willingness-to-pay or sponsor commitment are established. Gross matched funding still incurs fees, and sponsor economics and demand remain assumptions. This limits demonstrated impact without making a production launch or formal study a mandatory hackathon feature."
+      ],
+      "deductionIds": [
+        "D2"
+      ],
+      "evidence": [
+        ".acceptance/relief-review-focused-packet-20261106.md:Impact and alternatives",
+        "web/rehearsal.html",
+        "docs/results/functional-acceptance-2026-11-05/donor.json"
+      ]
+    },
+    {
+      "name": "Innovation/Idea",
+      "score": 8,
+      "reasons": [
+        "The combination of sponsor-funded hardship relief, conversational supported-action completion, separate exact consent, claim-level evidence, signed receipts and visible unresolved outcomes is a coherent and distinctive application idea.",
+        "It goes beyond ordinary recurring-gift account management by implementing sponsor-first relief and showing what each financial statement is backed by. Existing donor management alternatives are acknowledged, so no first-ever claim is credited.",
+        "The components and conventional gift management are established. The AI contribution has some narrow semantic-routing evidence, but mixed failed gates and the deterministic price guard limit evidence that AI adds robust distinctive value across the broader donor/procurement concept."
+      ],
+      "deductionIds": [
+        "D1"
+      ],
+      "evidence": [
+        ".acceptance/relief-review-focused-packet-20261106.md:AI role and mixed evaluation results",
+        ".acceptance/relief-review-focused-packet-20261106.md:Impact and alternatives",
+        "src/rehearsal.js",
+        "docs/DONOR-ROUTING-2026-11-06.md",
+        "docs/results/guarded-checkout-2026-11-05.json"
+      ]
+    },
+    {
+      "name": "Presentation",
+      "score": 8.5,
+      "reasons": [
+        "The current landing page leads with one understandable donor-relief story, immediate rehearsal and receipt actions, and one 73-second captioned film. Older demonstrations and procurement evidence are retained inside a closed optional archive.",
+        "The seven-scene captions/provenance and required film frames communicate successful relief, no-consent/no-write, changed-charge blocking, uncertainty and original/edited receipt verification. The simulation and retained actual sandbox evidence boundaries are explicit; signature integrity is distinguished from PayPal certification.",
+        "The desktop capture contains dense UI that becomes hard to read in the phone embedded player. Narration/captions help explain the mechanism, but the visual transaction detail requires expansion or the direct rehearsal/receipt route. Full movie motion and audio were not observed in this review, so no delivery-quality claim is inferred from stills."
+      ],
+      "deductionIds": [
+        "D3"
+      ],
+      "evidence": [
+        "web/demo.html",
+        "web/demo.js",
+        "web/demo.css",
+        "test/demo.test.js",
+        "web/demo-assets/relief-demo-20261106.vtt",
+        "web/demo-assets/relief-demo-20261106-provenance.txt",
+        ".acceptance/rehearsal-evidence/focused-demo-hosted-native.png",
+        ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png",
+        ".acceptance/relief-film/edited-final.png"
+      ]
+    }
+  ],
+  "materialDeductions": [
+    {
+      "id": "D1",
+      "criteria": [
+        "Technological Implementation",
+        "Innovation/Idea"
+      ],
+      "finding": "Incremental AI value remains mixed: fresh donor routing improves this small synthetic set but fails its own mutation gate; purchase drafting loses to rules, and negotiation savings are not AI-specific.",
+      "evidence": "docs/results/donor-route-fresh-2026-11-06.json summary: correct11 baseline6 wrongMutations1 passedfalse; packet retains drafting11/24 versus14/24 and deterministic guarded plan674.15 below model candidate676.25.",
+      "improvement": "Retain these failures and validate the repaired donor policy and intended AI tasks on a fresh frozen comparison before making broader AI-value claims."
+    },
+    {
+      "id": "D2",
+      "criteria": [
+        "Potential Impact"
+      ],
+      "finding": "The useful payment mechanism is demonstrated, but actual audience benefit and the sponsor-funded service model are unmeasured.",
+      "evidence": "Packet explicitly reports no independent donor/nonprofit observations, retention/time-saving/uplift, willingness-to-pay or sponsor partnership; equal gross funding incurs fees.",
+      "improvement": "Observe target donors and nonprofit staff completing the core relief workflow and test sponsor demand and fee-bearing economics."
+    },
+    {
+      "id": "D3",
+      "criteria": [
+        "Design",
+        "Presentation"
+      ],
+      "finding": "The proof remains text-heavy, and a wide desktop recording is visually dense in the embedded 390px phone player.",
+      "evidence": "focused-demo-phone-hosted-native.png displays the1280x900 film at approximately358px wide; scenario rows and receipt/transcript detail are tiny, while final-desktop-complete-native.png shows a long detailed offer.",
+      "improvement": "Improve phone evidence legibility with readable captions/visual emphasis on the decisive amount, consent and status while preserving access to the full inspectable record."
+    }
+  ],
+  "imagesInspected": [
+    {
+      "path": ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+      "detail": "original",
+      "width": 1440,
+      "height": 900,
+      "sha256": "dbc67bdd53017e4531e63999974b21331a565b0bba6b3f36de2dbe841ad266a6",
+      "inspection": "view_image tool, original detail"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+      "detail": "original",
+      "width": 390,
+      "height": 844,
+      "sha256": "9dc52364ad771e66632c9a79ce4f8aab4bb456abc8bda281e1150edfc0f6a23d",
+      "inspection": "view_image tool, original detail"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/focused-demo-hosted-native.png",
+      "detail": "original",
+      "width": 1440,
+      "height": 900,
+      "sha256": "2a1430db85ad51f2280d1421a02e89571640c5a75e5c130eca09bfc0aead1a0a",
+      "inspection": "view_image tool, original detail"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png",
+      "detail": "original",
+      "width": 390,
+      "height": 844,
+      "sha256": "03f5b99e622c29fec682d0721258e6746d807b1f885ac940ed140490a7bcccab",
+      "inspection": "view_image tool, original detail"
+    },
+    {
+      "path": ".acceptance/relief-film/covered-final.png",
+      "detail": "original",
+      "width": 1280,
+      "height": 900,
+      "sha256": "1187c21088df1d77f7bd83e99f17b4d62f0a8a830d52056f924a98ecfa5f0528",
+      "inspection": "view_image tool, original detail"
+    },
+    {
+      "path": ".acceptance/relief-film/unknown-final.png",
+      "detail": "original",
+      "width": 1280,
+      "height": 900,
+      "sha256": "0ad8f1c6e80a26cd99792c971394fdeb32b985f3d24563e20f360ee601da1ba7",
+      "inspection": "view_image tool, original detail"
+    },
+    {
+      "path": ".acceptance/relief-film/edited-final.png",
+      "detail": "original",
+      "width": 1280,
+      "height": 900,
+      "sha256": "8f2de5d9aeadd7dcd1c38b87987c26fdb155ba261b31fe5aa1fb3f3e1a610dee",
+      "inspection": "view_image tool, original detail"
+    }
+  ],
+  "evidenceInspected": {
+    "currentSource": [
+      "src/rehearsal.js",
+      "src/call.js (targeted consent/cancellation/cover/readback/pending-control sections)",
+      "src/intent-guards.js",
+      "web/rehearsal.html",
+      "web/rehearsal.css",
+      "web/rehearsal.js",
+      "web/demo.html",
+      "web/demo.js",
+      "web/demo.css"
+    ],
+    "testsRead": [
+      "test/rehearsal.test.js",
+      "test/cancellation-choice.test.js",
+      "test/demo.test.js"
+    ],
+    "documentationAndResults": [
+      "docs/RELIEF-REHEARSAL-2026-11-06.md",
+      "docs/DONOR-ROUTING-2026-11-06.md",
+      "docs/results/donor-route-fresh-2026-11-06.json",
+      "docs/results/guarded-checkout-2026-11-05.json",
+      "docs/results/functional-acceptance-2026-11-05/donor.json",
+      "docs/results/functional-acceptance-2026-11-05/receipt.json",
+      "docs/results/functional-acceptance-2026-11-05/checkout.json",
+      "docs/results/functional-acceptance-2026-11-05/invoice.json",
+      "docs/results/functional-acceptance-2026-11-05/invoice-webhook.json"
+    ],
+    "film": [
+      "web/demo-assets/relief-demo-20261106-provenance.txt",
+      "web/demo-assets/relief-demo-20261106.vtt",
+      "web/demo-assets/relief-demo-20261106.mp4 (byte hash only; three supplied film frames visually inspected)"
+    ]
+  },
+  "viewLimits": [
+    "All seven required images were inspected using view_image at original detail; stills cover selected states only.",
+    "Did not watch full movie motion or listen to audio. Read exact captions/provenance and verified movie bytes/hash; decode/playback claims are supplied evidence, not newly reproduced.",
+    "Did not rerun tests or interact with current hosted app. The1025tests/1016pass/9skip outcome is documented evidence; code assertions were inspected, not newly executed.",
+    "Actual provider results are retained sandbox artifacts with provider identities/readback claims, not new provider queries or real-money results. The rehearsal and first film portion use mock PayPal, rules routing and zero external calls.",
+    "Historical676.25 checkout includes restart evidence; later674.15 checkout has no new injected restart. Owned MCP endpoints and one merchant do not establish independent suppliers or fulfillment.",
+    "No browse, API spend, credential/runtime-state access or app mutation performed; only the assigned assessment output is written. No prior subjective-score reports or earlier packets opened.",
+    "Default agent-self-evaluation skill was absent in searched skill roots; used the supplied five-criterion rubric. Specialized source-command-review-pr skill read; this is one assigned independent assessment, not an official judging/eligibility decision."
+  ],
+  "computedTotals": {
+    "scores": [
+      8.5,
+      8.5,
+      7.5,
+      8,
+      8.5
+    ],
+    "sum": 41,
+    "outOf": 50,
+    "equalWeightMean": 8.2,
+    "scaleFactor": 1.8,
+    "mappedScore": 73.8,
+    "mappedOutOf": 90,
+    "formula": "(8.5+8.5+7.5+8.0+8.5)=41.0;41.0*1.8=73.8"
+  },
+  "assessmentCount": 1
+}

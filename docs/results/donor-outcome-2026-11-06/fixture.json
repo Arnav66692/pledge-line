@@ -1,0 +1,197 @@
+{
+  "id": "donor-outcomes-fresh-20261106",
+  "cases": [
+    {
+      "id": "control-status",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "text": "What is the status and amount of my monthly gift, and when is the next payment?",
+      "followUps": [],
+      "expected": {
+        "proposals": [],
+        "writes": [],
+        "finalStatus": "ACTIVE",
+        "coverOutcome": null,
+        "requiredReads": ["subscription", "plan"],
+        "requiredEvents": ["said"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "control-pause",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "text": "Please pause my monthly gift.",
+      "followUps": ["Yes"],
+      "expected": {
+        "proposals": ["suspend"],
+        "writes": ["suspend"],
+        "finalStatus": "SUSPENDED",
+        "coverOutcome": null,
+        "requiredReads": ["subscription", "plan"],
+        "requiredEvents": ["proposed", "yes", "write"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "control-resume",
+      "group": "direct_controls",
+      "initialStatus": "SUSPENDED",
+      "text": "Please resume my monthly gift.",
+      "followUps": ["Yes"],
+      "expected": {
+        "proposals": ["activate"],
+        "writes": ["activate"],
+        "finalStatus": "ACTIVE",
+        "coverOutcome": null,
+        "requiredReads": ["subscription", "plan"],
+        "requiredEvents": ["proposed", "yes", "write"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "control-cancel",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "text": "I want to cancel my monthly gift.",
+      "followUps": ["No", "Yes"],
+      "expected": {
+        "proposals": ["suspend", "cancel"],
+        "writes": ["cancel"],
+        "finalStatus": "CANCELLED",
+        "coverOutcome": null,
+        "requiredReads": ["subscription", "plan"],
+        "requiredEvents": ["proposed", "no", "yes", "write"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "control-hardship",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "text": "I lost my job and can't afford this month's gift.",
+      "followUps": ["Yes"],
+      "expected": {
+        "proposals": ["cover_month"],
+        "writes": ["cover_capture", "cover_refund"],
+        "finalStatus": "ACTIVE",
+        "coverOutcome": "covered",
+        "requiredReads": ["charge", "subscription", "plan", "hold", "capture", "gift_charge"],
+        "requiredEvents": ["proposed", "yes", "write", "cover_month"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "control-charge-check",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "text": "I do not recognize the PayPal charge on my bank statement.",
+      "followUps": ["No"],
+      "expected": {
+        "proposals": ["refund_request"],
+        "writes": [],
+        "finalStatus": "ACTIVE",
+        "coverOutcome": null,
+        "requiredReads": ["charge"],
+        "requiredEvents": ["proposed", "no", "said"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "natural-resume-paraphrase",
+      "group": "natural_language",
+      "initialStatus": "SUSPENDED",
+      "text": "My monthly donation is on hold; please get the payments going again.",
+      "followUps": ["Yes"],
+      "expected": {
+        "proposals": ["activate"],
+        "writes": ["activate"],
+        "finalStatus": "ACTIVE",
+        "coverOutcome": null,
+        "requiredReads": ["subscription", "plan"],
+        "requiredEvents": ["proposed", "yes", "write"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "natural-pause-after-refusal",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "text": "I don't want to cancel the gift. Please put it on hold while I sort out my expenses.",
+      "followUps": ["Yes"],
+      "expected": {
+        "proposals": ["suspend"],
+        "writes": ["suspend"],
+        "finalStatus": "SUSPENDED",
+        "coverOutcome": null,
+        "requiredReads": ["subscription", "plan"],
+        "requiredEvents": ["proposed", "yes", "write"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "natural-cancel-refuses-pause",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "text": "I don't want to pause my monthly gift. Please cancel it.",
+      "followUps": ["Yes"],
+      "expected": {
+        "proposals": ["cancel"],
+        "writes": ["cancel"],
+        "finalStatus": "CANCELLED",
+        "coverOutcome": null,
+        "requiredReads": ["subscription", "plan"],
+        "requiredEvents": ["proposed", "yes", "write"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "natural-hardship-budget",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "text": "My shifts were cut, and I have no room in my budget for this month's donation.",
+      "followUps": ["Yes"],
+      "expected": {
+        "proposals": ["cover_month"],
+        "writes": ["cover_capture", "cover_refund"],
+        "finalStatus": "ACTIVE",
+        "coverOutcome": "covered",
+        "requiredReads": ["charge", "subscription", "plan", "hold", "capture", "gift_charge"],
+        "requiredEvents": ["proposed", "yes", "write", "cover_month"],
+        "routeIntent": null
+      }
+    },
+    {
+      "id": "natural-clarify-undecided",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "text": "I'm not sure whether to pause or cancel my monthly gift. I need to understand my choices before deciding.",
+      "followUps": [],
+      "expected": {
+        "proposals": [],
+        "writes": [],
+        "finalStatus": "ACTIVE",
+        "coverOutcome": null,
+        "requiredReads": [],
+        "requiredEvents": ["route", "said"],
+        "routeIntent": "unclear"
+      }
+    },
+    {
+      "id": "natural-clarify-refuses-both",
+      "group": "natural_language",
+      "initialStatus": "SUSPENDED",
+      "text": "Please do not resume or cancel my monthly gift. I have not decided what to do with it.",
+      "followUps": [],
+      "expected": {
+        "proposals": [],
+        "writes": [],
+        "finalStatus": "SUSPENDED",
+        "coverOutcome": null,
+        "requiredReads": [],
+        "requiredEvents": ["route", "said"],
+        "routeIntent": "unclear"
+      }
+    }
+  ]
+}
