@@ -1,6 +1,6 @@
 import { rulesRoute } from './router.js';
 
-// These checks can veto a mutation suggestion; they never select an action or establish consent.
+// These checks describe explicit requests and refusals. They never authorize a write or establish consent.
 // Group the supported invoice/email combination and stop/cancel synonyms as one task each.
 const FAMILIES = Object.freeze({ stop_gift: 'stop', cancel_now: 'stop', pause_gift: 'pause', resume_gift: 'resume',
   one_time_gift: 'invoice', other_email: 'invoice', hardship_cover: 'cover' });
@@ -108,6 +108,7 @@ export function assessIntentClarity(text) {
   return {
     needsClarification: current.unresolved || current.requested.size > 1 || (current.declined.size > 0 && current.requested.size === 0),
     declinedIntents: Object.keys(FAMILIES).filter((intent) => current.declined.has(FAMILIES[intent])),
+    requestedFamilies: [...current.requested],
     hasAffirmativeRequest: current.hasAffirmativeRequest,
   };
 }

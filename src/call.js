@@ -10,6 +10,7 @@ import { buildRecovery } from './recovery.js';
 import { createRefundDesk } from './refund-desk.js';
 import { COVER_LEGS, COVER_MONTH, LEG_CAPTURE, LEG_REFUND, LEG_UNWIND, MOVED_STATUSES, YEAR_MS, coverBlock, holdCovers, isRefundedStatus, moneyBinding, requestIds, sameMoney, toCents } from './cover.js';
 import { drillFor, drillRecord } from './drill.js';
+import { assessIntentClarity } from './intent-guards.js';
 
 export { maskPinText };
 
@@ -454,8 +455,13 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
 
   const giftStatusTurn = (ctx) => withGift(ctx, (sub, plan) => say.giftStatus(sub, plan, { timeZone: config.timeZone }));
 
-  const stopGiftTurn = (ctx) => withGift(ctx, (sub, plan) => {
-    if (ctx.call.pauseOffered || sub.status !== 'ACTIVE') return proposeCancel(ctx, sub, plan);
+  const stopGiftTurn = (ctx, text) => withGift(ctx, (sub, plan) => {
+    const choice = assessIntentClarity(text);
+    const refusedPause = !choice.needsClarification && choice.declinedIntents.includes('pause_gift') &&
+      choice.requestedFamilies.length === 1 && choice.requestedFamilies[0] === 'stop';
+    // A model's broad cancellation label cannot erase the caller's explicit refusal of a pause.
+    // This selects a fresh cancellation proposal only. The separate exact yes is still required.
+    if (refusedPause || ctx.call.pauseOffered || sub.status !== 'ACTIVE') return proposeCancel(ctx, sub, plan);
     return propose(ctx, 'suspend', suspendTarget(ctx, sub), say.pauseOffer(sub, plan), 'pause_offer');
   });
 
@@ -895,7 +901,7 @@ export function createCallService({ config, ledger, paypal, router, gate, now = 
     const { call } = ctx;
     switch (routed.intent) {
       case 'gift_status': return giftStatusTurn(ctx);
-      case 'stop_gift': return stopGiftTurn(ctx);
+      case 'stop_gift': return stopGiftTurn(ctx, text);
       case 'cancel_now': return cancelTurn(ctx);
       case 'pause_gift': return pauseTurn(ctx);
       case 'resume_gift': return resumeTurn(ctx);

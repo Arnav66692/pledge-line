@@ -1,0 +1,486 @@
+{
+  "sourceCommit": "f2a31f8",
+  "fixtureSha256": "0b0b1ef6568ec7e1d4c292c61dfe998a63928f1543b6e1e0021daee66e464a82",
+  "method": "One fresh independently authored synthetic routing comparison, same agent ecosystem. Labels and gate frozen before model execution. No retries, no payments.",
+  "summary": {
+    "kind": "summary",
+    "completed": true,
+    "expectedRoutingCases": 12,
+    "expectedPendingCases": 4,
+    "correct": 11,
+    "baselineCorrect": 6,
+    "wrongMutations": 1,
+    "baselineWrongMutations": 4,
+    "pendingCorrect": 4,
+    "pendingProviderRequestAttempts": 0,
+    "providerRequestAttempts": {
+      "anthropic": 12,
+      "jev": 12
+    },
+    "errors": 0,
+    "notRun": 0,
+    "before": {
+      "scope": "pledge-line-functional-20261105",
+      "stopped": false,
+      "reason": null,
+      "provider": null,
+      "providerBalanceVerified": false,
+      "allocationUnit": "USD nanodollars",
+      "accounts": {
+        "anthropic": {
+          "allocationNanos": 3000000000,
+          "usedNanos": 2762184000,
+          "remainingNanos": 237816000
+        },
+        "jev": {
+          "allocationNanos": 100000000,
+          "usedNanos": 2076228,
+          "remainingNanos": 97923772
+        }
+      },
+      "pendingRequests": [],
+      "apiKeyOnly": true,
+      "autoRechargeManagedByProvider": true,
+      "credentialsConfigured": {
+        "anthropic": true,
+        "jev": true
+      }
+    },
+    "after": {
+      "scope": "pledge-line-functional-20261105",
+      "stopped": false,
+      "reason": null,
+      "provider": null,
+      "providerBalanceVerified": false,
+      "allocationUnit": "USD nanodollars",
+      "accounts": {
+        "anthropic": {
+          "allocationNanos": 3000000000,
+          "usedNanos": 2815838000,
+          "remainingNanos": 184162000
+        },
+        "jev": {
+          "allocationNanos": 100000000,
+          "usedNanos": 2373546,
+          "remainingNanos": 97626454
+        }
+      },
+      "pendingRequests": [],
+      "apiKeyOnly": true,
+      "autoRechargeManagedByProvider": true,
+      "credentialsConfigured": {
+        "anthropic": true,
+        "jev": true
+      }
+    },
+    "knownSharedAllocationDeltaNanos": {
+      "anthropic": 53654000,
+      "jev": 297318
+    },
+    "passed": false,
+    "limits": "One independently authored synthetic12-case routing comparison. Request attempts count gateway invocations, not proven HTTP dispatches. No population accuracy, impact or payment-authorization claim. No retries; all16 cases retained.",
+    "recordedAt": "2026-11-06T08:46:59.507Z"
+  },
+  "cases": [
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "control-status",
+      "text": "How much is my monthly gift, and when is the next payment?",
+      "expected": "gift_status",
+      "baseline": {
+        "intent": "gift_status",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "gift_status",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 4663
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:01.569Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "control-pause",
+      "text": "Please pause my monthly gift for a month.",
+      "expected": "pause_gift",
+      "baseline": {
+        "intent": "pause_gift",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "pause_gift",
+        "amountDollars": 0,
+        "empathy": "sorry",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 4214
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:05.995Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "control-resume",
+      "text": "Please resume my monthly gift.",
+      "expected": "resume_gift",
+      "baseline": {
+        "intent": "resume_gift",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "resume_gift",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 4408
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:10.808Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "control-cancel",
+      "text": "Please cancel my monthly gift.",
+      "expected": "stop_gift",
+      "baseline": {
+        "intent": "stop_gift",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "stop_gift",
+        "amountDollars": 0,
+        "empathy": "sorry",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 3966
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:15.177Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "control-hardship",
+      "text": "I lost my job and can't afford this month's gift.",
+      "expected": "hardship_cover",
+      "baseline": {
+        "intent": "hardship_cover",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "hardship_cover",
+        "amountDollars": 0,
+        "empathy": "understand",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 4358
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:19.745Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "control-charge",
+      "text": "There's a PayPal charge on my statement that I don't recognize.",
+      "expected": "charge_check",
+      "baseline": {
+        "intent": "charge_check",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "charge_check",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 4246
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:24.206Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "natural-status-after-refusal",
+      "text": "I don't want to pause anything; I'd just like to know the date of my next monthly donation.",
+      "expected": "gift_status",
+      "baseline": {
+        "intent": "pause_gift",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "gift_status",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 4245
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:28.700Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "natural-cancel-declines-pause",
+      "text": "I don't want a pause; please cancel my monthly gift now.",
+      "expected": "cancel_now",
+      "baseline": {
+        "intent": "pause_gift",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "stop_gift",
+        "amountDollars": 0,
+        "empathy": "sorry",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 5177
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": false,
+      "recordedAt": "2026-11-06T08:46:34.085Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "natural-resume-paraphrase",
+      "text": "Please get my monthly donation running again.",
+      "expected": "resume_gift",
+      "baseline": {
+        "intent": "repeat",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "resume_gift",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 3853
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:38.154Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "natural-hardship-reduced-hours",
+      "text": "My hours were cut and I won't have enough money for this month's donation.",
+      "expected": "hardship_cover",
+      "baseline": {
+        "intent": "unclear",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "hardship_cover",
+        "amountDollars": 0,
+        "empathy": "understand",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 7507
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:46.408Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "natural-unclear-indecision",
+      "text": "I'm not sure whether to pause or cancel my monthly gift.",
+      "expected": "unclear",
+      "baseline": {
+        "intent": "pause_gift",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "unclear",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 4334
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:50.965Z"
+    },
+    {
+      "kind": "case",
+      "category": "routing",
+      "id": "natural-unclear-two-requests",
+      "text": "Please pause my monthly gift and send me a one-time donation invoice for $20.",
+      "expected": "unclear",
+      "baseline": {
+        "intent": "pause_gift",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "unclear",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 6277
+      },
+      "providerRequestAttempts": {
+        "anthropic": 1,
+        "jev": 1
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:57.726Z"
+    },
+    {
+      "kind": "case",
+      "category": "pending",
+      "id": "pending-pause-yes",
+      "text": "Yes, please.",
+      "expected": "unclear",
+      "baseline": {
+        "intent": "unclear",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "unclear",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 0
+      },
+      "providerRequestAttempts": {
+        "anthropic": 0,
+        "jev": 0
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:58.279Z"
+    },
+    {
+      "kind": "case",
+      "category": "pending",
+      "id": "pending-resume-no",
+      "text": "No, leave it as it is.",
+      "expected": "unclear",
+      "baseline": {
+        "intent": "unclear",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "unclear",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 0
+      },
+      "providerRequestAttempts": {
+        "anthropic": 0,
+        "jev": 0
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:58.573Z"
+    },
+    {
+      "kind": "case",
+      "category": "pending",
+      "id": "pending-cancel-yes",
+      "text": "Yes, that's what I want.",
+      "expected": "unclear",
+      "baseline": {
+        "intent": "unclear",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "unclear",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 0
+      },
+      "providerRequestAttempts": {
+        "anthropic": 0,
+        "jev": 0
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:58.815Z"
+    },
+    {
+      "kind": "case",
+      "category": "pending",
+      "id": "pending-cover-question",
+      "text": "Would the sponsor cover the whole month?",
+      "expected": "unclear",
+      "baseline": {
+        "intent": "unclear",
+        "amountDollars": 0
+      },
+      "status": "completed",
+      "result": {
+        "intent": "unclear",
+        "amountDollars": 0,
+        "empathy": "none",
+        "model": "claude-sonnet-5-5",
+        "latencyMs": 0
+      },
+      "providerRequestAttempts": {
+        "anthropic": 0,
+        "jev": 0
+      },
+      "correct": true,
+      "recordedAt": "2026-11-06T08:46:59.046Z"
+    }
+  ]
+}
