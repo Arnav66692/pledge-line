@@ -1,0 +1,558 @@
+{
+  "provenance": "Retained original development synthetic results. Separate independently authored sets within the same development project; related families, not external customers or a population holdout. Do not interpret cross-set changes as controlled before/after effects.",
+  "rubric": "Unchanged full-control and safety improvement gate. No run met its improvement gate.",
+  "erratum": "Round3 primary result retained unchanged. A post-inference currency-default label erratum is documented separately and does not replace that result.",
+  "rounds": [
+    {
+      "round": 3,
+      "sourceFixtureSha256": "831528eff849f7767e95a0023b4830cb14196674a6bc3ddd2988f5cafe05c0a3",
+      "completed": true,
+      "summary": {
+        "deterministic_explicit_fields": {
+          "tasks": 24,
+          "correctTasks": 13,
+          "taskAccuracyWilson95": [
+            0.350749,
+            0.721087
+          ],
+          "turns": 36,
+          "correctTurns": 21,
+          "appropriateClarifications": 7,
+          "exactFields": 100,
+          "scoredFields": 135,
+          "wrongConfidentFields": 5,
+          "prematureReadyTurns": 1,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 179,
+          "factsPresent": 139,
+          "forbiddenPositiveAttributes": 1,
+          "errorsOrNotRun": 0,
+          "modelCalls": 0,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 3,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 3
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 1
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 4
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 5
+            }
+          }
+        },
+        "main_agent": {
+          "tasks": 24,
+          "correctTasks": 9,
+          "taskAccuracyWilson95": [
+            0.211594,
+            0.5729
+          ],
+          "turns": 36,
+          "correctTurns": 17,
+          "appropriateClarifications": 8,
+          "exactFields": 45,
+          "scoredFields": 135,
+          "wrongConfidentFields": 0,
+          "prematureReadyTurns": 1,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 179,
+          "factsPresent": 58,
+          "forbiddenPositiveAttributes": 0,
+          "errorsOrNotRun": 0,
+          "modelCalls": 36,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 5409,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 412318000,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 0
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 1
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 4
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 4
+            }
+          }
+        }
+      },
+      "paired": {
+        "modelWins": 0,
+        "baselineWins": 4,
+        "ties": 20,
+        "signTestTwoSidedP": 0.125,
+        "controlsNoRegression": false,
+        "controlsAllCorrect": false,
+        "improvementWithinThisSet": false
+      }
+    },
+    {
+      "round": 4,
+      "sourceFixtureSha256": "18caa1b80e6b84cbcc35db8404f92f358b136de0644870039aad8fc4400afa1c",
+      "completed": true,
+      "summary": {
+        "deterministic_explicit_fields": {
+          "tasks": 24,
+          "correctTasks": 14,
+          "taskAccuracyWilson95": [
+            0.388347,
+            0.755324
+          ],
+          "turns": 36,
+          "correctTurns": 23,
+          "appropriateClarifications": 8,
+          "exactFields": 96,
+          "scoredFields": 135,
+          "wrongConfidentFields": 4,
+          "prematureReadyTurns": 1,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 194,
+          "factsPresent": 144,
+          "forbiddenPositiveAttributes": 2,
+          "errorsOrNotRun": 0,
+          "modelCalls": 0,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 3,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 5
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 1
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 4
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 4
+            }
+          }
+        },
+        "main_agent": {
+          "tasks": 24,
+          "correctTasks": 15,
+          "taskAccuracyWilson95": [
+            0.4271,
+            0.788406
+          ],
+          "turns": 36,
+          "correctTurns": 25,
+          "appropriateClarifications": 9,
+          "exactFields": 80,
+          "scoredFields": 135,
+          "wrongConfidentFields": 0,
+          "prematureReadyTurns": 0,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 194,
+          "factsPresent": 121,
+          "forbiddenPositiveAttributes": 0,
+          "errorsOrNotRun": 0,
+          "modelCalls": 36,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 5083,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 404728000,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 5
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 1
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 5
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 4
+            }
+          }
+        }
+      },
+      "paired": {
+        "modelWins": 2,
+        "baselineWins": 1,
+        "ties": 21,
+        "signTestTwoSidedP": 1,
+        "controlsNoRegression": true,
+        "controlsAllCorrect": false,
+        "improvementWithinThisSet": false
+      }
+    },
+    {
+      "round": 5,
+      "sourceFixtureSha256": "335f33493c7ad775d7eb7d2dacd6decb6420c69cf677ea127acbd709879b8f8d",
+      "completed": true,
+      "summary": {
+        "deterministic_explicit_fields": {
+          "tasks": 24,
+          "correctTasks": 18,
+          "taskAccuracyWilson95": [
+            0.551006,
+            0.880006
+          ],
+          "turns": 36,
+          "correctTurns": 29,
+          "appropriateClarifications": 8,
+          "exactFields": 114,
+          "scoredFields": 135,
+          "wrongConfidentFields": 1,
+          "prematureReadyTurns": 0,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 212,
+          "factsPresent": 180,
+          "forbiddenPositiveAttributes": 1,
+          "errorsOrNotRun": 0,
+          "modelCalls": 0,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 3,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 5
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 3
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 5
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 5
+            }
+          }
+        },
+        "main_agent": {
+          "tasks": 24,
+          "correctTasks": 21,
+          "taskAccuracyWilson95": [
+            0.689961,
+            0.956557
+          ],
+          "turns": 36,
+          "correctTurns": 33,
+          "appropriateClarifications": 9,
+          "exactFields": 120,
+          "scoredFields": 135,
+          "wrongConfidentFields": 0,
+          "prematureReadyTurns": 0,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 212,
+          "factsPresent": 188,
+          "forbiddenPositiveAttributes": 0,
+          "errorsOrNotRun": 0,
+          "modelCalls": 36,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 5268,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 417462000,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 5
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 4
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 6
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 6
+            }
+          }
+        }
+      },
+      "paired": {
+        "modelWins": 4,
+        "baselineWins": 1,
+        "ties": 19,
+        "signTestTwoSidedP": 0.375,
+        "controlsNoRegression": true,
+        "controlsAllCorrect": false,
+        "improvementWithinThisSet": false
+      }
+    },
+    {
+      "round": 6,
+      "sourceFixtureSha256": "5069098429c3885b844abf8bdbfb3f275e3d47ce75acd1f9ae5428ede2886c20",
+      "completed": true,
+      "summary": {
+        "deterministic_explicit_fields": {
+          "tasks": 24,
+          "correctTasks": 17,
+          "taskAccuracyWilson95": [
+            0.508323,
+            0.850854
+          ],
+          "turns": 36,
+          "correctTurns": 28,
+          "appropriateClarifications": 8,
+          "exactFields": 117,
+          "scoredFields": 135,
+          "wrongConfidentFields": 3,
+          "prematureReadyTurns": 1,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 201,
+          "factsPresent": 179,
+          "forbiddenPositiveAttributes": 1,
+          "errorsOrNotRun": 0,
+          "modelCalls": 0,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 3,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 4
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 3
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 5
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 5
+            }
+          }
+        },
+        "main_agent": {
+          "tasks": 24,
+          "correctTasks": 17,
+          "taskAccuracyWilson95": [
+            0.508323,
+            0.850854
+          ],
+          "turns": 36,
+          "correctTurns": 28,
+          "appropriateClarifications": 9,
+          "exactFields": 95,
+          "scoredFields": 135,
+          "wrongConfidentFields": 0,
+          "prematureReadyTurns": 0,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 201,
+          "factsPresent": 144,
+          "forbiddenPositiveAttributes": 0,
+          "errorsOrNotRun": 0,
+          "modelCalls": 36,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 5414,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 413540000,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 4
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 2
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 6
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 5
+            }
+          }
+        }
+      },
+      "paired": {
+        "modelWins": 2,
+        "baselineWins": 2,
+        "ties": 20,
+        "signTestTwoSidedP": 1,
+        "controlsNoRegression": true,
+        "controlsAllCorrect": false,
+        "improvementWithinThisSet": false
+      }
+    },
+    {
+      "round": 7,
+      "sourceFixtureSha256": "d498a330d0e61fa1e79b9400ed8a3802bc29b1fbaf4900520b6a432fb70fa2c4",
+      "completed": false,
+      "summary": {
+        "deterministic_explicit_fields": {
+          "tasks": 24,
+          "correctTasks": 2,
+          "taskAccuracyWilson95": [
+            0.023159,
+            0.258488
+          ],
+          "turns": 36,
+          "correctTurns": 7,
+          "appropriateClarifications": 2,
+          "exactFields": 34,
+          "scoredFields": 150,
+          "wrongConfidentFields": 1,
+          "prematureReadyTurns": 0,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 116,
+          "factsPresent": 31,
+          "forbiddenPositiveAttributes": 2,
+          "errorsOrNotRun": 0,
+          "modelCalls": 0,
+          "measuredLatencyTurns": 36,
+          "meanLatencyMs": 2,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 0,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 0,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 0
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 2
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 0
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 0
+            }
+          }
+        },
+        "main_agent": {
+          "tasks": 24,
+          "correctTasks": 0,
+          "taskAccuracyWilson95": [
+            0,
+            0.137976
+          ],
+          "turns": 36,
+          "correctTurns": 3,
+          "appropriateClarifications": 0,
+          "exactFields": 20,
+          "scoredFields": 150,
+          "wrongConfidentFields": 0,
+          "prematureReadyTurns": 0,
+          "authorityViolations": 0,
+          "malformedOutputs": 0,
+          "requiredFacts": 116,
+          "factsPresent": 17,
+          "forbiddenPositiveAttributes": 2,
+          "errorsOrNotRun": 22,
+          "modelCalls": 15,
+          "measuredLatencyTurns": 15,
+          "meanLatencyMs": 5242,
+          "knownSharedScopeDeltaNanos": {
+            "anthropic": 172584000,
+            "jev": 0
+          },
+          "unmeasuredCostTurns": 21,
+          "byCategory": {
+            "explicit_controls": {
+              "tasks": 6,
+              "correct": 0
+            },
+            "context_discourse": {
+              "tasks": 6,
+              "correct": 0
+            },
+            "clarification": {
+              "tasks": 6,
+              "correct": 0
+            },
+            "timezone_negation_goods": {
+              "tasks": 6,
+              "correct": 0
+            }
+          }
+        }
+      },
+      "paired": {
+        "modelWins": 0,
+        "baselineWins": 2,
+        "ties": 22,
+        "signTestTwoSidedP": 0.5,
+        "controlsNoRegression": true,
+        "controlsAllCorrect": false,
+        "improvementWithinThisSet": false
+      }
+    }
+  ],
+  "final7Disclosure": "Fresh-author synthetic set; originals retained after pre-inference identifier normalization and one audited goods-fact addition. All controls failed quantity grounding due a fixed catalog. Fifteenth API call succeeded but supplied contradictory split/default fields; normalization refused and dispatch stopped. One failed and21unrun turns remain in denominator. This is not a provider or budget failure. A possible lexical replacement/omission scoring error is being independently audited and does not alter this primary record."
+}

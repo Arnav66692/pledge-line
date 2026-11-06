@@ -1,0 +1,16 @@
+{
+  "recordedSourceCommit": "94ac70e263e5bdf3f656480717b0adca07db5b75",
+  "durationSeconds": 170.083333,
+  "resolution": "1280x720",
+  "videoSha256": "8c7c5c925aada3bf689178199f36b2f61b73926c14db46ffcd68c0c9e32389b3",
+  "funds": "PayPal sandbox test funds only",
+  "observed": [
+    "Separate fresh consent for pause and restart; PayPal confirmed SUSPENDED then ACTIVE.",
+    "Same signed receipt verified; an isolated sentence edit was identified at sentence 1.",
+    "Missing delivery clock clarified while retaining buyer limits; three project-controlled MCP quotes returned.",
+    "Deterministic plan USD674.15 selected over AI candidate USD676.25; no procurement approval or payment in this recording."
+  ],
+  "editorialDisclosure": "Real-time selected browser captures with an explicit read-only continuation after an export-helper failure, a four-second actual-screen hold, and a separately recorded read-only quote comparison. Original captures retained. This is not an entirely successful automated test or an external-user study.",
+  "supplierBoundary": "Controlled lab endpoints, one owned sandbox merchant; independent suppliers and fulfillment are not established.",
+  "narration": "Original offline system voice narration; no music."
+}
