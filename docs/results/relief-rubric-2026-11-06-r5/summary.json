@@ -1,0 +1,53 @@
+{
+  "method": "Three fresh Codex contexts; one frozen factual packet and ten original-resolution images; no desired score or previous grades supplied. Five equally weighted1..10halfpointcriteria mappedlinearly1.8to90. Numeric scale/weights internal, not verified official Devpost. Not actual Claude API/human/official judging; full movie/audio not watched.",
+  "sourceCommit": "881378944da1ff49502ba4df849193dfada51a1d",
+  "evidenceSha256": "f9937fee28a023e377c9d6d6cb3b1fb6f347f67bd915cf561e4ce41d8f545ef4",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "criteria": {
+        "Technological Implementation": 9,
+        "Design": 8.5,
+        "Potential Impact": 7.5,
+        "Innovation/Idea": 8,
+        "Presentation": 8.5
+      },
+      "totalOutOf50": 41.5,
+      "linearOutOf90": 74.7
+    },
+    {
+      "reviewer": "b",
+      "criteria": {
+        "Technological Implementation": 9,
+        "Design": 8.5,
+        "Potential Impact": 8,
+        "Innovation/Idea": 8.5,
+        "Presentation": 8.5
+      },
+      "totalOutOf50": 42.5,
+      "linearOutOf90": 76.5
+    },
+    {
+      "reviewer": "c",
+      "criteria": {
+        "Technological Implementation": 9,
+        "Design": 8.5,
+        "Potential Impact": 7.5,
+        "Innovation/Idea": 8.5,
+        "Presentation": 8.5
+      },
+      "totalOutOf50": 42.0,
+      "linearOutOf90": 75.6
+    }
+  ],
+  "medianOutOf90": 75.6,
+  "rangeOutOf90": [
+    74.7,
+    76.5
+  ],
+  "materialAddition": "Main-page interactive all12task/both24recordedoutcome explorer; legible phone dialogue; tested evidence fallback. Historical inference result and failed gates unchanged.",
+  "exactFrozenSourceArchivedPrivately": true,
+  "frozenFilesVerified": 94,
+  "allSourceHashesMatchAfterReviews": true,
+  "controlledBeforeAfterStudy": false
+}

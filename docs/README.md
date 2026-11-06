@@ -19,3 +19,5 @@
 | [Production assessment](../PRODUCTION.md) | Operational and deployment limits |
 
 Reports and artifacts under `results/` retain the evidence behind their dated write-ups. Treat historical results separately from the current deployment and fresh evaluations.
+
+- [November 6 donor-relief delivery and complete internal rubric history](RELIEF-DELIVERY-2026-11-06.md): deployed source, 75.6/90 final panel median, tests and limitations.

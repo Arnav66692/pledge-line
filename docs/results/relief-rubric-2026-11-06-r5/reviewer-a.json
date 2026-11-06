@@ -1,0 +1,826 @@
+{
+  "assessmentId": "relief-explorer-assessment-a-20261106",
+  "reviewDate": "2026-11-06",
+  "scope": "Independent internal hackathon prototype assessment; not an official Devpost score, eligibility ruling, prize prediction or production certification.",
+  "sourceCommit": "881378944da1ff49502ba4df849193dfada51a1d",
+  "evidencePacket": ".acceptance/relief-review-explorer-packet-20261106.md",
+  "rubric": {
+    "criteria": [
+      "Technological Implementation",
+      "Design",
+      "Potential Impact",
+      "Innovation/Idea",
+      "Presentation"
+    ],
+    "scoreRange": [
+      1,
+      10
+    ],
+    "increment": 0.5,
+    "equalWeights": true,
+    "totalFormula": "sum(criteria scores) / 50 * 90",
+    "officialNumericScaleOrWeighting": false
+  },
+  "criteria": [
+    {
+      "criterion": "Technological Implementation",
+      "score": 9,
+      "reasons": [
+        "Substantial working payment orchestration: retained actual PayPal sandbox pause/resume, sponsor capture then donor refund with active subscription, paid invoice/verified deduplicated webhook, restart-preserved signed receipt, and two-leg checkout with independent readbacks. The rehearsal reuses actual call/gate/checker/receipt modules with isolated mocks rather than a separate visual fiction.",
+        "Complete paired task evidence is stronger than label-only accuracy: all 24 public cases are retained, current composed pipeline completes 12/12 versus 7/12 using identical execution modules, and exact-consent/script/money checks are visible in the harness. New explorer is a bounded static projection with one fixed GET, textContent rendering, complete-data checks and retained fallback.",
+        "Deduction: the model contribution remains narrow and mixed. Original donor classification gate still fails at 11/12 with one wrong mutation label; purchase drafting 11/24 trails rules 14/24; model routing adds seconds. The outcome run is synthetic, guarded, direct-function and mock-money evidence, so its successful task result does not establish broad language reliability."
+      ],
+      "evidence": [
+        "docs/results/functional-acceptance-2026-11-05/donor.json",
+        "docs/results/functional-acceptance-2026-11-05/invoice-webhook.json",
+        "docs/results/functional-acceptance-2026-11-05/receipt.json",
+        "docs/results/guarded-checkout-2026-11-05.json",
+        "src/rehearsal.js",
+        "docs/results/donor-outcome-2026-11-06/harness-source.txt",
+        "docs/results/donor-outcome-2026-11-06/outcomes.jsonl",
+        "web/demo-tasks.js",
+        "test/demo-tasks.test.js",
+        "docs/DONOR-ROUTING-2026-11-06.md"
+      ]
+    },
+    {
+      "criterion": "Design",
+      "score": 8.5,
+      "reasons": [
+        "Native images show a consistent restrained visual system, clear primary relief action, legible money/status hierarchy and explicit unresolved state. The completed phone result places sponsor amount, unresolved refund and active gift together.",
+        "New native phone comparison is a meaningful usability improvement: entire composed proposal, separate scripted Yes, confirmation and task result fit within the inspected viewport; desktop displays both arms together. Native selection, polite status updates and progressively disclosed execution traces support inspection.",
+        "Deduction: the inline desktop recording text remains very small, especially on the phone entry. Some actual conversational design is also generic: both composed clarification tasks answer Sorry, I did not catch that rather than explaining the stated choices, and the hardship offer is long. These reduce the polish of the donor-facing experience despite safe execution."
+      ],
+      "evidence": [
+        ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+        ".acceptance/rehearsal-evidence/task-demo-phone-hosted-native.png",
+        ".acceptance/rehearsal-evidence/task-explorer-phone-hosted-native.png",
+        ".acceptance/rehearsal-evidence/task-explorer-desktop-hosted-native.png",
+        "web/demo.css",
+        "docs/results/donor-outcome-2026-11-06/outcomes.jsonl"
+      ]
+    },
+    {
+      "criterion": "Potential Impact",
+      "score": 7.5,
+      "reasons": [
+        "The after-hours nonprofit donor-care problem is concrete, and sponsor-first relief implements a plausible way to reduce immediate hardship while preserving the recurring gift. Actual sandbox completion and anonymously inspectable failure cases give the proposed mechanism credibility.",
+        "The packet cites recurring-giving and retention context with appropriate cohort/year limits; it does not conflate these statistics with the app effect. Fresh exact consent, authoritative readback and unresolved handling address meaningful trust concerns.",
+        "Deduction: likely benefit is still a hypothesis. No sponsor partnership, demonstrated demand, donor/staff observations, retention/time-saving improvement or willingness to pay is established. Equal gross capture/refund incurs fees, so coverage economics also depend on sponsor funding. These limit confidence in magnitude and adoption, not hackathon eligibility or prototype completeness."
+      ],
+      "evidence": [
+        ".acceptance/relief-review-explorer-packet-20261106.md: Impact and alternatives",
+        "docs/results/functional-acceptance-2026-11-05/donor.json",
+        ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+        "docs/DONOR-OUTCOMES-2026-11-06.md"
+      ]
+    },
+    {
+      "criterion": "Innovation/Idea",
+      "score": 8,
+      "reasons": [
+        "The distinctive idea is the integrated donor-care transaction: conversational supported-action completion, sponsor-funded hardship refund while the gift stays active, exact fresh approval, sentence-backed claims and an independently verifiable app-signed record. Visible unresolved handling is part of the concept rather than an omitted error state.",
+        "The new all-task comparison gives concrete evidence that model-assisted interpretation can enable supported paraphrase/context tasks that this keyword baseline misses, while code owns financial authority.",
+        "Deduction: donor self-service and receipts already exist in named alternatives, and the evidence establishes an inventive integration rather than a new model or general autonomous negotiation advantage. Deterministic guards contribute to the composed system; the purchase price guard, not demonstrated AI-specific savings, selected the better plan."
+      ],
+      "evidence": [
+        ".acceptance/relief-review-explorer-packet-20261106.md: Impact and alternatives",
+        "docs/DONOR-OUTCOMES-2026-11-06.md",
+        "docs/results/donor-outcome-2026-11-06/protocol.md",
+        "docs/results/guarded-checkout-2026-11-05.json"
+      ]
+    },
+    {
+      "criterion": "Presentation",
+      "score": 8.5,
+      "reasons": [
+        "The current main entry tells one donor-relief story with direct rehearsal and receipt actions. The primary 73-second film has real-frame poster, captions and explicit provenance; older procurement/films are inside a closed optional archive.",
+        "The main-page recorded explorer materially improves the AI demonstration: all 12 requests and both 24 outcomes, exact approval turns, baseline failures, route/time/proposal/write disclosures and withheld-consent notices are accessible at native reading size. It explicitly distinguishes recorded model requests, mock payments and retained sandbox receipt evidence.",
+        "Deduction: the primary film itself remains rules-routed simulation plus a retained receipt and its desktop text is tiny at inline size. The visitor must use the separate explorer to inspect readable model-backed behavior. I inspected stills, captions and provenance, so motion continuity, narration quality and audiovisual pacing are not independently rated as if fully watched."
+      ],
+      "evidence": [
+        "web/demo.html",
+        "web/demo-assets/relief-demo-20261106.vtt",
+        "web/demo-assets/relief-demo-20261106-provenance.txt",
+        ".acceptance/rehearsal-evidence/task-demo-desktop-hosted-native.png",
+        ".acceptance/rehearsal-evidence/task-demo-phone-hosted-native.png",
+        ".acceptance/rehearsal-evidence/task-explorer-phone-intro-hosted-native.png",
+        ".acceptance/rehearsal-evidence/task-explorer-phone-hosted-native.png",
+        "docs/DEMO-TASK-COMPARISON-2026-11-06.md"
+      ]
+    }
+  ],
+  "threeMaterialDeductions": [
+    {
+      "area": "AI breadth and reliability",
+      "affectedCriteria": [
+        "Technological Implementation",
+        "Innovation/Idea"
+      ],
+      "evidence": "Earlier donor-label zero-wrong-mutation gate and purchase-drafting gate remain failed. New 12/12 task result uses composed guards, 12 purposive synthetic tasks, scripted rejection of unexpected offers and mock payments; models add seconds.",
+      "improvement": "Keep the current separate claims and address remaining wrong labels, weak purchase drafting and generic clarification behavior before making broader AI claims."
+    },
+    {
+      "area": "Impact confidence and coverage economics",
+      "affectedCriteria": [
+        "Potential Impact"
+      ],
+      "evidence": "No demonstrated sponsor demand/partnership, donor or staff benefit, retention uplift or willingness to pay; equal gross funding incurs fees.",
+      "improvement": "Make sponsor funding/fee assumptions concrete and gather appropriately bounded target-audience feedback when available; these are paths to greater impact confidence, not mandatory hackathon features."
+    },
+    {
+      "area": "Primary demonstration readability",
+      "affectedCriteria": [
+        "Design",
+        "Presentation"
+      ],
+      "evidence": "Native 390px and 1440px entry screenshots retain small desktop UI text in the film. The new native cards resolve readability for recorded AI outcomes but do not change the movie.",
+      "improvement": "Make the existing full-size playback affordance or focused visual attention clearer while retaining the honest film/explorer scope labels."
+    }
+  ],
+  "hashVerification": {
+    "algorithm": "SHA-256",
+    "manifest": ".acceptance/relief-review-explorer-manifest-20261106.json",
+    "expectedFileCount": 94,
+    "checkedFileCount": 94,
+    "matchedFileCount": 94,
+    "mismatches": [],
+    "packetExpectedSha256": "f9937fee28a023e377c9d6d6cb3b1fb6f347f67bd915cf561e4ce41d8f545ef4",
+    "packetVerified": true,
+    "files": [
+      {
+        "path": ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+        "expected": "dbc67bdd53017e4531e63999974b21331a565b0bba6b3f36de2dbe841ad266a6",
+        "actual": "dbc67bdd53017e4531e63999974b21331a565b0bba6b3f36de2dbe841ad266a6",
+        "match": true
+      },
+      {
+        "path": ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+        "expected": "9dc52364ad771e66632c9a79ce4f8aab4bb456abc8bda281e1150edfc0f6a23d",
+        "actual": "9dc52364ad771e66632c9a79ce4f8aab4bb456abc8bda281e1150edfc0f6a23d",
+        "match": true
+      },
+      {
+        "path": ".acceptance/rehearsal-evidence/task-demo-desktop-hosted-native.png",
+        "expected": "3018b1ebab6853cef42aa94314e6eb68a66a6b7f1f5ff7338576b3f368eb5310",
+        "actual": "3018b1ebab6853cef42aa94314e6eb68a66a6b7f1f5ff7338576b3f368eb5310",
+        "match": true
+      },
+      {
+        "path": ".acceptance/rehearsal-evidence/task-demo-phone-hosted-native.png",
+        "expected": "b764a84359d6db0e59b399a8253e9f01586ff00455e94f7aad8577f2e10e1eff",
+        "actual": "b764a84359d6db0e59b399a8253e9f01586ff00455e94f7aad8577f2e10e1eff",
+        "match": true
+      },
+      {
+        "path": ".acceptance/rehearsal-evidence/task-explorer-desktop-hosted-native.png",
+        "expected": "41b90dc53ff58fe9f47496f94499efebcfbc6aac1067332095d0595f6a32f3c1",
+        "actual": "41b90dc53ff58fe9f47496f94499efebcfbc6aac1067332095d0595f6a32f3c1",
+        "match": true
+      },
+      {
+        "path": ".acceptance/rehearsal-evidence/task-explorer-phone-hosted-native.png",
+        "expected": "149efeb661a81b500198c2a11b709093feb5b42d3a35d477fb63f52ef8a0d323",
+        "actual": "149efeb661a81b500198c2a11b709093feb5b42d3a35d477fb63f52ef8a0d323",
+        "match": true
+      },
+      {
+        "path": ".acceptance/rehearsal-evidence/task-explorer-phone-intro-hosted-native.png",
+        "expected": "3e7696a8e9597532ae6e558c27225ce51cce2f4dcf270dacc85aaa35c19f20b5",
+        "actual": "3e7696a8e9597532ae6e558c27225ce51cce2f4dcf270dacc85aaa35c19f20b5",
+        "match": true
+      },
+      {
+        "path": ".acceptance/relief-film/covered-final.png",
+        "expected": "1187c21088df1d77f7bd83e99f17b4d62f0a8a830d52056f924a98ecfa5f0528",
+        "actual": "1187c21088df1d77f7bd83e99f17b4d62f0a8a830d52056f924a98ecfa5f0528",
+        "match": true
+      },
+      {
+        "path": ".acceptance/relief-film/edited-final.png",
+        "expected": "8f2de5d9aeadd7dcd1c38b87987c26fdb155ba261b31fe5aa1fb3f3e1a610dee",
+        "actual": "8f2de5d9aeadd7dcd1c38b87987c26fdb155ba261b31fe5aa1fb3f3e1a610dee",
+        "match": true
+      },
+      {
+        "path": ".acceptance/relief-film/unknown-final.png",
+        "expected": "0ad8f1c6e80a26cd99792c971394fdeb32b985f3d24563e20f360ee601da1ba7",
+        "actual": "0ad8f1c6e80a26cd99792c971394fdeb32b985f3d24563e20f360ee601da1ba7",
+        "match": true
+      },
+      {
+        "path": ".acceptance/relief-review-explorer-packet-20261106.md",
+        "expected": "f9937fee28a023e377c9d6d6cb3b1fb6f347f67bd915cf561e4ce41d8f545ef4",
+        "actual": "f9937fee28a023e377c9d6d6cb3b1fb6f347f67bd915cf561e4ce41d8f545ef4",
+        "match": true
+      },
+      {
+        "path": ".acceptance/task-explorer-desktop-hosted-check-20261106.json",
+        "expected": "8e0ced592d5babc5c49296307f6c4afee5adc0fba377df50e3874b9fb68c0565",
+        "actual": "8e0ced592d5babc5c49296307f6c4afee5adc0fba377df50e3874b9fb68c0565",
+        "match": true
+      },
+      {
+        "path": ".acceptance/task-explorer-hosted-assets-20261106.json",
+        "expected": "e4e37719522aac5bbc96ca49a0322fcfcc58c312159967720e8776abd59aee7f",
+        "actual": "e4e37719522aac5bbc96ca49a0322fcfcc58c312159967720e8776abd59aee7f",
+        "match": true
+      },
+      {
+        "path": ".acceptance/task-explorer-phone-hosted-check-20261106.json",
+        "expected": "5c7e586c52593547bcd964bd5b022926037a4f3c7a6df82f3009cff006fa2709",
+        "actual": "5c7e586c52593547bcd964bd5b022926037a4f3c7a6df82f3009cff006fa2709",
+        "match": true
+      },
+      {
+        "path": "docs/DEMO-TASK-COMPARISON-2026-11-06.md",
+        "expected": "94d9c9e9829398759990430134b0e846efb12909a5fe38822fef275edf8d0931",
+        "actual": "94d9c9e9829398759990430134b0e846efb12909a5fe38822fef275edf8d0931",
+        "match": true
+      },
+      {
+        "path": "docs/DONOR-OUTCOMES-2026-11-06.md",
+        "expected": "b7e01a12b7908fb582eb53935441d0d91edfe3009fec6802cf5b4a835f288fb4",
+        "actual": "b7e01a12b7908fb582eb53935441d0d91edfe3009fec6802cf5b4a835f288fb4",
+        "match": true
+      },
+      {
+        "path": "docs/results/donor-outcome-2026-11-06/fixture.json",
+        "expected": "27e42a5a9b0ac0f590d4fe8d65f4f470a89660120a49ca9bf269cca81be173a8",
+        "actual": "27e42a5a9b0ac0f590d4fe8d65f4f470a89660120a49ca9bf269cca81be173a8",
+        "match": true
+      },
+      {
+        "path": "docs/results/donor-outcome-2026-11-06/harness-source.txt",
+        "expected": "9418ce5755f65518891fa3e80c2951e69b8eab54e93ce0b1eb15af5e60502c2b",
+        "actual": "9418ce5755f65518891fa3e80c2951e69b8eab54e93ce0b1eb15af5e60502c2b",
+        "match": true
+      },
+      {
+        "path": "docs/results/donor-outcome-2026-11-06/manifest.json",
+        "expected": "2c65cb976130524505b98a2f9dcc2564ec1d8edc2d59d0c75c778c5d579f2a8b",
+        "actual": "2c65cb976130524505b98a2f9dcc2564ec1d8edc2d59d0c75c778c5d579f2a8b",
+        "match": true
+      },
+      {
+        "path": "docs/results/donor-outcome-2026-11-06/outcomes.jsonl",
+        "expected": "42f0a86f7db15e5607896ce275c4d3dfe7f015b0865d791706142ea13bbdf9c3",
+        "actual": "42f0a86f7db15e5607896ce275c4d3dfe7f015b0865d791706142ea13bbdf9c3",
+        "match": true
+      },
+      {
+        "path": "docs/results/donor-outcome-2026-11-06/overlap-audit.json",
+        "expected": "4aa1475b1d9be5625a17ca9d245d8f3166bb343e419bd51958cafbc49a4e3eb0",
+        "actual": "4aa1475b1d9be5625a17ca9d245d8f3166bb343e419bd51958cafbc49a4e3eb0",
+        "match": true
+      },
+      {
+        "path": "docs/results/donor-outcome-2026-11-06/protocol.md",
+        "expected": "ae06899447338c425e302233f04e93697d03fa126c9121ba9533b23421ebc25a",
+        "actual": "ae06899447338c425e302233f04e93697d03fa126c9121ba9533b23421ebc25a",
+        "match": true
+      },
+      {
+        "path": "docs/results/donor-outcome-2026-11-06/summary.json",
+        "expected": "8ab14d75b7e86457ef838ab40ca064bff99e5f640a5f0d9b74e9029306ac0cdb",
+        "actual": "8ab14d75b7e86457ef838ab40ca064bff99e5f640a5f0d9b74e9029306ac0cdb",
+        "match": true
+      },
+      {
+        "path": "src/agent.js",
+        "expected": "025b4151dae4e82cfb417ed2a9a1d9a7c90c987fddf4707fc24eaae0ed092f66",
+        "actual": "025b4151dae4e82cfb417ed2a9a1d9a7c90c987fddf4707fc24eaae0ed092f66",
+        "match": true
+      },
+      {
+        "path": "src/ai-budget.js",
+        "expected": "d41467e8d6902768c55646e3cf1e903132fa743b9d60c7e3e889640ca6dba04e",
+        "actual": "d41467e8d6902768c55646e3cf1e903132fa743b9d60c7e3e889640ca6dba04e",
+        "match": true
+      },
+      {
+        "path": "src/ai-gateway.js",
+        "expected": "2b2822deac726bc69d9c2ddc18bb788ded95226da8e3c2694fbd0f507c3be8a9",
+        "actual": "2b2822deac726bc69d9c2ddc18bb788ded95226da8e3c2694fbd0f507c3be8a9",
+        "match": true
+      },
+      {
+        "path": "src/amount.js",
+        "expected": "781da2c3ac41199820e3dc7f0d9c16fda765dc2aa40bc52948722f991be17dcd",
+        "actual": "781da2c3ac41199820e3dc7f0d9c16fda765dc2aa40bc52948722f991be17dcd",
+        "match": true
+      },
+      {
+        "path": "src/call.js",
+        "expected": "fdd513341512ac19f27cf02a5eab0eb82703fbd07692aef41117949df4858e19",
+        "actual": "fdd513341512ac19f27cf02a5eab0eb82703fbd07692aef41117949df4858e19",
+        "match": true
+      },
+      {
+        "path": "src/check.js",
+        "expected": "2c262388884137350d2038fbf5e216434a7eb3d45cb951946288289026aefcc5",
+        "actual": "2c262388884137350d2038fbf5e216434a7eb3d45cb951946288289026aefcc5",
+        "match": true
+      },
+      {
+        "path": "src/checkout-recovery.js",
+        "expected": "2e4f5073d8ff09df238c77f017934676591400eb5efbf40f0a68509c6ab23675",
+        "actual": "2e4f5073d8ff09df238c77f017934676591400eb5efbf40f0a68509c6ab23675",
+        "match": true
+      },
+      {
+        "path": "src/checkout-store.js",
+        "expected": "5fe882f489c0dce128bdf3cf144ee99f8753ea6f55c729c9ead25ecd3eec3664",
+        "actual": "5fe882f489c0dce128bdf3cf144ee99f8753ea6f55c729c9ead25ecd3eec3664",
+        "match": true
+      },
+      {
+        "path": "src/claim-arms.js",
+        "expected": "4d515acd01c54f030d641f3712df5d69a025fa0ecada5592f628448e555d847a",
+        "actual": "4d515acd01c54f030d641f3712df5d69a025fa0ecada5592f628448e555d847a",
+        "match": true
+      },
+      {
+        "path": "src/claim-audit.js",
+        "expected": "695fa1c55b019741a1b8e2ea9de67c018f0b0da4358b4ac29fc0ff5933105a1e",
+        "actual": "695fa1c55b019741a1b8e2ea9de67c018f0b0da4358b4ac29fc0ff5933105a1e",
+        "match": true
+      },
+      {
+        "path": "src/claim-fake-model.js",
+        "expected": "27e8179491be23657e5f15e23a718f397c1c6a6df9962fa2dbc33ad007a80844",
+        "actual": "27e8179491be23657e5f15e23a718f397c1c6a6df9962fa2dbc33ad007a80844",
+        "match": true
+      },
+      {
+        "path": "src/claim-gate.js",
+        "expected": "ed07156b4773b259d9249cbd05f6fa4057ac33e02ee5055e1c17d19a6a4800c9",
+        "actual": "ed07156b4773b259d9249cbd05f6fa4057ac33e02ee5055e1c17d19a6a4800c9",
+        "match": true
+      },
+      {
+        "path": "src/claim-verdicts.js",
+        "expected": "661c4320dabd3b3d205fe43e7165b13c085a1a3a24210c386c23f05834fbea20",
+        "actual": "661c4320dabd3b3d205fe43e7165b13c085a1a3a24210c386c23f05834fbea20",
+        "match": true
+      },
+      {
+        "path": "src/config.js",
+        "expected": "4107add3dc5387559c7df96df66d866f3247235c428b74422ea1cd9f59d55608",
+        "actual": "4107add3dc5387559c7df96df66d866f3247235c428b74422ea1cd9f59d55608",
+        "match": true
+      },
+      {
+        "path": "src/cover.js",
+        "expected": "0a677ee35d65653609eefce81355dcc0b5139ba487ff4c3ba09ac09cd2eeddb6",
+        "actual": "0a677ee35d65653609eefce81355dcc0b5139ba487ff4c3ba09ac09cd2eeddb6",
+        "match": true
+      },
+      {
+        "path": "src/database.js",
+        "expected": "d85dcefd43c0c46b15a06cb39c10e6dad15f758e6c3e86f1de7bd7716a480ca2",
+        "actual": "d85dcefd43c0c46b15a06cb39c10e6dad15f758e6c3e86f1de7bd7716a480ca2",
+        "match": true
+      },
+      {
+        "path": "src/donor-durability.js",
+        "expected": "86e5680b95423031ac9d72b1883883c359c1d5fb03091a692e3492e8a930ea99",
+        "actual": "86e5680b95423031ac9d72b1883883c359c1d5fb03091a692e3492e8a930ea99",
+        "match": true
+      },
+      {
+        "path": "src/donor-store.js",
+        "expected": "e0c81b779912d0618684834892964089162747111fdf82568f33dcd7ee02afd4",
+        "actual": "e0c81b779912d0618684834892964089162747111fdf82568f33dcd7ee02afd4",
+        "match": true
+      },
+      {
+        "path": "src/drill.js",
+        "expected": "7df4af453cca69e24ce888bdc8b4eef50276ba2f3ddbee66d9c4eaf81e92fd04",
+        "actual": "7df4af453cca69e24ce888bdc8b4eef50276ba2f3ddbee66d9c4eaf81e92fd04",
+        "match": true
+      },
+      {
+        "path": "src/durable-ledger.js",
+        "expected": "2510b1eecedccb28b9ac101dad7b2cbffab4af7ca87bc3c8e26016b8b004be58",
+        "actual": "2510b1eecedccb28b9ac101dad7b2cbffab4af7ca87bc3c8e26016b8b004be58",
+        "match": true
+      },
+      {
+        "path": "src/fault-drill.js",
+        "expected": "5f938094ef263272b0b91223bd265c9a38699e25c4e83d10c069d996855796d4",
+        "actual": "5f938094ef263272b0b91223bd265c9a38699e25c4e83d10c069d996855796d4",
+        "match": true
+      },
+      {
+        "path": "src/gate.js",
+        "expected": "40cffc34020871d869131c4704175a243f2778fbd68f4bc8397f67684d8a80bd",
+        "actual": "40cffc34020871d869131c4704175a243f2778fbd68f4bc8397f67684d8a80bd",
+        "match": true
+      },
+      {
+        "path": "src/goal-grounding.js",
+        "expected": "287586515560f9bd15a387fdc2f9d98f83a9ff22df0b840816073621421dd13e",
+        "actual": "287586515560f9bd15a387fdc2f9d98f83a9ff22df0b840816073621421dd13e",
+        "match": true
+      },
+      {
+        "path": "src/goal-intake.js",
+        "expected": "733b7ab4a2e158f9d55f6a87390a0a7c4766dd24c9caa4bd5911b4209a68a814",
+        "actual": "733b7ab4a2e158f9d55f6a87390a0a7c4766dd24c9caa4bd5911b4209a68a814",
+        "match": true
+      },
+      {
+        "path": "src/hosted-supplier-lab.js",
+        "expected": "129e0e127256bf8eb924a899015e0d36aa1cbbf6279a0647abee54db7696e7d7",
+        "actual": "129e0e127256bf8eb924a899015e0d36aa1cbbf6279a0647abee54db7696e7d7",
+        "match": true
+      },
+      {
+        "path": "src/hours-log.js",
+        "expected": "4d2779ddbbf506d28da9df0d0cc599f469aa4b9ef117af053ffcd1a3d5fc4834",
+        "actual": "4d2779ddbbf506d28da9df0d0cc599f469aa4b9ef117af053ffcd1a3d5fc4834",
+        "match": true
+      },
+      {
+        "path": "src/intent-guards.js",
+        "expected": "c41b597b276c6e3c5a3c9a11332eca3081e510d34eb16d9aafbb113d99b2aa37",
+        "actual": "c41b597b276c6e3c5a3c9a11332eca3081e510d34eb16d9aafbb113d99b2aa37",
+        "match": true
+      },
+      {
+        "path": "src/ledger.js",
+        "expected": "3a7614cca618086ef301a80c99ff6eb721df21c7df8d0e43a46616eb243836a4",
+        "actual": "3a7614cca618086ef301a80c99ff6eb721df21c7df8d0e43a46616eb243836a4",
+        "match": true
+      },
+      {
+        "path": "src/numbers.js",
+        "expected": "bd342f7c4afa5f8e78fd1d07afada6c5ca8976cc7aaf2ab1d2c379078213b7d6",
+        "actual": "bd342f7c4afa5f8e78fd1d07afada6c5ca8976cc7aaf2ab1d2c379078213b7d6",
+        "match": true
+      },
+      {
+        "path": "src/paypal-mock.js",
+        "expected": "99da441eb3e0e92cb714d6e1f060b6dfee0a8af66a3d3f0a3f7b5a6899f12af6",
+        "actual": "99da441eb3e0e92cb714d6e1f060b6dfee0a8af66a3d3f0a3f7b5a6899f12af6",
+        "match": true
+      },
+      {
+        "path": "src/paypal-orders.js",
+        "expected": "5a5ae2aa6038ac3b805a0c426336b3dc25788bca99669e51e8c47b38a8b0fdd5",
+        "actual": "5a5ae2aa6038ac3b805a0c426336b3dc25788bca99669e51e8c47b38a8b0fdd5",
+        "match": true
+      },
+      {
+        "path": "src/paypal.js",
+        "expected": "55a84097d7578028675ae5e15061dbabd6dbebcbee881fc73f138444a2045c2c",
+        "actual": "55a84097d7578028675ae5e15061dbabd6dbebcbee881fc73f138444a2045c2c",
+        "match": true
+      },
+      {
+        "path": "src/pilot-grade.js",
+        "expected": "628483757eaf140ad6b7467706a9cd66544f57f74570b8c20b38572d4a0d8045",
+        "actual": "628483757eaf140ad6b7467706a9cd66544f57f74570b8c20b38572d4a0d8045",
+        "match": true
+      },
+      {
+        "path": "src/pilot-scripts.js",
+        "expected": "a6417966e6ba999853d7da1b3f9535c357f3412069d31edc340b72b14372e5a4",
+        "actual": "a6417966e6ba999853d7da1b3f9535c357f3412069d31edc340b72b14372e5a4",
+        "match": true
+      },
+      {
+        "path": "src/procurement-http.js",
+        "expected": "393a4e0bfc5fd793c18bb976f69cfbbb1ea3659e1aa0e5c1dd7d4aa792d3ce9f",
+        "actual": "393a4e0bfc5fd793c18bb976f69cfbbb1ea3659e1aa0e5c1dd7d4aa792d3ce9f",
+        "match": true
+      },
+      {
+        "path": "src/procurement.js",
+        "expected": "7df3ee720ae224d60847a30b517a233804f98bfe6088ae999d3d7a49a20f21ad",
+        "actual": "7df3ee720ae224d60847a30b517a233804f98bfe6088ae999d3d7a49a20f21ad",
+        "match": true
+      },
+      {
+        "path": "src/proposal-review.js",
+        "expected": "c8ff466b297482f3e5891642196ca0d8a86bf5f31bae0d5e008aae61e4eaf799",
+        "actual": "c8ff466b297482f3e5891642196ca0d8a86bf5f31bae0d5e008aae61e4eaf799",
+        "match": true
+      },
+      {
+        "path": "src/readiness.js",
+        "expected": "62f5481ee3ba289a8a26cee764815dea9fb99c15feb40046299ac7b33e25880d",
+        "actual": "62f5481ee3ba289a8a26cee764815dea9fb99c15feb40046299ac7b33e25880d",
+        "match": true
+      },
+      {
+        "path": "src/receipt-file.js",
+        "expected": "ee2e0320a97ce07960b43a266d6fa31f26cae821d14bc9cb8cd0cd174b75ac9a",
+        "actual": "ee2e0320a97ce07960b43a266d6fa31f26cae821d14bc9cb8cd0cd174b75ac9a",
+        "match": true
+      },
+      {
+        "path": "src/receipt-seal.js",
+        "expected": "ee0c96d38d2a21b200b018c5a8dc0d7b4af5f2839834bdfd810b7d1b4978ad2c",
+        "actual": "ee0c96d38d2a21b200b018c5a8dc0d7b4af5f2839834bdfd810b7d1b4978ad2c",
+        "match": true
+      },
+      {
+        "path": "src/receipt.js",
+        "expected": "dc27908157834083498709d533710fbd1c6c4fe9e2b1e6d4c1ff668ec7aba67c",
+        "actual": "dc27908157834083498709d533710fbd1c6c4fe9e2b1e6d4c1ff668ec7aba67c",
+        "match": true
+      },
+      {
+        "path": "src/recovery.js",
+        "expected": "d51858f2e6542c7be9ce96c5dc3cdd051c76d0446c3e49e3c3d50f2764cffd48",
+        "actual": "d51858f2e6542c7be9ce96c5dc3cdd051c76d0446c3e49e3c3d50f2764cffd48",
+        "match": true
+      },
+      {
+        "path": "src/refund-desk.js",
+        "expected": "5aa93044aaa4f822258e2e6ad7c5c7fddb4fafc30128316f180ed205d97ecd76",
+        "actual": "5aa93044aaa4f822258e2e6ad7c5c7fddb4fafc30128316f180ed205d97ecd76",
+        "match": true
+      },
+      {
+        "path": "src/rehearsal.js",
+        "expected": "a32141fdc859e5895ee382ac274639779338278126114d0811449dea70c4aba8",
+        "actual": "a32141fdc859e5895ee382ac274639779338278126114d0811449dea70c4aba8",
+        "match": true
+      },
+      {
+        "path": "src/router.js",
+        "expected": "484bbeaff5e48bb3b1bb8572b1f02454719e637e3821d7b560839d4315c1b45e",
+        "actual": "484bbeaff5e48bb3b1bb8572b1f02454719e637e3821d7b560839d4315c1b45e",
+        "match": true
+      },
+      {
+        "path": "src/runtime-services.js",
+        "expected": "fc1a835d9bcaa72b054771aa4054d8c5eb70d07284607721558af29e25aeb1a6",
+        "actual": "fc1a835d9bcaa72b054771aa4054d8c5eb70d07284607721558af29e25aeb1a6",
+        "match": true
+      },
+      {
+        "path": "src/sandbox-checkout.js",
+        "expected": "b2c2650881f3489618a11177d23516845e9838419de5f2015b8da63739f3ca5f",
+        "actual": "b2c2650881f3489618a11177d23516845e9838419de5f2015b8da63739f3ca5f",
+        "match": true
+      },
+      {
+        "path": "src/say.js",
+        "expected": "92905587c2b82867a5eed456347456233fc4b5f67e2674dc239cb53c3bd4243d",
+        "actual": "92905587c2b82867a5eed456347456233fc4b5f67e2674dc239cb53c3bd4243d",
+        "match": true
+      },
+      {
+        "path": "src/server.js",
+        "expected": "98b346e7cc5003157171a32b6803e7f7394a8db9876a38ef0d4ab35d8220f7d3",
+        "actual": "98b346e7cc5003157171a32b6803e7f7394a8db9876a38ef0d4ab35d8220f7d3",
+        "match": true
+      },
+      {
+        "path": "src/staff.js",
+        "expected": "19d6ca8bea91f797486d1172f23879c56c033cdf9421f570874cff1be08938f9",
+        "actual": "19d6ca8bea91f797486d1172f23879c56c033cdf9421f570874cff1be08938f9",
+        "match": true
+      },
+      {
+        "path": "src/storage/postgres-ledger.js",
+        "expected": "e8953398352a437fed9c4077a78fe1d96ccf64e46ef32829d835dea08b3b8eb0",
+        "actual": "e8953398352a437fed9c4077a78fe1d96ccf64e46ef32829d835dea08b3b8eb0",
+        "match": true
+      },
+      {
+        "path": "src/supplier-mcp.js",
+        "expected": "97aba5ba7b096a1d2c38ca0c6deb337f37b8ed2b985b2a16334fe9f305342019",
+        "actual": "97aba5ba7b096a1d2c38ca0c6deb337f37b8ed2b985b2a16334fe9f305342019",
+        "match": true
+      },
+      {
+        "path": "src/supplier-mock.js",
+        "expected": "d98222ebc141c70f17b7e8dc18d17030ba243562eda63c348b2366defbca47a0",
+        "actual": "d98222ebc141c70f17b7e8dc18d17030ba243562eda63c348b2366defbca47a0",
+        "match": true
+      },
+      {
+        "path": "src/supplier-protocol.js",
+        "expected": "c42dcb46f91e809b163ee1a776d36770fc591573e04ab325aeee2fab2c6c7644",
+        "actual": "c42dcb46f91e809b163ee1a776d36770fc591573e04ab325aeee2fab2c6c7644",
+        "match": true
+      },
+      {
+        "path": "src/supplier-quote-store.js",
+        "expected": "04ebaa7b1444ef3e3f19c7dd7a7e6188755ea7885be671068f213cdf583a67be",
+        "actual": "04ebaa7b1444ef3e3f19c7dd7a7e6188755ea7885be671068f213cdf583a67be",
+        "match": true
+      },
+      {
+        "path": "src/template-history.js",
+        "expected": "f1e0a82ce980fce8f44ffb38ac0c014beafe17dc0bf1305977d989fcc919a10b",
+        "actual": "f1e0a82ce980fce8f44ffb38ac0c014beafe17dc0bf1305977d989fcc919a10b",
+        "match": true
+      },
+      {
+        "path": "src/template-words.js",
+        "expected": "ed33539d9fddf5ac83f062f2d6635c8fecd9c77c9d43c4489413676dbd95bbbe",
+        "actual": "ed33539d9fddf5ac83f062f2d6635c8fecd9c77c9d43c4489413676dbd95bbbe",
+        "match": true
+      },
+      {
+        "path": "src/vocabulary.js",
+        "expected": "3e19a92638c351ad3e968e620a45f32bab9918dca31deb4fd0b9cdc706a37b8b",
+        "actual": "3e19a92638c351ad3e968e620a45f32bab9918dca31deb4fd0b9cdc706a37b8b",
+        "match": true
+      },
+      {
+        "path": "test/demo-tasks.test.js",
+        "expected": "76b5be36b9ce1ed0e128113d426b830d344b8de36ff4836c439ce7d880e5a74c",
+        "actual": "76b5be36b9ce1ed0e128113d426b830d344b8de36ff4836c439ce7d880e5a74c",
+        "match": true
+      },
+      {
+        "path": "web/demo-assets/donor-task-outcomes-20261106.txt",
+        "expected": "406ed5b635a0a97587c27c53464abbdaa11ec5aca5d9f541d6383356ab23db82",
+        "actual": "406ed5b635a0a97587c27c53464abbdaa11ec5aca5d9f541d6383356ab23db82",
+        "match": true
+      },
+      {
+        "path": "web/demo-assets/relief-demo-20261106-poster.webp",
+        "expected": "0881dd76b2d139cfcf23d28a2b497fad1fb3aeeeff79649572a538b8b39ff111",
+        "actual": "0881dd76b2d139cfcf23d28a2b497fad1fb3aeeeff79649572a538b8b39ff111",
+        "match": true
+      },
+      {
+        "path": "web/demo-assets/relief-demo-20261106-provenance.txt",
+        "expected": "29f6b5d0c309d81f6180e28de11962801042ac15a02a5400bb0625c9ee7f40a7",
+        "actual": "29f6b5d0c309d81f6180e28de11962801042ac15a02a5400bb0625c9ee7f40a7",
+        "match": true
+      },
+      {
+        "path": "web/demo-assets/relief-demo-20261106.mp4",
+        "expected": "2d46e15ce3e74c2a20b03231774d84a0c01b49a9df30f782f40901064ec68317",
+        "actual": "2d46e15ce3e74c2a20b03231774d84a0c01b49a9df30f782f40901064ec68317",
+        "match": true
+      },
+      {
+        "path": "web/demo-assets/relief-demo-20261106.vtt",
+        "expected": "160d2b580495e4ec39e26f65a840474f11e1097841de7b8592e926aeded86e41",
+        "actual": "160d2b580495e4ec39e26f65a840474f11e1097841de7b8592e926aeded86e41",
+        "match": true
+      },
+      {
+        "path": "web/demo-tasks.js",
+        "expected": "53a30123b568a644c4a5dee505d3dbdf7d68ae8cdf12daedfbaaa674431a8e4b",
+        "actual": "53a30123b568a644c4a5dee505d3dbdf7d68ae8cdf12daedfbaaa674431a8e4b",
+        "match": true
+      },
+      {
+        "path": "web/demo.css",
+        "expected": "358a7c94a7d720220a317913fbf000fe98e4b903e33a6d2b10f51ce8e18b5cd9",
+        "actual": "358a7c94a7d720220a317913fbf000fe98e4b903e33a6d2b10f51ce8e18b5cd9",
+        "match": true
+      },
+      {
+        "path": "web/demo.html",
+        "expected": "1611eeaee8101876842de32c82b6dc67ee58aaa697f737c8bd7892a79dfbdda6",
+        "actual": "1611eeaee8101876842de32c82b6dc67ee58aaa697f737c8bd7892a79dfbdda6",
+        "match": true
+      },
+      {
+        "path": "web/demo.js",
+        "expected": "02928d107d588c90351f07e7c7157557d93cefa803f8f985a206bf41b365de77",
+        "actual": "02928d107d588c90351f07e7c7157557d93cefa803f8f985a206bf41b365de77",
+        "match": true
+      },
+      {
+        "path": "web/rehearsal.css",
+        "expected": "496d0214bd6f0ac7d6ab5aea5b9d0ca12dd3185703029f9d5553c3f6c81d36b0",
+        "actual": "496d0214bd6f0ac7d6ab5aea5b9d0ca12dd3185703029f9d5553c3f6c81d36b0",
+        "match": true
+      },
+      {
+        "path": "web/rehearsal.html",
+        "expected": "699ccb125547b128a82fc1e8dad9265dc30b35c5c22ad31b9af4daa1f609ac8e",
+        "actual": "699ccb125547b128a82fc1e8dad9265dc30b35c5c22ad31b9af4daa1f609ac8e",
+        "match": true
+      },
+      {
+        "path": "web/rehearsal.js",
+        "expected": "a0cbdda32c886481f43ea645635fffefa2a4d734b00a2e2fbdd55108a1c4064a",
+        "actual": "a0cbdda32c886481f43ea645635fffefa2a4d734b00a2e2fbdd55108a1c4064a",
+        "match": true
+      }
+    ]
+  },
+  "imagesInspected": [
+    {
+      "path": ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/task-demo-desktop-hosted-native.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/task-demo-phone-hosted-native.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/task-explorer-desktop-hosted-native.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/task-explorer-phone-hosted-native.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/task-explorer-phone-intro-hosted-native.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/relief-film/covered-final.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/relief-film/edited-final.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    },
+    {
+      "path": ".acceptance/relief-film/unknown-final.png",
+      "method": "view_image",
+      "detail": "original",
+      "inspected": true
+    }
+  ],
+  "outcomeVerification": {
+    "publicFilesRead": [
+      "docs/results/donor-outcome-2026-11-06/fixture.json",
+      "docs/results/donor-outcome-2026-11-06/harness-source.txt",
+      "docs/results/donor-outcome-2026-11-06/manifest.json",
+      "docs/results/donor-outcome-2026-11-06/outcomes.jsonl",
+      "docs/results/donor-outcome-2026-11-06/overlap-audit.json",
+      "docs/results/donor-outcome-2026-11-06/protocol.md",
+      "docs/results/donor-outcome-2026-11-06/summary.json"
+    ],
+    "caseRows": 24,
+    "uniqueArmCasePairs": 24,
+    "projectionRows": 24,
+    "projectionMismatches": [],
+    "freezeManifestMatchesRunStart": true,
+    "freezeSourceHashCount": 64,
+    "composedComplete": 12,
+    "rulesComplete": 7,
+    "composedControlsComplete": 6,
+    "rulesControlsComplete": 6,
+    "composedNaturalComplete": 6,
+    "rulesNaturalComplete": 1,
+    "approvedMockWrites": 16,
+    "unapprovedWrites": 0,
+    "wrongWrites": 0,
+    "checkerProblems": 0,
+    "successfulMockCoverFlows": 3,
+    "coverTerms": "Each captured 2500 cents, refunded 2500 cents, final subscription ACTIVE.",
+    "scope": "Public outcome rows, protocol, fixture, harness and projection independently inspected. Private raw ledgers and earlier 64 source snapshots were not reopened; 24 private ledger hashes are retained claims, not newly verified here."
+  },
+  "viewLimits": {
+    "images": "All ten required native PNGs viewed at original resolution.",
+    "film": "Read exact captions and provenance and viewed three required actual film frames. MP4 bytes hash verified; no full motion or audio playback. No claim to have watched/heard the complete film.",
+    "hosted": "No browsing or fresh hosted interaction; saved hosted checks and screenshots inspected.",
+    "tests": "No test execution, application run, runtime-state access, credentials, API calls, payments or contacts. Test outcomes cited from the allowed frozen packet; test source inspected.",
+    "rubricSkill": "Required agent-self-evaluation SKILL.md was not found under the available .agents/skills or .codex/skills roots. Used the explicit task rubric and developer evidence requirements.",
+    "priorScores": "No prior subjective reports, assessments or earlier packets opened.",
+    "release": "Public release, YouTube, Devpost submission and full eligibility remain unestablished; no separate score deduction for absent unrequested submission work or required sandbox use."
+  },
+  "computedTotals": {
+    "rawTotal": 41.5,
+    "rawMaximum": 50,
+    "meanOutOf10": 8.3,
+    "scaledOutOf90": 74.7,
+    "formula": "41.5 / 50 * 90",
+    "internalNotOfficial": true
+  }
+}
