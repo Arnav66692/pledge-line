@@ -87,6 +87,21 @@ test('an edit to one field retains unchanged limits and their original source qu
   }
 });
 
+test('current numeric restatements can prove retained values but cannot revive superseded limits', () => {
+  const input = raw(); input.evidence.quantity = 'Keep 100 shirts'; input.budgetCents = 95000; input.evidence.budget = 'cap to USD 950';
+  const update = 'Keep 100 shirts and raise the cap to USD 950.';
+  const retained = normalized(input, update, { priorGoals: [goal] });
+  assert.equal(retained.ready, true); assert.equal(retained.rfq.quantity, 100); assert.equal(retained.rfq.budgetCents, 95000);
+  const sameBudget = raw(); sameBudget.quantity = 64; sameBudget.evidence.quantity = '64 shirts'; sameBudget.evidence.budget = 'keep the USD 800 budget';
+  const retainedBudget = normalized(sameBudget, 'Change the count to 64 shirts; keep the USD 800 budget.', { priorGoals: [goal] });
+  assert.equal(retainedBudget.ready, true); assert.equal(retainedBudget.rfq.budgetCents, 80000);
+  const stale = raw(); stale.evidence.quantity = '100 white cotton shirts';
+  assert.equal(normalized(stale, 'Change the count to 64 shirts.', { priorGoals: [goal] }).ready, false);
+  const earlierProof = raw(); earlierProof.quantity = 64; earlierProof.evidence.quantity = '64 shirts';
+  assert.equal(normalized(earlierProof, 'Actually change the count to 70 shirts.', {
+    priorGoals: [goal, 'Change the count to 64 shirts.'] }).ready, false);
+});
+
 test('current-order earmarks are budgets while unrelated reserves and the program fund are not', () => {
   const globalOnly = 'The organization has USD 15000 program budget. Buy 60 burgundy fleece blankets. Deliver 2026-11-13 at 5 PM Pacific. Use one supplier.';
   assert.equal(budgetIsGrounded(1500000, 'USD 15000 program budget', [globalOnly]), false);
@@ -105,6 +120,20 @@ test('current-order earmarks are budgets while unrelated reserves and the progra
   }
   const incomplete = normalized(raw(), 'Keep the count unchanged and revise the budget.', { priorGoals: [goal] });
   assert.equal(incomplete.ready, false); assert.ok(incomplete.missingFields.includes('budget'));
+});
+
+test('qualified global funds do not compete with a current purchase allocation', () => {
+  for (const scope of ['overall event', 'overall annual operating', 'organization-wide project', 'company-wide quarterly']) {
+    for (const funds of [`${scope} budget is USD 24000`, `${scope} budget is 24000`]) {
+      const allocation = 'USD 1680 is allocated for these jackets all in';
+      const text = `Our ${funds}. ${allocation}. Buy 48 navy fleece jackets.`;
+      assert.equal(budgetIsGrounded(168000, allocation, [text]), true, text);
+      assert.equal(budgetIsGrounded(2400000, funds, [text]), false, text);
+      assert.equal(budgetIsGrounded(2400000, funds, [`Our ${funds}. Buy 48 navy fleece jackets.`]), false, text);
+    }
+  }
+  const specificallyAllocated = 'USD 24000 overall event budget allocated for this order';
+  assert.equal(budgetIsGrounded(2400000, specificallyAllocated), true);
 });
 
 test('a replace-with budget update inherits the stated currency and refuses stale money', () => {
@@ -163,6 +192,28 @@ test('supplier-subject order permissions preserve provenance without granting in
     assert.equal(splitPermission([phrase]), 'unspecified', phrase);
     const input = raw(); input.allowSplit = true;
     assert.equal(normalized(input, goal.replace('Use one supplier', phrase)).ready, false, phrase);
+  }
+});
+
+test('fulfillment, object-bearing distribution and acceptable supplier policies preserve their boundaries', () => {
+  for (const phrase of ['Multiple vendors may fulfill this purchase', 'Different suppliers can fulfil the order',
+    'We may divide this order among suppliers', 'We can distribute the purchase between several vendors',
+    'More than one vendor is acceptable', 'Splitting the order is acceptable']) {
+    assert.equal(splitPermission([phrase]), 'allow', phrase);
+    const input = raw(); input.allowSplit = true;
+    const result = normalized(input, goal.replace('Use one supplier', phrase));
+    assert.equal(result.ready, true, phrase); assert.equal(result.sourceEvidence.split, phrase);
+  }
+  for (const phrase of ['Multiple vendors may not fulfill this purchase', 'Different suppliers cannot fulfil the order',
+    'We may not divide this order among suppliers', 'We must not distribute the purchase between several vendors',
+    'More than one vendor is not acceptable', 'Multiple suppliers are unacceptable', 'Splitting the order is not acceptable']) {
+    assert.equal(splitPermission([phrase]), 'deny', phrase);
+  }
+  for (const phrase of ['Multiple vendors may fulfill this purchase if I confirm', 'We can divide this order among suppliers after buyer approval',
+    'More than one vendor is acceptable unless I refuse']) assert.equal(splitPermission([phrase]), 'conflict', phrase);
+  for (const phrase of ["Multiple vendors may fulfill this purchase's specifications", 'Different suppliers can fulfill the order details',
+    'We may divide this order information among suppliers', 'We can distribute the purchase pricing between several vendors']) {
+    assert.equal(splitPermission([phrase]), 'unspecified', phrase);
   }
 });
 

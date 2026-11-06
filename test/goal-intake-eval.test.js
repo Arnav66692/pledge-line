@@ -112,6 +112,19 @@ test('baseline distinguishes purchase earmarks from an overall fund and unrelate
   }
 });
 
+test('baseline excludes qualified organizational funds while retaining an explicit purchase allocation', () => {
+  for (const scope of ['overall event', 'overall annual operating', 'organization-wide project', 'company-wide quarterly']) {
+    for (const fund of [`${scope} budget is USD 24000`, `${scope} budget is 24000`]) {
+      const finish = 'Buy 48 navy fleece jackets. Deliver 2026-11-13 at 5 PM Pacific.';
+      const allocated = deterministicGoalDraft(input(`Our ${fund}. USD 1680 is allocated for these jackets all in. ${finish}`));
+      assert.equal(allocated.ready, true, fund); assert.equal(allocated.rfq.budgetCents, 168000);
+      assert.equal(deterministicGoalDraft(input(`Our ${fund}. ${finish}`)).ready, false, fund);
+    }
+  }
+  const explicit = deterministicGoalDraft(input('USD 24000 overall event budget allocated for this order. Buy 48 navy fleece jackets. Deliver 2026-11-13 at 5 PM Pacific.'));
+  assert.equal(explicit.ready, true); assert.equal(explicit.rfq.budgetCents, 2400000);
+});
+
 test('baseline independently recognizes shared-order permission, denial and unresolved conditions', () => {
   const complete = 'Buy 72 ceramic mugs under USD 800 total. Deliver 2026-11-13 at 5 PM Pacific.';
   for (const permission of ['The order may be shared among suppliers.', 'We can divide across vendors.', 'The order may be distributed between multiple suppliers.']) {
@@ -150,6 +163,39 @@ test('baseline distinguishes supplier-subject order permission from sharing quot
     assert.equal(draft.ready, true, phrase); assert.equal(draft.rfq.allowSplit, false);
     assert.ok(draft.assumptions.includes('single_supplier_default'));
   }
+});
+
+test('baseline independently supports fulfillment, distribution objects and acceptable policy with guards', () => {
+  const complete = 'Buy 48 navy fleece jackets under USD 1680 total. Deliver 2026-11-13 at 5 PM Pacific.';
+  for (const policy of ['Multiple vendors may fulfill this purchase', 'Different suppliers can fulfil the order',
+    'We may divide this order among suppliers', 'We can distribute the purchase between several vendors',
+    'More than one vendor is acceptable', 'Splitting the order is acceptable']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${policy}.`));
+    assert.equal(draft.ready, true, policy); assert.equal(draft.rfq.allowSplit, true, policy);
+  }
+  for (const policy of ['Multiple vendors may not fulfill this purchase', 'Different suppliers cannot fulfil the order',
+    'We may not divide this order among suppliers', 'We must not distribute the purchase between several vendors',
+    'More than one vendor is not acceptable', 'Multiple suppliers are unacceptable', 'Splitting the order is not acceptable']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${policy}.`));
+    assert.equal(draft.ready, true, policy); assert.equal(draft.rfq.allowSplit, false, policy);
+    assert.ok(!draft.assumptions.includes('single_supplier_default'), policy);
+  }
+  for (const policy of ['Multiple vendors may fulfill this purchase if I confirm', 'We can divide this order among suppliers after buyer approval',
+    'More than one vendor is acceptable unless I refuse']) assert.equal(deterministicGoalDraft(input(`${complete} ${policy}.`)).ready, false, policy);
+  for (const policy of ["Multiple vendors may fulfill this purchase's specifications", 'Different suppliers can fulfill the order details',
+    'We may divide this order information among suppliers', 'We can distribute the purchase pricing between several vendors']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${policy}.`));
+    assert.equal(draft.ready, true, policy); assert.equal(draft.rfq.allowSplit, false, policy);
+    assert.ok(draft.assumptions.includes('single_supplier_default'), policy);
+  }
+});
+
+test('baseline uses the same noon and start-of-date midnight clock contract', () => {
+  for (const [clock, expected] of [['noon', '2026-11-13T20:00:00.000Z'], ['midnight', '2026-11-13T08:00:00.000Z']]) {
+    const draft = deterministicGoalDraft(input(`Buy 48 navy fleece jackets under USD 1680. Deliver November 13, 2026 at ${clock} Pacific.`));
+    assert.equal(draft.ready, true, clock); assert.equal(draft.rfq.deadline, expected);
+  }
+  assert.equal(deterministicGoalDraft(input('Buy 48 navy fleece jackets under USD 1680. Deliver November 13, 2026 not at midnight Pacific.')).ready, false);
 });
 
 test('baseline refuses impossible calendar dates and unchosen DST gaps or folds', () => {

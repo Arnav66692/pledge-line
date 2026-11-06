@@ -105,6 +105,7 @@ function clockEvidence(text) {
     add(hour * 60 + minute, match.index);
   }
   for (const match of text.matchAll(/\b(?:at )?noon\b/gi)) add(12 * 60, match.index);
+  for (const match of text.matchAll(/\b(?:at )?midnight\b/gi)) add(0, match.index);
   return { values, denied, invalid };
 }
 
@@ -172,20 +173,21 @@ function deadlineOf(goal, now, timeZone) {
 /** Independent explicit split-policy grammar; conditional or conflicting buyer statements ask again. */
 function explicitSplitPermission(turns) {
   const supplier = '(?:suppliers?|vendors?)', plural = `(?:multiple|several|more than one|two or more) ${supplier}`;
-  const sharing = `(?:shared|divided|distributed|share|divide|distribute)\\s+(?:among|across|between)\\s+(?:(?:multiple|several|two or more)\\s+)?${supplier}`;
   const group = '(?:few|multiple|several|different|two or more)\\s+(?:suppliers|vendors)';
   const nonGoods = '(?:quotes?|prices?|pricing|costs?|totals?|information|details?|specifications?|status|history|data|plans?|briefs?|documents?|files?)';
-  const orderVerb = `(?:share|split|divide|distribute)\\s+(?:this|the)\\s+(?:order|purchase)\\b(?!(?:['’]s)?\\s+${nonGoods}\\b)`;
+  const order = `(?:this|the)\\s+(?:order|purchase)\\b(?!(?:['’]s)?\\s+${nonGoods}\\b)`;
+  const sharing = `(?:shared|divided|distributed|share|divide|distribute)\\s+(?:${order}\\s+)?(?:among|across|between)\\s+(?:(?:multiple|several|two or more)\\s+)?${supplier}`;
+  const orderVerb = `(?:share|split|divide|distribute|fulfill|fulfil)\\s+${order}`;
   const denyPatterns = [
     /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
     new RegExp(`\\b(?:no more than|not more than|at most) one ${supplier}\\b|\\b(?:no|not|never)\\s+(?:${plural}|across ${supplier})\\b`, 'gi'),
     new RegExp(`\\b(?:not|don't|dont|cannot|can't|can not|may not|must not)\\s+(?:allow(?:ing)?|permit(?:ting)?|approv(?:e|ing)|use)(?:\\s+\\w+){0,4}\\s+(?:split(?:ting|s)?|${plural}|across ${supplier})\\b`, 'gi'),
-    new RegExp(`\\b(?:split(?:ting|s)?|${plural})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|forbidden)\\b`, 'gi'),
+    new RegExp(`\\b(?:split(?:ting|s)?|${plural})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|not acceptable|unacceptable|forbidden)\\b`, 'gi'),
     new RegExp(`\\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\\s+(?:\\w+\\s+){0,6}${sharing}\\b`, 'gi'),
     new RegExp(`\\b${group}\\s+(?:may not|must not|will not|cannot|can't|can not|do not|don't|dont|should not)\\s+${orderVerb}`, 'gi'),
     new RegExp(`\\b(?:no|not|never)\\s+${group}\\s+(?:may|can)\\s+${orderVerb}`, 'gi'),
   ];
-  const allowPattern = new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}split(?:ting)?\\b|\\bsplit(?:ting)?(?:\\s+\\w+){0,3}\\s+(?:allowed|okay|ok|fine|permitted)\\b|\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${plural}|across ${supplier})\\b|\\b(?:${plural}|across ${supplier})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted)\\b|\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}${sharing}\\b|\\b${group}\\s+(?:may|can)\\s+${orderVerb}`, 'gi');
+  const allowPattern = new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}split(?:ting)?\\b|\\bsplit(?:ting)?(?:\\s+\\w+){0,3}\\s+(?:allowed|okay|ok|fine|permitted|acceptable)\\b|\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${plural}|across ${supplier})\\b|\\b(?:${plural}|across ${supplier})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted|acceptable)\\b|\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}${sharing}\\b|\\b${group}\\s+(?:may|can)\\s+${orderVerb}`, 'gi');
   let permission = 'unspecified';
   for (const turn of turns) {
     const signals = [];
@@ -274,6 +276,7 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
   if (!integer(quantity, 1, 500)) return refused('What is the complete quantity?');
   const budgets = [];
   const currencyWords = '(?:USD|EUR|GBP|CAD|AUD|JPY|U\\.?S\\.? dollars?|Canadian dollars?|Australian dollars?|Japanese yen|dollars?|euros?|pounds?|yen)';
+  const organizationScope = '(?:(?:overall|organization-wide|company-wide)(?:\\s+(?:event|program|project|operating|annual|quarterly)){0,2}|program|project)';
   const money = new RegExp(`(?:([$€£¥])\\s*(${NUMBER})|\\b(${currencyWords})\\s+(${NUMBER})|\\b(${NUMBER})\\s+(${currencyWords}))`, 'gi');
   const currencyOf = (value) => /^(?:\$|USD|U\.?S\.? dollars?|dollars?)$/i.test(value) ? 'USD' : /^(?:€|EUR|euros?)$/i.test(value) ? 'EUR'
     : /^(?:£|GBP|pounds?)$/i.test(value) ? 'GBP' : /^(?:CAD|Canadian dollars?)$/i.test(value) ? 'CAD'
@@ -289,13 +292,13 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
     const purchaseTarget = `(?:these\\s+(?:[a-z-]+\\s+){0,6}(?:${items}|items?|goods|supplies)|(?:this|the)\\s+(?:order|purchase))`;
     const allocated = '(?:earmarked|reserved|allocated|set aside|dedicated)';
     const purchaseEarmark = new RegExp(`\\b${allocated}\\s+for\\s+${purchaseTarget}\\b`, 'i').test(roleBefore) ||
-      new RegExp(`^\\s*(?:(?:program|project|overall)\\s+(?:budget|fund|balance)\\s+)?(?:(?:is|are)\\s+)?${allocated}\\s+for\\s+${purchaseTarget}\\b`, 'i').test(after) ||
+      new RegExp(`^\\s*(?:${organizationScope}\\s+(?:budget|fund|balance)\\s+)?(?:(?:is|are)\\s+)?${allocated}\\s+for\\s+${purchaseTarget}\\b`, 'i').test(after) ||
       new RegExp(`\\b${allocated}\\s*$`, 'i').test(roleBefore) && new RegExp(`^\\s+for\\s+${purchaseTarget}\\b`, 'i').test(after);
     const role = /\b(?:quote|quoted|previous|last year|last time|vendor asked|supplier asked|reserved|allocated|earmarked|food|rent|venue)\b/i.test(roleBefore) || /^\s*(?:is |was |are |were )?(?:reserved|allocated|earmarked|for food|for rent|for the venue)\b/i.test(after);
     let priority = /\b(?:budget|cap|maximum|limit|under|total|spend|up to|remaining|available|remainder|left)\s*(?:is|of|:|=)?\s*$/i.test(before) ? 2 : /\b(?:budget|cap|maximum|limit|total)\b/i.test(after) ? 1 : 0;
     const currentRole = /\b(?:actual|final|remaining|available|remainder|left)\b/i.test(roleBefore);
     if (!role && /\b(?:actually|instead|rather|correction)\b/i.test(before)) priority = 2;
-    const globalFund = /\b(?:program|project|overall|organization-wide|company-wide)\s+(?:budget|fund|balance)\b/i.test(roleBefore + ' ' + after);
+    const globalFund = new RegExp(`\\b${organizationScope}\\s+(?:budget|fund|balance)\\b`, 'i').test(roleBefore + ' ' + after);
     if (globalFund && !purchaseEarmark && !/\bfinal\s+(?:budget|cap|ceiling|limit)\b/i.test(roleBefore)) continue;
     if (purchaseEarmark) priority = 2;
     if (/\bfinal\s+(?:budget|cap|ceiling|limit)\b/i.test(roleBefore)) priority = 3;
@@ -305,7 +308,7 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
   for (const match of goal.matchAll(new RegExp(`\\b(?:budget|cap|maximum|spend|total)\\s*(?:is|of|to|with|:|=)?\\s+(${NUMBER})\\b`, 'gi'))) {
     const before = goal.slice(Math.max(0, match.index - 50), match.index).split(/[.!?;\n]/).at(-1);
     if (/\b(?:food|rent|venue|reserved|allocated|quoted|previous)\b/i.test(before)) continue;
-    if (/\b(?:program|project|overall|organization-wide|company-wide)\s*$/i.test(before)) {
+    if (new RegExp(`\\b${organizationScope}\\s*$`, 'i').test(before)) {
       const after = goal.slice(match.index + match[0].length).split(/[.!?]\s+|[;\n]/)[0];
       const target = `(?:(?:this|the)\\s+(?:order|purchase)|these\\s+(?:[a-z-]+\\s+){0,6}(?:${items}|items?|goods|supplies))`;
       if (!new RegExp(`^\\s*(?:(?:is|are)\\s+)?(?:earmarked|reserved|allocated|set aside|dedicated)\\s+for\\s+${target}\\b`, 'i').test(after)) continue;

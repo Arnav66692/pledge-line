@@ -45,6 +45,8 @@ const MONEY_UNIT = /\$|\b(?:USD|U\.?S\.? dollars?|dollars?|euros?|EUR|GBP|CAD|AU
 const HISTORIC = /\b(?:previous|prior|historical|old|original|vendor|supplier|quot(?:e|ed)|estimate|invoice|reserved?|earmarked)\b/gi;
 const BUDGET_ROLE = /\b(?:final\s+(?:budget|cap|ceiling|limit)|budget|cap|ceiling|maximum|limit|all[- ]in|total|spend(?:ing)?|under|up to|no more than|not exceed|remaining|remainder|leaving|left for|use|allocate(?:d)?)\b/gi;
 const NON_CURRENCY_WORDS = new Set(['for', 'the', 'and', 'cap', 'max', 'buy', 'get', 'qty', 'now', 'was', 'our', 'use', 'its', 'tax', 'all']);
+const GLOBAL_BUDGET_SCOPE = '(?:(?:overall|organization-wide|company-wide)(?:\\s+(?:event|program|project|operating|annual|quarterly)){0,2}|program|project)';
+const GLOBAL_FUND = new RegExp(`\\b${GLOBAL_BUDGET_SCOPE}\\s+(?:budget|fund|balance)\\b`, 'i');
 
 // Scope correction intent to the clause naming the field, rather than another field's edit.
 function intentClauses(text) {
@@ -61,7 +63,7 @@ function purchaseAllocation(before, after) {
   const target = `(?:these\\s+(?:[a-z-]+\\s+){0,6}(?:${ITEM_WORDS}|items?|goods|supplies)|(?:this|the)\\s+(?:order|purchase))`;
   const allocation = '(?:earmarked|reserved|allocated|set aside|dedicated)';
   return new RegExp(`\\b${allocation}\\s+for\\s+${target}\\b`, 'i').test(before) ||
-    new RegExp(`^\\s*(?:(?:program|project|overall)\\s+(?:budget|fund|balance)\\s+)?(?:(?:is|are)\\s+)?${allocation}\\s+for\\s+${target}\\b`, 'i').test(after) ||
+    new RegExp(`^\\s*(?:${GLOBAL_BUDGET_SCOPE}\\s+(?:budget|fund|balance)\\s+)?(?:(?:is|are)\\s+)?${allocation}\\s+for\\s+${target}\\b`, 'i').test(after) ||
     new RegExp(`\\b${allocation}\\s*$`, 'i').test(before) && new RegExp(`^\\s+for\\s+${target}\\b`, 'i').test(after);
 }
 
@@ -133,7 +135,7 @@ function budgetCandidates(text) {
       if (!currentAllocation && (historic > role || /\b(?:reserved|earmarked|allocated|set aside|dedicated)\s+for\b/i.test(before) || /^\s*(?:(?:is|are)\s+)?(?:reserved|earmarked|allocated|set aside|dedicated)\s+for\b/i.test(after)) ||
         /\b(?:not|instead of)\s*$/i.test(before) || /^\s*(?:each|per\s+(?:shirt|item|unit|person)|was (?:a |the )?(?:previous|old|prior|vendor|supplier) quote)\b/i.test(after) || /(?:\$|\bUSD)\s*-|(?:^|\s)-\d/.test(match[0])) continue;
       const dollars = numberWords(match[2] ?? match[3]), unit = currencyUnit(match[1] ?? match[4]);
-      const globalFund = /\b(?:program|project|overall|organization-wide|company-wide)\s+(?:budget|fund|balance)\b/i.test(before + ' ' + after);
+      const globalFund = GLOBAL_FUND.test(before + ' ' + after);
       if (globalFund && !currentAllocation && !/\bfinal\s+(?:budget|cap|ceiling|limit)\b/i.test(before)) continue;
       const priority = /\bfinal\s+(?:budget|cap|ceiling|limit)\b/i.test(before) ? 3 : currentAllocation ? 2 : globalFund ? 0 : role >= 0 || /^\s*(?:all[- ]in|total|maximum|budget|cap)\b/i.test(after) ? 2 : 1;
       if (Number.isFinite(dollars)) found.push({ value: Math.round(dollars * 100), priority, currency: unit.currency, explicitCurrency: unit.explicit, index: clauseMatch.index + start, end: clauseMatch.index + end });
@@ -143,7 +145,7 @@ function budgetCandidates(text) {
     const labeled = new RegExp(`\\b(?:budget|cap|ceiling|maximum|limit|under|spend|up to|total)(?:\\s+(?:is|of|should be|at|to|with))?\\s*[:=]?\\s*(${NUMBER_PATTERN})\\b|\\b(${NUMBER_PATTERN})\\s+(?:total|all[- ]in|maximum|budget|cap)\\b`, 'gi');
     for (const match of text.matchAll(labeled)) {
       const before = text.slice(0, match.index).split(/[.!?]\s+|[;\n]/).at(-1), after = text.slice(match.index + match[0].length).split(/[.!?]\s+|[;\n]/)[0];
-      if (/\b(?:program|project|overall|organization-wide|company-wide)\s*$/i.test(before) && !purchaseAllocation(before, after)) continue;
+      if (new RegExp(`\\b${GLOBAL_BUDGET_SCOPE}\\s*$`, 'i').test(before) && !purchaseAllocation(before, after)) continue;
       const dollars = numberWords(match[1] ?? match[2]);
       if (Number.isFinite(dollars)) found.push({ value: Math.round(dollars * 100), priority: 2, currency: null, explicitCurrency: false, index: match.index, end: match.index + match[0].length });
     }
@@ -266,7 +268,12 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
     delivery_date: (text) => DATE_ANCHOR.test(text), delivery_time: (text) => CLOCK_ANCHOR.test(text), time_zone: (text) => ZONE_ANCHOR.test(text) };
   for (const [field, index] of Object.entries(latest)) {
     const clauses = String(evidence[sourceField[field]] ?? '').split('\n').filter(Boolean);
-    if (!clauses.some((clause) => turns[index].includes(clause) && proofChecks[field](clause))) missing.push(field);
+    // A later explicit restatement can prove an unchanged numeric value. It must still
+    // ground the current value, and cannot predate the last recognized field update.
+    const numeric = field === 'quantity' || field === 'budget';
+    const sourceTurns = numeric ? turns.slice(index) : [turns[index]];
+    if (!clauses.some((clause) => sourceTurns.some((turn) => turn.includes(clause)) && proofChecks[field](clause) &&
+      (!numeric || (field === 'quantity' ? quantityIsGrounded : budgetIsGrounded)(latestFieldValue(turns, field), clause, turns)))) missing.push(field);
   }
   if (localDelivery && latest.delivery_time !== undefined && !clockIsGrounded(localDelivery.time, turns[latest.delivery_time])) missing.push('delivery_time');
   const lastSpec = latest.specification;
@@ -296,23 +303,25 @@ export function splitPolicy(turns) {
   const distributed = '(?:shared|divided|distributed|share|divide|distribute)', distributionTarget = `(?:among|across|between)\\s+(?:(?:multiple|several|two or more)\\s+)?${party}`;
   const supplierSubject = '(?:few|multiple|several|different|two or more)\\s+(?:suppliers|vendors)';
   const information = '(?:quotes?|prices?|pricing|costs?|totals?|information|details?|specifications?|status|history|data|plans?|briefs?|documents?|files?)';
-  const activeOrder = `(?:share|split|divide|distribute)\\s+(?:this|the)\\s+(?:order|purchase)\\b(?!(?:['’]s)?\\s+${information}\\b)`;
+  const orderObject = `(?:this|the)\\s+(?:order|purchase)\\b(?!(?:['’]s)?\\s+${information}\\b)`;
+  const activeOrder = `(?:share|split|divide|distribute|fulfill|fulfil)\\s+${orderObject}`;
+  const distributionObject = `(?:${orderObject}\\s+)?${distributionTarget}`;
   const negatives = [
     /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
     new RegExp(`\\b(?:no more than|not more than|at most) one ${party}\\b`, 'gi'),
     new RegExp(`\\b(?:no|not|never)\\s+(?:${many}|across ${party})\\b`, 'gi'),
     new RegExp(`\\b(?:not|don't|dont|cannot|can't|can not|may not|must not)\\s+(?:allow(?:ing)?|permit(?:ting)?|approv(?:e|ing)|use)(?:\\s+\\w+){0,4}\\s+(?:split(?:ting|s)?|${many}|across ${party})\\b`, 'gi'),
-    new RegExp(`\\b(?:split(?:ting|s)?|${many})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|forbidden)\\b`, 'gi'),
-    new RegExp(`\\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\\s+(?:\\w+\\s+){0,6}${distributed}\\s+${distributionTarget}\\b`, 'gi'),
+    new RegExp(`\\b(?:split(?:ting|s)?|${many})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|not acceptable|unacceptable|forbidden)\\b`, 'gi'),
+    new RegExp(`\\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\\s+(?:\\w+\\s+){0,6}${distributed}\\s+${distributionObject}\\b`, 'gi'),
     new RegExp(`\\b${supplierSubject}\\s+(?:may not|must not|will not|cannot|can't|can not|do not|don't|dont|should not)\\s+${activeOrder}`, 'gi'),
     new RegExp(`\\b(?:no|not|never)\\s+${supplierSubject}\\s+(?:may|can)\\s+${activeOrder}`, 'gi'),
   ];
   const positives = [
     /\b(?:may|can|allow|permit)\s+(?:\w+\s+){0,2}split(?:ting)?\b/gi,
-    /\bsplit(?:ting)?(?:\s+\w+){0,3}\s+(?:allowed|okay|ok|fine|permitted)\b/gi,
+    /\bsplit(?:ting)?(?:\s+\w+){0,3}\s+(?:allowed|okay|ok|fine|permitted|acceptable)\b/gi,
     new RegExp(`\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${many}|across ${party})\\b`, 'gi'),
-    new RegExp(`\\b(?:${many}|across ${party})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted)\\b`, 'gi'),
-    new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}${distributed}\\s+${distributionTarget}\\b`, 'gi'),
+    new RegExp(`\\b(?:${many}|across ${party})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted|acceptable)\\b`, 'gi'),
+    new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}${distributed}\\s+${distributionObject}\\b`, 'gi'),
     new RegExp(`\\b${supplierSubject}\\s+(?:may|can)\\s+${activeOrder}`, 'gi'),
   ];
   for (const [turnIndex, turn] of turns.entries()) {
