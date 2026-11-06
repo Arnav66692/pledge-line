@@ -2,6 +2,8 @@
 
 This compares language-task completion by the revised main agent and a strengthened deterministic explicit-field parser. It does not compare prices after an exact optimizer already has all supplier floors. Neither arm receives supplier tools, a checkout session, payment authority or a PayPal client.
 
+The [current evidence index](AI-VALUE-EVIDENCE-2026-11-05.md) includes the unchanged fresh-eleven primary result: 11/24 model-backed tasks versus 14/24 baseline tasks, with five of six explicit controls correct in each arm. Its full improvement gate failed. Subsequent source repairs and captured-draft replays are exposed regression work and cannot replace that fresh result.
+
 ## Construction before inference
 
 The final suite has 24 independently authored **synthetic** tasks: six explicit controls, six contextual/discourse tasks, six clarification tasks, and six timezone/negation/goods tasks. A separate author receives this contract and supported product limits without implementation, baseline outputs or model outputs. After the offline diagnostic described below, the same author session prepared fresh wording and numeric instances while remaining blind to implementation and outcomes; its earlier authored wording remained available. Their wording and labels are retained without selecting tasks according to which approach wins. This is independent case authorship inside the development process, not independent customers or externally held-out language.

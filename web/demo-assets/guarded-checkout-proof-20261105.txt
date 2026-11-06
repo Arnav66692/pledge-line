@@ -1,0 +1,53 @@
+{
+  "evidenceClass": "Actual PayPal sandbox browser checkout and independent authenticated readback; test funds only.",
+  "completedAt": "2026-11-06T06:28:18.740Z",
+  "hostedSourceCommit": "45c14e1b9fa3922da1a6654c25889635b5b19ac4",
+  "quantityFromApprovedApplicationTerms": 100,
+  "budgetCents": 80000,
+  "totalCents": 67415,
+  "currency": "USD",
+  "selectedPlan": "Deterministic negotiated plan at674.15, below model candidate676.25. This establishes a working price guard, not AI-specific price superiority.",
+  "legs": [
+    {
+      "orderId": "7VR313811Y471491J",
+      "captureId": "4KV57263PT639911Y",
+      "orderStatus": "COMPLETED",
+      "captureStatus": "COMPLETED",
+      "currency": "USD",
+      "amountCents": 39650,
+      "quantityFromApprovedAppTerms": 60,
+      "payeeMatchesConfiguredSandboxMerchant": true
+    },
+    {
+      "orderId": "54D60683GC626134F",
+      "captureId": "03X49524PL708700R",
+      "orderStatus": "COMPLETED",
+      "captureStatus": "COMPLETED",
+      "currency": "USD",
+      "amountCents": 27765,
+      "quantityFromApprovedAppTerms": 40,
+      "payeeMatchesConfiguredSandboxMerchant": true
+    }
+  ],
+  "buyerApproval": "Separate PayPal sandbox guest-card approvals using synthetic test data, followed by fresh status rechecks and explicit capture per supplier. No real account/card was charged.",
+  "livePayments": false,
+  "independentFulfillment": false,
+  "supplierScope": "Three project-controlled MCP supplier endpoints; both selected supplier legs use one configured owned sandbox merchant.",
+  "financialSourceHashesUnchangedSinceHostedBuild": {
+    "src/paypal-orders.js": "5a5ae2aa6038ac3b805a0c426336b3dc25788bca99669e51e8c47b38a8b0fdd5",
+    "src/sandbox-checkout.js": "b2c2650881f3489618a11177d23516845e9838419de5f2015b8da63739f3ca5f",
+    "src/checkout-store.js": "5fe882f489c0dce128bdf3cf144ee99f8753ea6f55c729c9ead25ecd3eec3664",
+    "src/checkout-recovery.js": "2e4f5073d8ff09df238c77f017934676591400eb5efbf40f0a68509c6ab23675",
+    "src/procurement.js": "7df3ee720ae224d60847a30b517a233804f98bfe6088ae999d3d7a49a20f21ad",
+    "src/procurement-http.js": "393a4e0bfc5fd793c18bb976f69cfbbb1ea3659e1aa0e5c1dd7d4aa792d3ce9f",
+    "src/supplier-protocol.js": "c42dcb46f91e809b163ee1a776d36770fc591573e04ab325aeee2fab2c6c7644",
+    "src/supplier-mcp.js": "97aba5ba7b096a1d2c38ca0c6deb337f37b8ed2b985b2a16334fe9f305342019",
+    "src/supplier-quote-store.js": "04ebaa7b1444ef3e3f19c7dd7a7e6188755ea7885be671068f213cdf583a67be",
+    "src/hosted-supplier-lab.js": "129e0e127256bf8eb924a899015e0d36aa1cbbf6279a0647abee54db7696e7d7"
+  },
+  "recordImage": {
+    "file": "web/demo-assets/guarded-checkout-20261105.png",
+    "sha256": "84f859a240e5854bf67e5190cdf096dc6214febf6eae5540806e6d85282e08d2"
+  },
+  "limitations": "PayPal amount records confirm sandbox payment states, not goods fulfillment or independently certified item quantities. No new process restart was injected in this run; earlier restart acceptance remains separate. Raw payer/card/session credentials are excluded."
+}

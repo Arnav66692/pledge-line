@@ -36,6 +36,10 @@ function numberMatches(text) {
   return [...text.matchAll(new RegExp(`\\b(${NUMBER_PATTERN})\\b`, 'gi'))].map((match) => ({ value: numberWords(match[1]), index: match.index, end: match.index + match[0].length }));
 }
 
+function quantityClausePrefix(text, index = text.length) {
+  return text.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.["'”’\])]*\s+|\b(?:but|however|while)\b/i).at(-1);
+}
+
 const ITEM_WORDS = '(?:t[- ]?shirts?|shirts?|tees|mugs?|tote bags?|bags?|posters?|flyers?|units?|pieces?|badges?|bottles?|kits?|meals?|blankets?|jackets?)';
 const ITEM_DESCRIPTOR = "(?:[abc](?:10|[0-9])\\b|[a-z]+(?:[-'][a-z]+)*)";
 const QUANTITY_ROLE_WORD = /^(?:prints?|printing|colou?rs?|logos?|designs?|sizes?|packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?|percent|percentage|per|each|of|for|with|at|by|on|under|over|between|before|after|and|or|to|from|than|instead|costs?|prices?|budget|usd|eur|gbp|cad|aud|jpy|dollars?|currency|shipping|fees?|delivery|dates?|times?|sku|january|february|march|april|may|june|july|august|september|october|november|december)$/i;
@@ -101,7 +105,7 @@ function numericRoleSpans(text) {
 }
 
 function propertyCount(text, index) {
-  const before = text.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+  const before = quantityClausePrefix(text, index);
   if (/\b(?:complete\s+)?(?:quantity|qty|count)(?:\s+(?:is|of|now|is now|should be))?\s*[:=]?\s*$/i.test(before)) return false;
   const property = lastMatch(/\b(?:with|having|featuring|features?|including|containing|contains?|equipped with|fitted with)\b/gi, before);
   return property >= 0 && property > quantityIntentIndex(before);
@@ -132,7 +136,15 @@ function replacementQuantityRole(before) {
 }
 
 function adjustedQuantityRole(before) {
-  return /\b(?:increase|decrease|raise|lower|reduce|change|revise|adjust|update|set|make)\s+(?:(?:the|this|our|that)\s+)?(?:order|purchase|quantity|qty|count)\s+(?:to|at|as)\s*$/i.exec(before);
+  return /\b(?:(?:increase|decrease|raise|lower|reduce|change|revise|adjust|update|set|make|lock)\s+(?:(?:the|this|our|that)\s+)?(?:order|purchase|quantity|qty|count)\s+(?:to|at|as)|make\s+(?:(?:the|this|our)\s+)?(?:order|purchase)|making)\s*$/i.exec(before);
+}
+
+function assertedQuantityRole(before) {
+  return /(?:^|[,;:]\s*)(?:the|our|this)\s+(?:new|current|approved|final)\s+(?:order|purchase)\s+is\s*$/i.exec(before);
+}
+
+function restatedQuantityRole(before) {
+  return /\b(?:specification|requirements)\s+for\s+all\s*$/i.exec(before);
 }
 
 function quantityIntentIndex(before) {
@@ -144,11 +156,12 @@ function quantityIntentIndex(before) {
       !/^\s+(?:of|for|was|is|had|contained|shows?)\b/i.test(before.slice(match.index + match[0].length));
   });
   // A later field noun cannot conceal negation attached to an actual use/set/buy verb.
-  return Math.max(roles.at(-1)?.index ?? -1, replacementQuantityRole(before)?.index ?? -1, adjustedQuantityRole(before)?.index ?? -1, roles.length ? -1 : lastMatch(QUANTITY_FIELD_ROLE, before));
+  const scoped = [replacementQuantityRole(before), adjustedQuantityRole(before), assertedQuantityRole(before), restatedQuantityRole(before)].filter(Boolean);
+  return Math.max(roles.at(-1)?.index ?? -1, ...scoped.map((match) => match.index), roles.length || scoped.length ? -1 : lastMatch(QUANTITY_FIELD_ROLE, before));
 }
 
 function currentQuantityRole(text, index) {
-  const before = text.slice(0, index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+  const before = quantityClausePrefix(text, index);
   const intent = quantityIntentIndex(before), replacement = replacementQuantityRole(before);
   const stockSource = lastMatch(/\bsource\s+(?:(?:currently|now|reportedly)\s+)?(?:has|have|lists?|shows?|stocks?|reports?|says?|offers?|can\s+(?:supply|provide))\b/gi, before);
   if (stockSource >= 0 && stockSource >= intent) return false;
@@ -160,10 +173,11 @@ function currentQuantityRole(text, index) {
 
 // A bounded purchase noun phrase needs a buyer count role; it is not a product catalog.
 // Separate packaging contents, prices, decorations, dimensions and calendar numbers remain ineligible.
-function genericQuantityCandidates(text, allowCitedPhrase = false) {
+function genericQuantityCandidates(text, allowCitedPhrase = false, inheritedBuyerRole = false) {
   const found = [];
   for (const number of numberMatches(text)) {
-    const before = text.slice(0, number.index).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
+    const before = quantityClausePrefix(text, number.index);
+    if (restatedQuantityRole(before) && !allowCitedPhrase && !inheritedBuyerRole) continue;
     if ((!allowCitedPhrase && (quantityIntentIndex(before) < 0 || lastMatch(/\b(?:deliver(?:y|ed)?|deadline|date|time|budget|cap|spend|shipping|fee|print|logo|design|colou?r|sku|size)\b/gi, before) > quantityIntentIndex(before))) || !currentQuantityRole(text, number.index) ||
       !numericRoleAllowed(text, number.index, number.end) || QUANTITY_PREFIX_ROLE.test(before)) continue;
     const after = text.slice(number.end), words = new RegExp(`^\\s+(${ITEM_DESCRIPTOR}(?:\\s+${ITEM_DESCRIPTOR}){0,20})`, 'i').exec(after);
@@ -176,8 +190,11 @@ function genericQuantityCandidates(text, allowCitedPhrase = false) {
     }
     const packageWord = /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?)$/i.test(phrase[0] ?? '');
     const packageEnd = number.end + words[0].indexOf(words[1]) + (phrase[0]?.length ?? 0);
+    const packageKind = { packs: 'pack', boxes: 'box', cases: 'case', cartons: 'carton', bundles: 'bundle', sets: 'set' }[phrase[0]?.toLowerCase()] ?? phrase[0]?.toLowerCase();
+    const declaredContents = packageWord && new RegExp(`^\\s+of\\s+(${ITEM_DESCRIPTOR}(?:\\s+${ITEM_DESCRIPTOR}){0,7}),\\s+with\\s+(${NUMBER_PATTERN})\\s+${ITEM_DESCRIPTOR}(?:\\s+${ITEM_DESCRIPTOR}){0,7}\\s+per\\s+${packageKind}\\b`, 'i').exec(text.slice(packageEnd));
+    const explicitPackageContents = declaredContents && !numberMatches(declaredContents[1]).length && !/\b(?:per|each|quantity|budget|price|cost|sku)\b/i.test(declaredContents[1]);
     const purchasedUnit = packageWord && (allowCitedPhrase || /\b(?:buy|order|purchase|procure|get)\s*$/i.test(before)) &&
-      /^\s*(?:[,;.!?]|$|\b(?:with|containing|each)\b)/i.test(text.slice(packageEnd));
+      (/^\s*(?:[,;.!?]|$|\b(?:with|containing|each)\b)/i.test(text.slice(packageEnd)) || explicitPackageContents);
     if (!phrase.length || phrase.length > 9 || phrase.some((word) => /^(?:suppliers?|vendors?)$/i.test(word)) || phrase.some((word, index) => (QUANTITY_ROLE_WORD.test(word) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(word)) && !/^of$/i.test(word) && !(purchasedUnit && index === 0) && !(index === phrase.length - 1 && index > 0 && /^(?:boxes|cases|cartons|bundles|sets)$/i.test(word))) ||
       /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)$/i.test(phrase[0]) && !purchasedUnit ||
       /^(?:percent|percentage|sizes?|prints?|printing|colou?rs?|logos?|designs?|sku|inch(?:es)?|centimeters?|centimetres?|mm|cm|hours?|days?|weeks?|months?|years?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(phrase.at(-1))) continue;
@@ -221,8 +238,8 @@ function quantityCandidates(text, priorQuantityKnown = false, allowCitedPhrase =
         numericRoleAllowed(text, match.index, match.index + match[1].length) && !/^\s+(?:colors?|colours?|prints?|designs?|sizes?|per\b|for each\b|on each\b|in each\b)/i.test(text.slice(end))) found.push({ value: numberWords(match[1]), index: match.index, end, objectUnit: true });
     }
   }
-  found.push(...genericQuantityCandidates(text, allowCitedPhrase || inheritedBuyerRole && shortQuantityReply(text)));
-  for (const match of text.matchAll(new RegExp(`\\b(?:quantity|qty|count)(?:\\s+(?:is|of|should be))?\\s*[:=]?\\s*(${NUMBER_PATTERN})\\b`, 'gi'))) {
+  found.push(...genericQuantityCandidates(text, allowCitedPhrase || inheritedBuyerRole && shortQuantityReply(text), inheritedBuyerRole));
+  for (const match of text.matchAll(new RegExp(`\\b(?:quantity|qty|count)(?:\\s+(?:is|of|at|to|should be))?\\s*[:=]?\\s*(${NUMBER_PATTERN})\\b`, 'gi'))) {
     const index = match.index + match[0].lastIndexOf(match[1]);
     if (!/\b(?:print|color|colour|design|size)\s*$/i.test(text.slice(0, match.index)) && numericRoleAllowed(text, index, index + match[1].length)) found.push({ value: numberWords(match[1]), index, end: index + match[1].length });
   }
@@ -234,11 +251,16 @@ function quantityCandidates(text, priorQuantityKnown = false, allowCitedPhrase =
     if (values.length === 1) found.push(values[0]);
   }
   const protectedSpans = numericRoleSpans(text);
-  return found.filter((item) => Number.isSafeInteger(item.value) && !protectedSpans.some((span) => item.index >= span.start && item.index < span.end) && !propertyCount(text, item.index) && !reportedBackgroundCount(text, item) && currentQuantityRole(text, item.index)).sort((a, b) => a.index - b.index);
+  return found.map((item) => ({ ...item, completeTotal: /\bmaking\s*$/i.test(quantityClausePrefix(text, item.index)) && /^\s+(?:in\s+)?total\b/i.test(text.slice(item.end)), setting: !!adjustedQuantityRole(quantityClausePrefix(text, item.index)) && !/\bmaking\s*$/i.test(quantityClausePrefix(text, item.index)) }))
+    .filter((item) => Number.isSafeInteger(item.value) && !/\b(?:add|remove|subtract)\s*$/i.test(quantityClausePrefix(text, item.index)) &&
+      (!/\bmaking\s*$/i.test(quantityClausePrefix(text, item.index)) || item.completeTotal) && !quantityProofHasMeasurementUnit(text.slice(numberMatches(text).find((number) => number.index === item.index)?.end ?? item.index + String(item.value).length, item.end).trim()) &&
+      !protectedSpans.some((span) => item.index >= span.start && item.index < span.end) && !propertyCount(text, item.index) && !reportedBackgroundCount(text, item) && currentQuantityRole(text, item.index)).sort((a, b) => a.index - b.index);
 }
 
 function selectCandidate(candidates, text) {
   if (!candidates.length) return null;
+  const lastSetting = candidates.filter((candidate) => candidate.completeTotal || candidate.setting).at(-1);
+  if (lastSetting) candidates = candidates.filter((candidate) => candidate.index >= lastSetting.index);
   const unique = [...new Set(candidates.map((item) => item.value))];
   if (unique.length === 1) return unique[0];
   const last = candidates.at(-1), previous = candidates.slice(0, -1).findLast((item) => item.value !== last.value);
@@ -333,6 +355,27 @@ function unresolvedQuantityUnit(text) {
     !/\b(?:currency|USD|EUR|GBP|CAD|AUD|JPY|dollars?|euros?)\b/i.test(clause));
 }
 
+function unresolvedQuantityAlternative(text, quantities) {
+  for (const match of text.matchAll(new RegExp(`\\beither\\s+(${NUMBER_PATTERN})\\s+or\\s+(${NUMBER_PATTERN})\\b`, 'gi'))) {
+    const before = quantityClausePrefix(text, match.index);
+    if (quantityIntentIndex(before) >= 0 && !BUDGET_WORD.test(before) && currentQuantityRole(text, match.index) &&
+      !quantities.some((candidate) => candidate.setting && candidate.index >= match.index + match[0].length)) return true;
+  }
+  return false;
+}
+
+function unresolvedQuantityDelta(text, quantities, priorQuantityKnown) {
+  if (!priorQuantityKnown || quantities.some((candidate) => candidate.completeTotal)) return false;
+  const spans = numericRoleSpans(text);
+  return [...text.matchAll(new RegExp(`\\b(?:add|remove|subtract)\\s+(${NUMBER_PATTERN})\\b`, 'gi'))].some((match) => {
+    const before = quantityClausePrefix(text, match.index), index = match.index + match[0].lastIndexOf(match[1]);
+    const unit = /^\s+([a-z][a-z'-]*)\b/i.exec(text.slice(index + match[1].length))?.[1];
+    return !/\b(?:not|never|no|don't|dont|shouldn't|shouldnt|mustn't|mustnt)\s*$/i.test(before) && currentQuantityRole(text, index) &&
+      !!unit && !QUANTITY_ROLE_WORD.test(unit) && !/^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(unit) &&
+      !spans.some((span) => index >= span.start && index < span.end) && !quantityProofHasMeasurementUnit(text.slice(index + match[1].length).trimStart());
+  });
+}
+
 function numericFieldContext(turns) {
   const rows = [];
   let quantity = null, budget = null, hadGoods = false, buyingContext = false, unitUnresolved = false;
@@ -341,6 +384,7 @@ function numericFieldContext(turns) {
     const bare = /^\s*([\d,]+(?:\.\d{1,2})?|[a-z -]+)\s*[.!]?\s*$/i.exec(text);
     const bareValue = bare ? numberWords(bare[1]) : NaN;
     if (unresolvedQuantityUnit(text)) { quantity = null; unitUnresolved = true; }
+    else if (unresolvedQuantityAlternative(text, quantities) || unresolvedQuantityDelta(text, quantities, quantity !== null)) quantity = null;
     else if (quantities.length && (!unitUnresolved || quantities.some((candidate) => candidate.objectUnit))) {
       quantity = selectCandidate(quantities, text);
       if (quantities.some((candidate) => candidate.objectUnit)) unitUnresolved = false;
@@ -439,6 +483,26 @@ function containsPositivePhrase(text, phrase) {
   return false;
 }
 
+function originalSpecificationCitation(quote, original) {
+  if (!quote || /\b(?:budget|cap|price|cost|quantity|qty|count|deadline|delivery|currency|supplier|vendor)\b/i.test(quote)) return false;
+  const descriptive = quote.match(/[a-z]+(?:[-'][a-z]+)*/gi)?.filter((word) => !/^(?:please|buy|order|need|want|require|purchase|procure|source|get|we|i|it|them|these|those|the|a|an|of|with|and|ml|cl|cm|mm|liters?|litres?|milliliters?|millilitres?)$/i.test(word)) ?? [];
+  if (descriptive.length < 2) return false;
+  return intentClauses(original).some((clause) => {
+    const index = clause.indexOf(quote);
+    if (index < 0) return false;
+    const end = index + quote.length;
+    return [...clause.matchAll(/\b(?:buy|order|need|needs|want|require|purchase|procure|source|get)\b/gi)].some((match) => {
+      const roleEnd = match.index + match[0].length, point = Math.max(index, roleEnd);
+      const principal = clause.slice(roleEnd).split(/[,;:]|\b(?:with|having|featuring|including|containing|under|budget|cap|sized|for|delivery|deliver)\b/i)[0];
+      const identity = principal.match(/[a-z]+(?:[-'][a-z]+)*/gi)?.at(-1);
+      return roleEnd < end && quantityIntentIndex(clause.slice(0, roleEnd)) === match.index && currentQuantityRole(clause, point) &&
+        !!identity && new RegExp(`\\b${identity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(quote) &&
+        lastMatch(/\b(?:budget|cap|price|cost|quantity|qty|count|deadline|deliver|delivery|date|time|currency|supplier|vendor)\b/gi, clause.slice(0, point)) < match.index &&
+        containsPositivePhrase(clause.slice(0, end), quote);
+    });
+  });
+}
+
 /** Project one explicit component replacement while keeping original quotes separate as provenance. */
 export function projectSpecification(specification, turns) {
   if (typeof specification !== 'string' || specification.length > 4000 || !Array.isArray(turns) || turns.length > 4 || turns.some((turn) => typeof turn !== 'string' || turn.length > 1000)) return null;
@@ -457,8 +521,14 @@ export function projectSpecification(specification, turns) {
   if (replacements.length !== 1) return null;
   const change = replacements[0], oldWords = change.old.toLowerCase().split(/\s+/), newWords = change.replacement.toLowerCase().split(/\s+/);
   const literal = (words, flags = 'gi') => new RegExp(`\\b${words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+')}\\b`, flags);
-  if (oldWords.length < 2 || newWords.length < 2 || oldWords.at(-1) !== newWords.at(-1) || literal(oldWords, 'i').test(change.replacement) || literal(newWords, 'i').test(change.old)) return null;
+  if (oldWords.length < 2 || newWords.length < 2 || /\b(?:if|when|unless|provided|assuming|after|before|until|not|never|no)\b/i.test(change.clause) || literal(oldWords, 'i').test(change.replacement) || literal(newWords, 'i').test(change.old)) return null;
   const oldSources = [...change.earlier.matchAll(literal(oldWords))];
+  if (!oldSources.length) {
+    const objects = quantityCandidates(change.earlier).filter((candidate) => candidate.objectUnit);
+    if (new Set(objects.map((candidate) => candidate.index)).size !== 1 || !hasBuyingContext(change.earlier) || !specification.includes(change.clause)) return null;
+    return specification.replaceAll(change.clause, change.replacement);
+  }
+  if (oldWords.at(-1) !== newWords.at(-1)) return null;
   if (oldSources.length !== 1) return null;
   const oldSource = oldSources[0], before = change.earlier.slice(0, oldSource.index).split(/[.!?;\n]/).at(-1);
   if (!hasBuyingContext(before) || !containsPositivePhrase(before + oldSource[0], change.old)) return null;
@@ -494,13 +564,15 @@ export function latestSourceIssues(evidence, turns, specification, localDelivery
       if (CLOCK_ANCHOR.test(deliveryClause) || deliveryChange && /\btime\b/i.test(clause) && !/\btime\s*zone\b/i.test(clause)) latest.delivery_time = index;
       if (hasZoneAnchor(deliveryClause) || deliveryChange && /\b(?:timezone|time zone|zone|offset)\b/i.test(clause)) latest.time_zone = index;
     }
-    if (index === 0 && GOODS.test(text) || clauses.some((clause) => specificationUpdate(clause, previous))) latest.specification = index;
+    const unknownMaterialEdit = index > 0 && clauses.some((clause) => !retainedClause(clause) && /^\s*(?:use|replace|switch|change|revise|update)\b/i.test(clause) && !/^\s*use\s+(?:the\s+)?(?:first|second|earlier|later)\s+occurrence\b/i.test(clause) &&
+      !/\b(?:quantity|qty|count|budget|cap|ceiling|limit|currency|deliver|delivery|deadline|date|time|timezone|zone|supplier|vendor|split|order|purchase)\b/i.test(clause));
+    if (index === 0 && (GOODS.test(text) || originalSpecificationCitation(evidence.specification, text)) || unknownMaterialEdit || clauses.some((clause) => specificationUpdate(clause, previous))) latest.specification = index;
     previous += '\n' + text;
   }
   const sourceField = { quantity: 'quantity', budget: 'budget', specification: 'specification', delivery_date: 'delivery', delivery_time: 'delivery', time_zone: 'delivery' };
   const proofChecks = { quantity: (text) => quantityIsGrounded(context.at(-1)?.quantity, text, turns),
     budget: (text) => budgetCandidates(text).length > 0 || /^\s*\d+(?:\.\d{1,2})?\s*$/.test(text),
-    specification: (text) => SPEC_FEATURE.test(text) || new RegExp(`\\b${ITEM_WORDS}\\b`, 'i').test(text),
+    specification: (text) => SPEC_FEATURE.test(text) || new RegExp(`\\b${ITEM_WORDS}\\b`, 'i').test(text) || latest.specification === 0 && originalSpecificationCitation(text, turns[0]) || (() => { const projected = projectSpecification(text, turns); return projected !== null && projected !== text; })(),
     delivery_date: (text) => DATE_ANCHOR.test(text), delivery_time: (text) => CLOCK_ANCHOR.test(text), time_zone: (text) => hasZoneAnchor(text) };
   for (const [field, index] of Object.entries(latest)) {
     if (field === 'quantity' && verifiedQuantity) continue;
@@ -537,7 +609,7 @@ function quantityProofHasMeasurementUnit(goods) {
   const unit = /^(?:mm|cm|km|kg|mg|ml|cl|oz|ft|m|g|l|inch(?:es)?|foot|feet|yards?|meters?|metres?|centimeters?|centimetres?|millimeters?|millimetres?|kilometers?|kilometres?|liters?|litres?|milliliters?|millilitres?|kilograms?|grams?|milligrams?|ounces?|pounds?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|degrees?|celsius|fahrenheit)\b/i.exec(goods);
   if (!unit) return false;
   // Uppercase M/L before apparel is a size descriptor; lowercase or other units remain measurements.
-  return !/^[ML]$/.test(unit[0]) || !/^(?:[a-z]+(?:[-'][a-z]+)*\s+){0,6}(?:t[- ]?shirts?|shirts?|tees|jackets?)$/i.test(goods.slice(unit[0].length).trimStart());
+  return !/^[ML]$/.test(unit[0]) || !/^(?:[a-z]+(?:[-'][a-z]+)*\s+){0,6}(?:t[- ]?shirts?|shirts?|tees|jackets?|hoodies?|sweaters?|jerseys?|uniforms?|coats?|vests?|trousers?|pants|shorts|socks|gloves?|hats?|caps?|aprons?|garments?|apparel)$/i.test(goods.slice(unit[0].length).trimStart());
 }
 
 function quantityProofClauses(text) {
@@ -615,17 +687,34 @@ export function quantityProofMatches(proof, value, evidence, turns) {
 export function quantityIsGrounded(value, evidence, turns = [evidence]) {
   const context = numericFieldContext(turns);
   if (!Number.isSafeInteger(value) || !evidence || context.at(-1)?.quantity !== value) return false;
+  const sourceBound = context.some(({ text, quantities }) => quantities.some((candidate) => {
+    if (candidate.value !== value || !candidate.objectUnit) return false;
+    for (let start = text.indexOf(evidence); start >= 0; start = text.indexOf(evidence, start + 1)) if (candidate.index >= start && candidate.end <= start + evidence.length) return true;
+    return false;
+  }));
   const cited = quantityCandidates(evidence, context.some((row) => row.quantities.length), true);
-  return cited.some((candidate) => candidate.value === value && (!candidate.generic || context.some(({ text: turn, quantities }) => quantities.some((actual) => {
+  return sourceBound || cited.some((candidate) => candidate.value === value && (!candidate.generic || context.some(({ text: turn, quantities }) => quantities.some((actual) => {
     if (actual.value !== value) return false;
     const whole = turn.slice(actual.index, actual.end), citation = evidence.slice(candidate.index, candidate.end);
     return whole === citation || whole.startsWith(citation) && /^\s/.test(whole.slice(citation.length));
   })))) || /^\s*[\d,]+\s*$/.test(evidence) && numberWords(evidence) === value;
 }
 
+function inactiveForeignBudgetMention(evidence, mention, turns) {
+  const contexts = [];
+  for (const turn of turns) for (let start = turn.indexOf(evidence); start >= 0; start = turn.indexOf(evidence, start + 1)) {
+    const index = start + mention.index, before = quantityClausePrefix(turn, index), after = turn.slice(index).split(/[;!?\n]|\.["'”’\])]*\s+/)[0];
+    const clause = before + after;
+    const replacement = new RegExp(`^\\s*(?:(?:please|actually|now)\\s*[:,]?\\s*)?replace\\s+(.{1,80}?)\\s+with\\s+(?:a\\s+)?(?:(?:final|total|all[- ]in)\\s+)?(?:budget|cap|ceiling|limit)\\s+(?:(?:of|is|at|to)\\s+)?USD\\s*${NUMBER_PATTERN}(?:\\s+total)?\\.?\\s*$`, 'i').exec(clause);
+    const replaced = replacement && before.length < replacement.index + replacement[0].toLowerCase().indexOf(' with ') && !/\b(?:if|when|unless|provided|assuming|not|never|no)\b/i.test(clause);
+    contexts.push(discardedBudgetPrefix(before) || !!replaced);
+  }
+  return contexts.length > 0 && contexts.every(Boolean);
+}
+
 export function budgetIsGrounded(cents, evidence, turns = [evidence]) {
   const activeForeignMention = [...String(evidence ?? '').matchAll(/[€£¥]|\b(?:EUR|GBP|CAD|AUD|JPY)(?![A-Za-z_])|\b(?:euros?|pounds?|yen|Canadian dollars|Australian dollars)\b/gi)].some((match) =>
-    !discardedBudgetPrefix(String(evidence).slice(Math.max(0, match.index - 90), match.index)));
+    !inactiveForeignBudgetMention(String(evidence), match, turns));
   if (activeForeignMention) return false;
   if (!Number.isSafeInteger(cents) || !evidence || /(?:\$|\bUSD)\s*-|(?:^|\s)-\d/.test(evidence)) return false;
   return goalCurrencyContext(turns).currency === 'USD' && latestFieldValue(turns, 'budget') === cents && (budgetCandidates(evidence).some((candidate) => candidate.value === cents && (!candidate.currency || candidate.currency === 'USD')) || /^\s*[\d,]+(?:\.\d{1,2})?\s*$/.test(evidence) && Math.round(numberWords(evidence) * 100) === cents);
@@ -640,7 +729,7 @@ export function splitPolicy(turns) {
   const information = '(?:quotes?|prices?|pricing|costs?|totals?|information|details?|specifications?|status|history|data|plans?|briefs?|documents?|files?)';
   const orderObject = `(?:this|the)\\s+(?:order|purchase)\\b(?!(?:['’]s)?\\s+${information}\\b)`;
   const passiveDistribution = `(?:splitting\\s+${orderObject}(?:\\s+${distributionTarget})?|(?:dividing|distributing|sharing)\\s+${orderObject}\\s+${distributionTarget})`;
-  const activeOrder = `(?:share|split|divide|distribute|fulfill|fulfil)\\s+${orderObject}`;
+  const activeOrder = `(?:share|split|divide|distribute|fill|fulfill|fulfil)\\s+${orderObject}`;
   const distributionObject = `(?:${orderObject}\\s+)?${distributionTarget}`;
   const negatives = [
     /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
@@ -763,6 +852,23 @@ export function resolveLocalDelivery({ date, time, timeZone, offset = '' } = {})
 
 
 let cityClockIndex = null;
+const cityAliasCache = new Map();
+function ianaCityAliases(name) {
+  const city = name.replaceAll(' ', '_');
+  if (!/^[A-Za-z][A-Za-z_-]{1,60}$/.test(city)) return [];
+  const key = city.toLowerCase();
+  if (cityAliasCache.has(key)) return cityAliasCache.get(key);
+  const zones = [...new Set(['Africa', 'America', 'Antarctica', 'Arctic', 'Asia', 'Atlantic', 'Australia', 'Europe', 'Indian', 'Pacific', 'Etc'].map((region) => canonicalZone(`${region}/${city}`)).filter(Boolean))];
+  if (cityAliasCache.size >= 128) cityAliasCache.clear();
+  cityAliasCache.set(key, zones);
+  return zones;
+}
+
+function explicitCityClockReferences(text) {
+  return [...text.matchAll(/\b([A-Za-z][A-Za-z_-]*)\s+(?:time(?:\s*zone)?|timezone)\b|\b(?:time\s*zone|timezone)\s*(?:(?:is|of)\s+|[:=]\s*)?([A-Za-z][A-Za-z_-]*)\b/gi)]
+    .filter((match) => ianaCityAliases(match[1] ?? match[2]).length > 0);
+}
+
 function namedCityClockZones(text) {
   if (!/\b(?:time|timezone|zone)\b/i.test(text)) return [];
   if (cityClockIndex === null) {
@@ -776,9 +882,13 @@ function namedCityClockZones(text) {
     const names = [...aliases.keys()].sort((a, b) => b.length - a.length).map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     cityClockIndex = { aliases, pattern: new RegExp(`\\b(${names.join('|')})\\s+(?:time(?:\\s*zone)?|timezone)\\b|\\b(?:time\\s*zone|timezone)\\s+(?:is\\s+|of\\s+)?(${names.join('|')})\\b`, 'gi') };
   }
-  return [...new Set([...text.matchAll(cityClockIndex.pattern)].flatMap((match) => [...cityClockIndex.aliases.get((match[1] ?? match[2]).toLowerCase())]))];
+  const names = explicitCityClockReferences(text).map((match) => match[1] ?? match[2]);
+  return [...new Set([...text.matchAll(cityClockIndex.pattern)].flatMap((match) => [...cityClockIndex.aliases.get((match[1] ?? match[2]).toLowerCase())]).concat(names.flatMap(ianaCityAliases)))];
 }
 
+export function explicitCityClockZones(text) {
+  return namedCityClockZones(text);
+}
 
 const NON_NAMED_TIME_WORDS = new Set(('instead unchanged please am pm delivery local organization organisation organizational company org configured default current same given supplied requested specified exact clock our your my their its own server wall noon midnight what which the a this that time zone for to as at details information setting settings').split(' '));
 
@@ -798,7 +908,7 @@ export function hasUnknownZoneReference(text) {
     const name = match[1].toLowerCase(), end = match.index + match[0].length;
     const nameStart = match.index + match[0].lastIndexOf(match[1]), nameEnd = nameStart + match[1].length;
     if (/^(?:utc|gmt)-$/.test(name) && /^\d{2}:\d{2}\b/.test(text.slice(end))) return false;
-    if (NON_NAMED_TIME_WORDS.has(name) || aliases.has(name) || spans.some(([start, stop]) => nameStart >= start && nameEnd <= stop)) return false;
+    if (NON_NAMED_TIME_WORDS.has(name) || aliases.has(name) || ianaCityAliases(match[1]).length === 1 || spans.some(([start, stop]) => nameStart >= start && nameEnd <= stop)) return false;
     // Possessive generic wording describes the configured organization clock, not a city alias.
     if (name === 's' && /\b(?:organi[sz]ation|company|org)'s\s+time(?:\s*zone)?$/i.test(text.slice(Math.max(0, match.index - 25), end))) return false;
     return true;
@@ -820,6 +930,7 @@ function deniedDeliveryZone(text) {
   const references = [
     ...normalized.matchAll(new RegExp(ZONE_ANCHOR.source, 'gi')),
     ...(cityClockIndex ? [...normalized.matchAll(cityClockIndex.pattern)] : []),
+    ...explicitCityClockReferences(normalized),
     ...normalized.matchAll(/\b(?:organi[sz]ation(?:'s)?|company|configured|default)\s+time\s*zone\b/gi),
   ];
   return references.some((match) => {

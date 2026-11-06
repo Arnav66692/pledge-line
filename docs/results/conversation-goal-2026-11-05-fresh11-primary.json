@@ -1,0 +1,116 @@
+{
+  "sourceCommit": "836a074be084edf3bb8e744c81b21b60ebaea73c",
+  "fixtureSha256": "18cbc3ef93e4ba4ce5e063fc3024a3d3982ba437ae24954641e21eee92cd41c5",
+  "provenance": "Fresh developer-synthetic cases. Author was blind to implementation and current-round outputs but read the complete protocol, including historical aggregates through fresh-ten. An independent pre-inference audit approved the original fixture without corrections; all 93 required fact instances had a preregistered literal in buyer history. This is not external-user evidence or an external holdout. All 36 precommitted model calls ran once without retry. Runtime tests ran concurrently; latency is not an isolated speed benchmark.",
+  "kind": "summary",
+  "completed": true,
+  "modelRun": true,
+  "summary": {
+    "deterministic_explicit_fields": {
+      "tasks": 24,
+      "correctTasks": 14,
+      "taskAccuracyWilson95": [
+        0.388347,
+        0.755324
+      ],
+      "turns": 36,
+      "correctTurns": 25,
+      "appropriateClarifications": 7,
+      "exactFields": 98,
+      "scoredFields": 135,
+      "wrongConfidentFields": 2,
+      "prematureReadyTurns": 2,
+      "authorityViolations": 0,
+      "malformedOutputs": 0,
+      "requiredFacts": 93,
+      "factsPresent": 67,
+      "forbiddenPositiveAttributes": 0,
+      "errorsOrNotRun": 0,
+      "modelCalls": 0,
+      "measuredLatencyTurns": 36,
+      "meanLatencyMs": 8,
+      "knownSharedScopeDeltaNanos": {
+        "anthropic": 0,
+        "jev": 0
+      },
+      "unmeasuredCostTurns": 0,
+      "byCategory": {
+        "explicit_controls": {
+          "tasks": 6,
+          "correct": 5
+        },
+        "context_discourse": {
+          "tasks": 6,
+          "correct": 2
+        },
+        "clarification": {
+          "tasks": 6,
+          "correct": 4
+        },
+        "timezone_negation_goods": {
+          "tasks": 6,
+          "correct": 3
+        }
+      }
+    },
+    "main_agent": {
+      "tasks": 24,
+      "correctTasks": 11,
+      "taskAccuracyWilson95": [
+        0.278913,
+        0.649251
+      ],
+      "turns": 36,
+      "correctTurns": 23,
+      "appropriateClarifications": 8,
+      "exactFields": 75,
+      "scoredFields": 135,
+      "wrongConfidentFields": 0,
+      "prematureReadyTurns": 0,
+      "authorityViolations": 0,
+      "malformedOutputs": 0,
+      "requiredFacts": 93,
+      "factsPresent": 51,
+      "forbiddenPositiveAttributes": 0,
+      "errorsOrNotRun": 0,
+      "modelCalls": 36,
+      "measuredLatencyTurns": 36,
+      "meanLatencyMs": 5256,
+      "knownSharedScopeDeltaNanos": {
+        "anthropic": 408758000,
+        "jev": 0
+      },
+      "unmeasuredCostTurns": 0,
+      "byCategory": {
+        "explicit_controls": {
+          "tasks": 6,
+          "correct": 5
+        },
+        "context_discourse": {
+          "tasks": 6,
+          "correct": 2
+        },
+        "clarification": {
+          "tasks": 6,
+          "correct": 1
+        },
+        "timezone_negation_goods": {
+          "tasks": 6,
+          "correct": 3
+        }
+      }
+    }
+  },
+  "paired": {
+    "modelWins": 0,
+    "baselineWins": 3,
+    "ties": 21,
+    "signTestTwoSidedP": 0.25,
+    "controlsNoRegression": true,
+    "controlsAllCorrect": false,
+    "improvementWithinThisSet": false
+  },
+  "costAttribution": "Shared allocation deltas; concurrent outside app inference was not excluded. These are not verified provider balances or exclusive charges.",
+  "limitation": "Small independently authored synthetic tasks. Lexical goods/source checks are not complete semantic fidelity, customer validation, economic benefit or a judging score.",
+  "recordedAt": "2026-11-06T06:14:16.138Z"
+}

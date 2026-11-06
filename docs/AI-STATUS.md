@@ -1,5 +1,7 @@
 # API connection and billing evidence, November 4, 2026
 
+This is a chronological historical record. Its earlier outstanding-work and allocation statements describe their recorded versions. See [current AI evidence](AI-VALUE-EVIDENCE-2026-11-05.md), the [working demonstration](DEMO.md), and the [later completed guarded checkout](results/guarded-checkout-2026-11-05.json) for subsequent results. Earlier failures and spending stops remain retained.
+
 The explicit Anthropic API key authenticated against the models endpoint and then passed one separately authorized, fixed Haiku 5.5 smoke request. The request was deliberately independent of the held-out composed-agent evaluation. No routing labels, negotiation prompts or evaluation thresholds were changed using its result.
 
 | Observed field | Result at the time of the smoke |

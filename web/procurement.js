@@ -4,7 +4,7 @@
   const byId = (id) => document.getElementById(id);
   const els = Object.fromEntries(['request', 'specification', 'quantity', 'budget', 'deadline', 'allow-split', 'scenario', 'find-plan', 'request-status', 'error',
     'goal-intake', 'goal', 'draft-goal', 'new-goal', 'goal-status', 'goal-assumptions', 'goal-history', 'goal-history-list',
-    'goal-reference', 'goal-evidence', 'goal-evidence-list', 'deadline-choice', 'deadline-occurrence',
+    'goal-reference', 'goal-evidence', 'goal-evidence-list', 'goal-brief-guard', 'use-manual-limits', 'deadline-choice', 'deadline-occurrence',
     'quotes-summary', 'quotes-caption', 'empty-quotes', 'quote-results', 'quotes', 'rejections', 'rejection-list', 'plan-panel', 'state-label', 'plan-empty',
     'plan-details', 'plan-total', 'plan-budget', 'allocations', 'plan-expiry', 'terms-specification', 'terms-request', 'terms-disclosure', 'terms-hash',
     'approval-form', 'approval-check', 'approval-consent', 'approve', 'settlement', 'settlement-title', 'settlement-list', 'settlement-note',
@@ -19,6 +19,9 @@
   const session = { id: null, secret: null, state: null, busy: false, briefChanged: false, approvalUnknown: false,
     restoreBlocked: false, restoreRetryable: false, commerce: { payments: configuredMode, sandboxWritesEnabled: false }, legControls: [] };
   let briefRevision = 0;
+  // Erasing a changed goal must not silently make the previous manual limits current again.
+  let goalPending = false;
+  let readyGoalText = '';
   const goalConversation = [];
   const sourceFields = ['quantity', 'budget', 'specification', 'delivery', 'split'];
   const missingFields = ['quantity', 'budget', 'specification', 'delivery_date', 'delivery_time', 'time_zone', 'split_policy', 'source_evidence'];
@@ -100,6 +103,7 @@
   }
 
   const newPlanBlocked = () => session.busy || session.approvalUnknown || session.restoreBlocked || unfinishedPurchase();
+  const unresolvedGoal = () => goalPending || els.goal.value.trim() !== readyGoalText;
   const nextLeg = () => list(session.state?.checkout?.legs).find((leg) => leg.status !== 'confirmed');
   const sandboxWritesAllowed = () => networkMode() && session.commerce?.sandboxWritesEnabled === true && !session.restoreBlocked;
   const placeholderMerchants = () => networkMode() && session.commerce?.sandboxWriteBlockedReason === 'placeholder_merchants';
@@ -189,10 +193,14 @@
 
   function updateControls() {
     const canApprove = session.state?.status === 'awaiting_approval' && session.state?.proposal && !session.busy && !session.restoreBlocked &&
-      !session.briefChanged && !session.approvalUnknown && !approvalExpired();
+      !session.briefChanged && !unresolvedGoal() && !session.approvalUnknown && !approvalExpired();
     // Keep this order in view until an uncertain payment is reconciled. Starting another session must not become
     // an accidental way to repeat a purchase whose first answer was lost.
-    els.findPlan.disabled = newPlanBlocked();
+    els.findPlan.disabled = newPlanBlocked() || unresolvedGoal();
+    els.goalBriefGuard.hidden = !unresolvedGoal();
+    els.useManualLimits.disabled = newPlanBlocked() || !unresolvedGoal();
+    if (unresolvedGoal()) els.findPlan.setAttribute('aria-describedby', 'goal-brief-note');
+    else els.findPlan.removeAttribute('aria-describedby');
     for (const field of [els.specification, els.quantity, els.budget, els.deadline, els.deadlineOccurrence, els.allowSplit, els.scenario]) field.disabled = session.busy || (networkMode() && unfinishedPurchase());
     els.goal.disabled = newPlanBlocked();
     els.draftGoal.disabled = newPlanBlocked() || !els.goal.value.trim() || els.goal.value.length > 1000 || priorBuyerGoals(els.goal.value.trim()).length > 3;
@@ -553,7 +561,7 @@
     briefRevision += 1;
     if (session.state) session.briefChanged = true;
     els.approvalCheck.checked = false;
-    if (session.state) els.requestStatus.textContent = message;
+    if (session.state && els.requestStatus.textContent !== message) els.requestStatus.textContent = message;
     updateControls();
   }
 
@@ -640,16 +648,21 @@
 
   els.goal.addEventListener('input', () => {
     if (unfinishedPurchase() || session.restoreBlocked || session.approvalUnknown) return;
+    if (!goalPending && els.goal.value.trim() === readyGoalText) return;
+    const newlyPending = !goalPending;
+    goalPending = true;
     invalidateBrief('Your buying goal changed. Draft and review the limits, then find a new plan before approving.');
-    els.goalStatus.textContent = 'Draft the limits, then review and edit every field before requesting quotes.';
+    if (newlyPending) els.goalStatus.textContent = 'Draft the limits for this goal, or review the fields below and choose Use manual limits.';
     els.goalAssumptions.hidden = true;
     els.goalAssumptions.replaceChildren();
     renderGoalEvidence(null);
-    if (priorBuyerGoals(els.goal.value.trim()).length > 3) els.goalStatus.textContent = 'This conversation has four buyer messages. Start a new buying goal with the confirmed limits, or edit the limits below yourself.';
+    if (priorBuyerGoals(els.goal.value.trim()).length > 3 && newlyPending) els.goalStatus.textContent = 'This conversation has four buyer messages. Start a new buying goal with the confirmed limits, or review the fields below and choose Use manual limits.';
   });
 
   els.newGoal.addEventListener('click', () => {
     if (newPlanBlocked()) return;
+    goalPending = true;
+    readyGoalText = '';
     goalConversation.length = 0;
     els.goal.value = '';
     els.goalAssumptions.hidden = true;
@@ -657,8 +670,23 @@
     renderGoalContext();
     renderGoalEvidence(null);
     invalidateBrief('A new buying goal needs fresh quotes and separate exact-plan approval.');
-    els.goalStatus.textContent = 'New buying goal started. Describe it above, or keep editing the visible limits below. The previous purchase record stays retained.';
+    els.goalStatus.textContent = 'Describe the new buying goal above. Draft its limits, or review the previous limits below and choose Use manual limits.';
     els.goal.focus();
+  });
+
+  els.useManualLimits.addEventListener('click', () => {
+    if (newPlanBlocked() || !unresolvedGoal()) return;
+    goalPending = false;
+    readyGoalText = '';
+    goalConversation.length = 0;
+    els.goal.value = '';
+    els.goalAssumptions.hidden = true;
+    els.goalAssumptions.replaceChildren();
+    renderGoalContext();
+    renderGoalEvidence(null);
+    invalidateBrief('Review the manual limits and find a new plan before approving a purchase.');
+    els.goalStatus.textContent = 'Using the manual limits below. The buying conversation was cleared. Review every field before choosing Find a plan.';
+    els.specification.focus();
   });
 
   els.deadline.addEventListener('input', () => updateDeadlineChoices());
@@ -670,6 +698,7 @@
     if (!goal || goal.length > 1000) { els.goalStatus.textContent = 'Describe the buying goal in up to 1000 characters, or enter the limits below yourself.'; return; }
     const priorGoals = priorBuyerGoals(goal);
     if (priorGoals.length > 3) { els.goalStatus.textContent = 'This conversation has four buyer messages. Start a new buying goal with the confirmed limits, or edit the limits below yourself.'; return; }
+    goalPending = true;
     invalidateBrief('A new buying goal is being drafted. The existing plan is not approved by this request.');
     const revision = briefRevision;
     session.busy = true;
@@ -699,6 +728,8 @@
       els.deadline.value = rfq.localDeadline;
       updateDeadlineChoices(new Date(rfq.deadline).getTime());
       els.allowSplit.checked = rfq.allowSplit;
+      readyGoalText = goal;
+      goalPending = false;
       const assumptions = { currency_usd: 'The budget was interpreted as USD. Check the currency and amount.',
         single_supplier_default: 'No split permission was supplied, so the draft requires one supplier.' };
       for (const assumption of result.assumptions) els.goalAssumptions.append(node('li', assumptions[assumption]));
@@ -706,13 +737,13 @@
       els.goalStatus.textContent = 'Limits drafted only. Review the quantity, USD budget, specification, local delivery time and split permission below, then choose Find a plan when they are correct.';
       els.specification.focus();
     } catch (problem) {
-      els.goalStatus.textContent = `${String(problem.message || 'Drafting is unavailable.').slice(0, 500)} Enter or edit the limits below yourself.`;
+      els.goalStatus.textContent = `${String(problem.message || 'Drafting is unavailable.').slice(0, 500)} Review the fields below and choose Use manual limits to continue without a draft.`;
     } finally { session.busy = false; updateControls(); }
   });
 
   els.request.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (newPlanBlocked()) return;
+    if (newPlanBlocked() || unresolvedGoal()) return;
     let brief;
     try { brief = readBrief(); } catch (problem) { error(problem.message); return; }
     error('');

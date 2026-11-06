@@ -1,0 +1,192 @@
+{
+  "kind": "retrospective_supplementary_routing_comparison",
+  "createdAt": "2026-11-06T06:18:30.923Z",
+  "claim": "Stored composed Anthropic+Jev V4 responses are compared with a new local execution of the unchanged preexisting deterministic rules router on the exact same frozen examples and labels. This is not fresh current-AI validation.",
+  "inputs": {
+    "fixtureSha256": "66ba675a25b87feb42fce70c8d2dbb58cd2d9833579e9335043e4f8133dd2f74",
+    "observedAIReportSha256": "5c8f4014438f61b41099659037749485d9c6eec7162fda59a850c565707168eb",
+    "observedAIStartedAt": "2026-11-05T07:12:59.985Z",
+    "observedAIFinishedAt": "2026-11-05T07:14:36.860Z",
+    "observedAIOriginalPass": true,
+    "fixtureUnchanged": true,
+    "originalReportUnchanged": true
+  },
+  "audit": {
+    "method": "Independent static recalculation from all 40 retained per-case records; every expected intent checked against the frozen fixture and each stored AI result/provider count checked against the original V4 report. Module hashes checked against current bytes and the recorded pre-V4 Git snapshot. No application arm, API, database, private environment file or network request was executed during this audit.",
+    "routingCases": 30,
+    "pendingConsentCases": 10,
+    "recalculatedCorrect": {
+      "rules": 23,
+      "observedComposedAI": 29
+    },
+    "recalculatedWrongMutationRouteClassifications": {
+      "rules": 5,
+      "observedComposedAI": 0
+    },
+    "paired": {
+      "bothCorrect": 23,
+      "observedAIOnlyCorrect": 6,
+      "rulesOnlyCorrect": 0,
+      "bothIncorrect": 1
+    }
+  },
+  "method": {
+    "baselineFunction": "rulesRoute(text, state = {}) from src/router.js",
+    "routingInput": "rulesRoute(item.text, { verified: true }); no pendingKind, lastSaid, pauseOffered, or conversation history",
+    "consentGuard": "Return unclear with amountDollars 0 before rulesRoute or any provider when state.pendingKind is present, preserving the V4 code-only state gate. This is a shared gate check, not evidence of model value.",
+    "oracle": "Unchanged fixture.routing[].intent. Every stored report expected label is checked against that oracle; consent expected is unclear under the original protocol.",
+    "scoring": "Exact intent match and wrong non-unclear mutation routes, matching the original V4 contract. Amount outputs are retained and compared only diagnostically because V4 has no independent expected-amount labels. No amount oracle is derived from stored model output.",
+    "excludedAdditions": "No new intent-clarity guard, pattern tuning, new examples, label edits, case exclusion, model rerun, or provider calls.",
+    "latency": "Rules latency is a new local single-pass timing with millisecond rounding; AI latency is the historical report. These are descriptive, not controlled performance measurements."
+  },
+  "metrics": {
+    "rulesLocalRetrospective": {
+      "routingCases": 30,
+      "correct": 23,
+      "accuracy": 0.7666666666666667,
+      "wrongMutationRoutes": 5,
+      "unclearOnClearRequests": 1,
+      "consentCases": 10,
+      "consentCasesUnclear": 10,
+      "consentProviderRequests": 0,
+      "providerCalls": {
+        "anthropic": 0,
+        "jev": 0
+      },
+      "medianRoutingMs": 0,
+      "p95RoutingMs": 2,
+      "routingLatencySamples": 30
+    },
+    "composedAIObservedV4": {
+      "routingCases": 30,
+      "correct": 29,
+      "accuracy": 0.9666666666666667,
+      "wrongMutationRoutes": 0,
+      "unclearOnClearRequests": 1,
+      "consentCases": 10,
+      "consentCasesUnclear": 10,
+      "consentProviderRequests": 0,
+      "providerCalls": {
+        "anthropic": 25,
+        "jev": 30
+      },
+      "medianRoutingMs": 3465,
+      "p95RoutingMs": 4512,
+      "routingLatencySamples": 30
+    },
+    "paired": {
+      "bothCorrect": 23,
+      "observedAIOnlyCorrect": 6,
+      "rulesOnlyCorrect": 0,
+      "bothIncorrect": 1,
+      "sameIntent": 23,
+      "differentIntent": 7,
+      "netAdditionalCorrectObservedAI": 6,
+      "accuracyDifferencePercentagePoints": 19.999999999999996,
+      "amountDollarsEqual": 29,
+      "amountDollarsDifferent": 1
+    }
+  },
+  "localRetrospectiveExecution": {
+    "startedAt": "2026-11-06T06:18:30.662Z",
+    "finishedAt": "2026-11-06T06:18:30.822Z",
+    "apiCalls": 0,
+    "apiSpendUsd": 0,
+    "networkAttempts": [],
+    "providerClientsConstructed": 0,
+    "databaseAccess": false,
+    "privateEnvironmentFilesRead": false,
+    "freshAIInference": false
+  },
+  "sourceProvenance": {
+    "preV4GitCommit": {
+      "hash": "290d2f3bb9e2e0bce65387a6a30c67148f408ce5",
+      "authoredAt": "2026-11-04T18:38:42-08:00",
+      "committedAt": "2026-11-04T18:38:42-08:00",
+      "subject": "feat: add guarded AI and durable sandbox checkout",
+      "beforeObservedV4Run": true
+    },
+    "rulesRoutePreexistence": {
+      "firstGitCommit": "8756502",
+      "authoredAt": "2026-11-01T23:32:15-08:00",
+      "evidence": "git log --reverse -S 'export function rulesRoute' -- src/router.js"
+    },
+    "localProjectModuleClosure": [
+      {
+        "path": "src/router.js",
+        "currentSha256": "484bbeaff5e48bb3b1bb8572b1f02454719e637e3821d7b560839d4315c1b45e",
+        "recordedV4Sha256": "484bbeaff5e48bb3b1bb8572b1f02454719e637e3821d7b560839d4315c1b45e",
+        "matchesRecordedV4": true,
+        "preV4GitSha256": "484bbeaff5e48bb3b1bb8572b1f02454719e637e3821d7b560839d4315c1b45e",
+        "unchangedFromPreV4Git": true,
+        "role": "executed rules baseline dependency"
+      },
+      {
+        "path": "src/amount.js",
+        "currentSha256": "781da2c3ac41199820e3dc7f0d9c16fda765dc2aa40bc52948722f991be17dcd",
+        "recordedV4Sha256": "781da2c3ac41199820e3dc7f0d9c16fda765dc2aa40bc52948722f991be17dcd",
+        "matchesRecordedV4": true,
+        "preV4GitSha256": "781da2c3ac41199820e3dc7f0d9c16fda765dc2aa40bc52948722f991be17dcd",
+        "unchangedFromPreV4Git": true,
+        "role": "executed rules baseline dependency"
+      },
+      {
+        "path": "src/say.js",
+        "currentSha256": "92905587c2b82867a5eed456347456233fc4b5f67e2674dc239cb53c3bd4243d",
+        "recordedV4Sha256": "92905587c2b82867a5eed456347456233fc4b5f67e2674dc239cb53c3bd4243d",
+        "matchesRecordedV4": true,
+        "preV4GitSha256": "92905587c2b82867a5eed456347456233fc4b5f67e2674dc239cb53c3bd4243d",
+        "unchangedFromPreV4Git": true,
+        "role": "executed rules baseline dependency"
+      },
+      {
+        "path": "src/numbers.js",
+        "currentSha256": "bd342f7c4afa5f8e78fd1d07afada6c5ca8976cc7aaf2ab1d2c379078213b7d6",
+        "recordedV4Sha256": null,
+        "matchesRecordedV4": null,
+        "preV4GitSha256": "bd342f7c4afa5f8e78fd1d07afada6c5ca8976cc7aaf2ab1d2c379078213b7d6",
+        "unchangedFromPreV4Git": true,
+        "role": "executed rules baseline dependency"
+      },
+      {
+        "path": "src/cover.js",
+        "currentSha256": "0a677ee35d65653609eefce81355dcc0b5139ba487ff4c3ba09ac09cd2eeddb6",
+        "recordedV4Sha256": null,
+        "matchesRecordedV4": null,
+        "preV4GitSha256": "7b6e52e2cf4f495e5ca61991d7acb7538364b93b9b01aa6b3722ed3eb0d02e78",
+        "unchangedFromPreV4Git": false,
+        "role": "module-import-only via say.js; no cover function is called by rulesRoute or asksForAmount"
+      }
+    ],
+    "currentAgentAndGateMatchObservedV4": false,
+    "limitation": "Recorded V4 AI outputs are reused. Current agent.js and gate.js differ from the V4 manifest. The original manifest omitted numbers.js and cover.js; numbers matches pre-run Git, while changed cover.js is an import-only dependency. Full V4 import-closure identity is not established. Dependency manifests match V4; the installed vendor tree is not separately frozen."
+  },
+  "observedAICost": {
+    "currency": "USD",
+    "providerBalanceVerified": false,
+    "providers": {
+      "anthropic": {
+        "localUsageDeltaUsd": 0.113278,
+        "settledUsageDeltaUsd": 0.113278,
+        "reservedBeforeUsd": 0,
+        "reservedAfterUsd": 0
+      },
+      "jev": {
+        "localUsageDeltaUsd": 0.000744114,
+        "settledUsageDeltaUsd": 0.000744114,
+        "reservedBeforeUsd": 0,
+        "reservedAfterUsd": 0
+      }
+    }
+  },
+  "limits": [
+    "Retrospective analysis of a small synthetic developer-curated fixture; no fresh, blind, independent, or production-generalization claim is supported.",
+    "V4 fixture authors used canonical definitions in router.js. The protocol documents blinding from prior fixtures/results and the current intent guard; it does not establish that fixture authors were blind to all keyword rules in the same router.js file. Later analysis authors have seen historical outcomes.",
+    "The composed AI system includes deterministic guards, a Jev advisory route, and a rules-agreement quick path. This comparison estimates that whole recorded composition against existing raw keyword routing plus the shared pending-state gate; it cannot isolate the causal value of Anthropic or Jev alone.",
+    "Current agent.js and gate.js differ from V4 report hashes. No current AI execution occurred; the old stored AI outputs are reused exactly.",
+    "Amounts and empathy have no independent V4 fixture oracle. Equality of amounts does not establish correctness, and differences are not scored as errors.",
+    "No existing primary V4 report, older benchmark, failed goal benchmark, source file, fixture text, or label is replaced or altered by this supplementary analysis.",
+    "Wrong mutation-route counts measure proposed intent classification, not executed or prevented real payments. The historical comparison does not replace the failed fresh goal comparisons."
+  ],
+  "privateAnalysisSha256": "d602af738d220acb25c3b3af00abbe0b33aa9fae024bcc5af8c9957530ff7ed4"
+}

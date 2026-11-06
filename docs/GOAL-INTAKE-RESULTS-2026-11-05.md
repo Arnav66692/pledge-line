@@ -1,5 +1,7 @@
 # Goal-drafting results, November 5, 2026
 
+This page preserves the earlier single-turn V1/V2 evaluation and its deployment. The later [AI evidence review](AI-VALUE-EVIDENCE-2026-11-05.md) records the conversational results, including fresh-eleven's 11/24 model tasks versus 14/24 baseline tasks and the failed improvement gate. Its historical routing comparison is separate evidence, not a replacement for that loss.
+
 The final model-backed draft path correctly handled all twelve new frozen synthetic cases, matching the deterministic explicit-field baseline. This establishes performance on these generated instances, not a model advantage, observed user benefit or general language fidelity. A draft remains editable and requires buyer review before any supplier request. The evaluation has no supplier, approval, checkout or payment methods.
 
 ## Preserved first run and correction

@@ -806,3 +806,96 @@ test('baseline refuses a component replacement when the old component was suffix
   assert.equal(draft.ready, true); assert.match(draft.rfq.specification, /steel lids, which are required/);
   assert.doesNotMatch(draft.rfq.specification, /copper/); assert.match(draft.rfq.specification, /plastic sleeves must not be used/);
 });
+
+test('baseline reads explicit purchase totals without treating additions as complete counts', () => {
+  const prior = 'Buy 33 wool desk mats. Budget USD 264. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const goal of ['Make the purchase 39 mats in total.', 'Add six mats, making 39 mats total.']) {
+    const draft = deterministicGoalDraft({ ...input(goal), priorGoals: [prior] });
+    assert.equal(draft.ready, true, goal); assert.equal(draft.rfq.quantity, 39, goal);
+  }
+  for (const goal of ['Add six mats.', 'Increase the quantity by six mats.']) {
+    assert.equal(deterministicGoalDraft({ ...input(goal), priorGoals: [prior] }).ready, false, goal);
+  }
+  const denied = deterministicGoalDraft({ ...input('Do not make the purchase 39 mats in total.'), priorGoals: [prior] });
+  assert.equal(denied.ready, true); assert.equal(denied.rfq.quantity, 33);
+});
+
+test('baseline keeps settled counts through denied additions and explicit budget-only changes', () => {
+  const prior = 'Buy 33 wool desk mats. Budget USD 264. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const goal of ['Do not add six mats.', 'Never remove six mats.', "Don't subtract six mats.", 'Do not increase the quantity by six mats.']) {
+    const draft = deterministicGoalDraft({ ...input(goal), priorGoals: [prior] });
+    assert.equal(draft.ready, true, goal); assert.equal(draft.rfq.quantity, 33, goal); assert.equal(draft.rfq.budgetCents, 26400);
+  }
+  for (const adjustment of ['Add six dollars to the budget.', 'Add USD 6 to the budget.', 'Add six to the budget.']) {
+    const draft = deterministicGoalDraft({ ...input(`${adjustment} Final cap USD 270.`), priorGoals: [prior] });
+    assert.equal(draft.ready, true, adjustment); assert.equal(draft.rfq.quantity, 33); assert.equal(draft.rfq.budgetCents, 27000);
+  }
+  for (const goal of ['Add six mats. Final cap USD 270.', 'Remove six mats.', 'Increase the quantity by six.']) {
+    const draft = deterministicGoalDraft({ ...input(goal), priorGoals: [prior] });
+    assert.equal(draft.ready, false, goal); assert.match(draft.clarification, /quantity/i, goal);
+  }
+});
+
+test('baseline requires settled explicit counts and honors a later lock', () => {
+  const prior = 'We need either 38 or 46 woven lanyards. Budget USD 264. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  assert.equal(deterministicGoalDraft(input(prior)).ready, false);
+  const locked = deterministicGoalDraft({ ...input('Lock the quantity at 38.'), priorGoals: [prior] });
+  assert.equal(locked.ready, true); assert.equal(locked.rfq.quantity, 38);
+  assert.equal(deterministicGoalDraft({ ...input('Do not lock the quantity at 38.'), priorGoals: [prior] }).ready, false);
+});
+
+test('baseline recognizes current order declarations and ignores discarded quoted counts', () => {
+  const finish = 'Budget USD 264. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const state of ['new', 'current', 'approved', 'final']) {
+    const draft = deterministicGoalDraft(input(`Ignore the discarded draft saying "65 ladles." The ${state} order is 33 stainless ladles. ${finish}`));
+    assert.equal(draft.ready, true, state); assert.equal(draft.rfq.quantity, 33, state);
+  }
+  for (const state of ['previous', 'unapproved']) {
+    assert.equal(deterministicGoalDraft(input(`The ${state} order is 33 stainless ladles. ${finish}`)).ready, false, state);
+  }
+  assert.equal(deterministicGoalDraft(input(`Our source says the approved order is 33 stainless ladles. ${finish}`)).ready, false);
+});
+
+test('baseline excludes full-word physical properties and accepts explicitly declared purchased packs', () => {
+  const finish = 'Budget USD 264. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const volume of ['2 liters', 'two litres', '500 milliliters']) {
+    const draft = deterministicGoalDraft(input(`Buy 33 stainless beverage jugs, ${volume} each. ${finish}`));
+    assert.equal(draft.ready, true, volume); assert.equal(draft.rfq.quantity, 33);
+    assert.equal(deterministicGoalDraft(input(`Buy ${volume} beverage jugs. ${finish}`)).ready, false, volume);
+  }
+  const packs = deterministicGoalDraft(input(`Order 16 packs of charcoal pencils, with 9 pencils per pack. ${finish}`));
+  assert.equal(packs.ready, true); assert.equal(packs.rfq.quantity, 16);
+  for (const phrase of ['16 packs of charcoal pencils', '16 packs of 9 pencils, with 9 pencils per pack', '16 packs of charcoal pencils, with 9 pencils per box']) {
+    assert.equal(deterministicGoalDraft(input(`Order ${phrase}. ${finish}`)).ready, false, phrase);
+  }
+});
+
+test('baseline supplier fill permission applies to goods and retains denial and information guards', () => {
+  const start = 'Buy 33 ceramic dishes. Budget USD 264. Deliver 2026-11-23 at 3 PM Pacific. ';
+  for (const permission of ['Multiple suppliers may fill the order.', 'Several vendors can fill this purchase.']) {
+    const draft = deterministicGoalDraft(input(start + permission));
+    assert.equal(draft.ready, true, permission); assert.equal(draft.rfq.allowSplit, true);
+  }
+  for (const permission of ['Multiple suppliers may not fill the order.', 'Several vendors cannot fill this purchase.',
+    'Multiple suppliers may fill the order details.', 'If multiple suppliers may fill the order, ask me first.']) {
+    const draft = deterministicGoalDraft(input(start + permission));
+    assert.equal(draft.ready && draft.rfq.allowSplit, false, permission);
+  }
+});
+
+test('baseline binds for-all count restatements only to an existing purchase', () => {
+  const prior = 'Buy replacement cartridges. Budget USD 264. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  const goal = 'Use ZQ-17 printer cartridges filled with black ink. This is the specification for all 33 cartridges.';
+  const draft = deterministicGoalDraft({ ...input(goal), priorGoals: [prior] });
+  assert.equal(draft.ready, true); assert.equal(draft.rfq.quantity, 33);
+  assert.equal(deterministicGoalDraft(input('The specification is for all 33 cartridges. Budget USD 264. Deliver 2026-11-23 at 3 PM Pacific.')).ready, false);
+});
+
+test('baseline resolves valid IANA city aliases omitted by runtime enumeration', () => {
+  for (const [city, deadline] of [['Kathmandu', '2026-11-23T09:35:00.000Z'], ['Kolkata', '2026-11-23T09:50:00.000Z']]) {
+    const text = `Buy 33 ceramic dishes. Budget USD 264. Deliver 2026-11-23 at 3:20 PM ${city} time. Use one supplier.`;
+    const draft = deterministicGoalDraft(input(text));
+    assert.equal(draft.ready, true, city); assert.equal(draft.rfq.deadline, deadline, city);
+    assert.equal(deterministicGoalDraft(input(text.replace(`${city} time`, `${city} time and Lisbon time`))).ready, false, city);
+  }
+});

@@ -847,6 +847,131 @@ const enterGoal = async (ui, goal = 'Buy eighty white cotton club shirts with on
   await ui.byId('goal').fire('input');
 };
 
+test('an unsent buying goal blocks stale manual quotes until the buyer explicitly chooses manual limits', async () => {
+  const ui = browser();
+  const before = manualFields(ui);
+  assert.equal(ui.byId('find-plan').disabled, false, 'The initial manual flow remains available.');
+  assert.equal(ui.byId('goal-brief-guard').hidden, true);
+  await enterGoal(ui, 'Buy 250 custom jackets with a delivery date still to be decided.');
+  assert.deepEqual(manualFields(ui), before);
+  assert.equal(ui.byId('find-plan').disabled, true);
+  assert.equal(ui.byId('goal-brief-guard').hidden, false);
+  assert.equal(ui.byId('use-manual-limits').disabled, false);
+  assert.equal(ui.byId('use-manual-limits').attributes['aria-describedby'], 'goal-brief-note');
+  await ui.byId('request').fire('submit');
+  assert.equal(ui.requests.length, 0, 'Submitting the manual form cannot quote the defaults for a different goal.');
+
+  ui.byId('quantity').value = '250';
+  await ui.byId('request').fire('input');
+  await enterGoal(ui, '');
+  await ui.byId('request').fire('submit');
+  assert.equal(ui.requests.length, 0, 'Editing manual fields or erasing the goal does not silently resolve it.');
+  assert.equal(ui.byId('find-plan').disabled, true);
+
+  await ui.byId('use-manual-limits').fire('click');
+  assert.equal(ui.requests.length, 0, 'Choosing the visible manual limits makes no supplier or payment request.');
+  assert.equal(ui.byId('specification').focused, true);
+  assert.equal(ui.byId('quantity').value, '250', 'The buyer keeps the visible fields for review.');
+  assert.equal(ui.byId('find-plan').disabled, false);
+  assert.equal(ui.byId('goal-brief-guard').hidden, true);
+  ui.respond({ id: sessionId, sessionSecret, state: state() }, 201);
+  await ui.byId('request').fire('submit');
+  assert.equal(ui.requests[0].path, '/api/procurement');
+  assert.equal(ui.requests[0].body.quantity, 250);
+});
+
+test('clarification, failed drafting and unsupported currency keep the previous limits blocked', async () => {
+  const unsupported = draftedGoal();
+  unsupported.rfq.currency = 'EUR';
+  for (const response of [
+    { data: draftedGoal({ ready: false, rfq: null, assumptions: [], clarification: 'What delivery date and time should apply?' }) },
+    { data: { error: 'Drafting is unavailable.' }, status: 503 },
+    { data: unsupported },
+  ]) {
+    const ui = browser(), before = manualFields(ui);
+    await enterGoal(ui);
+    ui.respond(response.data, response.status);
+    await ui.byId('goal-intake').fire('submit');
+    assert.deepEqual(manualFields(ui), before);
+    assert.equal(ui.byId('find-plan').disabled, true);
+    assert.equal(ui.byId('use-manual-limits').disabled, false);
+    await ui.byId('request').fire('submit');
+    assert.equal(ui.requests.length, 1, 'Only interpretation was requested; the old brief was never quoted.');
+  }
+});
+
+test('the manual choice clears unresolved goal context and requires fresh quotes before approval', async () => {
+  const ui = browser();
+  await ui.create();
+  const before = manualFields(ui);
+  await enterGoal(ui);
+  ui.respond(draftedGoal({ ready: false, rfq: null, clarification: 'What delivery time should apply?' }));
+  await ui.byId('goal-intake').fire('submit');
+  assert.equal(ui.byId('goal-history').hidden, false);
+  await ui.byId('use-manual-limits').fire('click');
+  assert.deepEqual(manualFields(ui), before);
+  assert.equal(ui.requests.length, 2);
+  assert.equal(ui.byId('goal').value, '');
+  assert.equal(ui.byId('goal-history').hidden, true);
+  assert.equal(ui.byId('goal-history-list').textContent, '');
+  assert.equal(ui.byId('goal-evidence').hidden, true);
+  assert.equal(ui.byId('goal-reference').hidden, true);
+  assert.equal(ui.byId('goal-assumptions').hidden, true);
+  assert.equal(ui.byId('find-plan').disabled, false);
+  await ui.approve();
+  assert.equal(ui.requests.length, 2, 'Manual choice does not restore approval of the earlier plan.');
+  await enterGoal(ui);
+  ui.respond(draftedGoal());
+  await ui.byId('goal-intake').fire('submit');
+  assert.equal(ui.requests.at(-1).body.priorGoals, undefined, 'Future drafting starts without the abandoned conversation.');
+});
+
+test('drafting in progress blocks quote submission and the manual choice until its response is resolved', async () => {
+  const ui = browser(), before = manualFields(ui);
+  await enterGoal(ui);
+  let release;
+  ui.respond(new Promise((resolve) => { release = resolve; }));
+  const pending = ui.byId('goal-intake').fire('submit');
+  await ui.ready();
+  assert.equal(ui.byId('find-plan').disabled, true);
+  assert.equal(ui.byId('use-manual-limits').disabled, true);
+  await ui.byId('use-manual-limits').fire('click');
+  await ui.byId('request').fire('submit');
+  assert.equal(ui.requests.length, 1);
+  assert.deepEqual(manualFields(ui), before);
+  release(draftedGoal({ ready: false, rfq: null, clarification: 'What delivery time should apply?' }));
+  await pending;
+  assert.equal(ui.byId('find-plan').disabled, true, 'An incomplete response continues to block the old brief.');
+  assert.equal(ui.byId('use-manual-limits').disabled, false);
+});
+
+test('changing or resetting a ready buying goal cannot quote its previous draft', async () => {
+  const ui = browser();
+  await enterGoal(ui);
+  ui.respond(draftedGoal());
+  await ui.byId('goal-intake').fire('submit');
+  const before = manualFields(ui);
+  assert.equal(ui.byId('find-plan').disabled, false);
+  await enterGoal(ui, 'Actually I need 120 jackets in euros.');
+  assert.equal(ui.byId('find-plan').disabled, true);
+  assert.equal(ui.byId('find-plan').attributes['aria-describedby'], 'goal-brief-note');
+  assert.deepEqual(manualFields(ui), before);
+  await ui.byId('request').fire('submit');
+  await ui.byId('new-goal').fire('click');
+  assert.equal(ui.byId('goal').value, '');
+  assert.equal(ui.byId('find-plan').disabled, true, 'Starting a new buying goal does not accept the previous limits.');
+  await ui.byId('request').fire('submit');
+  assert.equal(ui.requests.length, 1);
+  await ui.byId('use-manual-limits').fire('click');
+  assert.equal(ui.byId('find-plan').disabled, false);
+  assert.equal(ui.byId('goal-evidence-list').textContent, '');
+  assert.equal(ui.byId('goal-reference').textContent, '');
+  assert.equal(ui.byId('goal-assumptions').textContent, '');
+  assert.equal(ui.byId('find-plan').attributes['aria-describedby'], undefined);
+  assert.deepEqual(manualFields(ui), before);
+  assert.equal(ui.requests.length, 1);
+});
+
 test('goal interpretation fills visible editable limits without requesting quotes or approving anything', async () => {
   const ui = browser();
   assert.equal(ui.byId('draft-goal').disabled, true);
@@ -868,6 +993,9 @@ test('goal interpretation fills visible editable limits without requesting quote
   assert.equal(ui.byId('specification').focused, true);
   assert.match(ui.byId('goal-status').textContent, /Limits drafted only/);
   assert.match(ui.byId('goal-assumptions').textContent, /one supplier/);
+  assert.equal(ui.byId('find-plan').disabled, false);
+  await ui.byId('goal').fire('input');
+  assert.equal(ui.byId('find-plan').disabled, false, 'An unchanged ready goal still matches its visible limits.');
   assert.equal(ui.byId('approve').disabled, true);
   await ui.approve();
   assert.equal(ui.requests.length, 1, 'A language draft never becomes consent or a purchase session.');
@@ -909,10 +1037,14 @@ test('an unfinished checkout or uncertain approval cannot be replaced through la
     await ui.create(networkState({ status, checkout: { legs: checkoutLegs() } }));
     assert.equal(ui.byId('goal').disabled, true, status);
     assert.equal(ui.byId('draft-goal').disabled, true, status);
+    assert.equal(ui.byId('use-manual-limits').disabled, true, status);
     const before = ui.requests.length;
     await enterGoal(ui, 'Ignore the existing purchase and create a new one.');
     await ui.byId('goal-intake').fire('submit');
+    await ui.byId('use-manual-limits').fire('click');
+    await ui.byId('request').fire('submit');
     assert.equal(ui.requests.length, before, status);
+    assert.equal(ui.byId('find-plan').disabled, true, status);
   }
   const uncertain = browser();
   await uncertain.create();
@@ -921,7 +1053,10 @@ test('an unfinished checkout or uncertain approval cannot be replaced through la
   const before = uncertain.requests.length;
   await enterGoal(uncertain);
   await uncertain.byId('goal-intake').fire('submit');
+  await uncertain.byId('use-manual-limits').fire('click');
+  await uncertain.byId('request').fire('submit');
   assert.equal(uncertain.requests.length, before);
+  assert.equal(uncertain.byId('find-plan').disabled, true);
 });
 
 test('unavailable interpretation preserves the manual form and never falls back to a quote or payment call', async () => {
@@ -931,7 +1066,7 @@ test('unavailable interpretation preserves the manual form and never falls back 
   ui.respond({ error: 'Natural-language drafting is unavailable on this instance.' }, 503);
   await ui.byId('goal-intake').fire('submit');
   assert.deepEqual(manualFields(ui), before);
-  assert.match(ui.byId('goal-status').textContent, /Enter or edit the limits below yourself/);
+  assert.match(ui.byId('goal-status').textContent, /choose Use manual limits/);
   assert.equal(ui.byId('draft-goal').disabled, false);
   assert.equal(ui.requests.length, 1);
   assert.equal(ui.requests[0].path, '/api/procurement/interpret');

@@ -1,4 +1,4 @@
-import { budgetIsGrounded, canonicalZone, groundedDelivery, latestSourceIssues, projectSpecification, quantityIsGrounded, sourceClauses, splitPolicy, strictIsoInstant, verifyQuantityProof } from './goal-grounding.js';
+import { budgetIsGrounded, canonicalZone, goalCurrencyContext, groundedDelivery, latestSourceIssues, projectSpecification, quantityIsGrounded, resolveLocalDelivery, sourceClauses, splitPolicy, strictIsoInstant, verifyQuantityProof } from './goal-grounding.js';
 
 const EVIDENCE_FIELDS = ['quantity', 'budget', 'specification', 'delivery', 'split'];
 const DELIVERY_FIELDS = ['date', 'time', 'timeZone', 'offset'];
@@ -78,6 +78,9 @@ export function normalizeGoalDraft(input, context) {
     assumptions: result.assumptions.filter((code) => code !== 'currency_usd') };
   if (!input.ready) {
     const clarification = clean(input.clarification); if (!clarification) invalid();
+    if (goalCurrencyContext(turns).currency !== 'USD') return { ...refuse(['budget'], 'This desk supports USD only. What all-in USD budget should I use?'), assumptions: result.assumptions.filter((code) => code !== 'currency_usd') };
+    const localState = resolveLocalDelivery(input.localDelivery);
+    if (localState.status === 'fold' || localState.status === 'gap') return refuse(['delivery_time'], clarification);
     const missing = [...(input.quantity < 1 ? ['quantity'] : []), ...(input.budgetCents < 100 ? ['budget'] : []),
       ...(!input.specification.trim() ? ['specification'] : []), ...(!input.localDelivery.date ? ['delivery_date'] : []), ...(!input.localDelivery.time ? ['delivery_time'] : [])];
     return refuse(missing, clarification);
