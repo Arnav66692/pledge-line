@@ -1,0 +1,113 @@
+{
+  "sourceCommit": "66cdb4d248df243ad4febc1e9648033b4c131b7a",
+  "fixtureSha256": "d498a330d0e61fa1e79b9400ed8a3802bc29b1fbaf4900520b6a432fb70fa2c4",
+  "evidenceClass": "Known exposed synthetic regression; not a fresh holdout or customer study.",
+  "changes": "Guarded catalog-free quantities, historical and negated quantity roles, financial units, latest clock context, graceful split-default contradiction refusal; independently strengthened baseline. Separately audited local replacement/omission scorer correction applies to both arms. Original final7 failure remains unchanged.",
+  "completed": true,
+  "summary": {
+    "deterministic_explicit_fields": {
+      "tasks": 24,
+      "correctTasks": 14,
+      "taskAccuracyWilson95": [
+        0.388347,
+        0.755324
+      ],
+      "turns": 36,
+      "correctTurns": 24,
+      "appropriateClarifications": 3,
+      "exactFields": 127,
+      "scoredFields": 150,
+      "wrongConfidentFields": 3,
+      "prematureReadyTurns": 2,
+      "authorityViolations": 0,
+      "malformedOutputs": 0,
+      "requiredFacts": 116,
+      "factsPresent": 100,
+      "forbiddenPositiveAttributes": 2,
+      "errorsOrNotRun": 0,
+      "modelCalls": 0,
+      "measuredLatencyTurns": 36,
+      "meanLatencyMs": 4,
+      "knownSharedScopeDeltaNanos": {
+        "anthropic": 0,
+        "jev": 0
+      },
+      "unmeasuredCostTurns": 0,
+      "byCategory": {
+        "explicit_controls": {
+          "tasks": 6,
+          "correct": 5
+        },
+        "context_discourse": {
+          "tasks": 6,
+          "correct": 3
+        },
+        "clarification": {
+          "tasks": 6,
+          "correct": 2
+        },
+        "timezone_negation_goods": {
+          "tasks": 6,
+          "correct": 4
+        }
+      }
+    },
+    "main_agent": {
+      "tasks": 24,
+      "correctTasks": 17,
+      "taskAccuracyWilson95": [
+        0.508323,
+        0.850854
+      ],
+      "turns": 36,
+      "correctTurns": 29,
+      "appropriateClarifications": 6,
+      "exactFields": 120,
+      "scoredFields": 150,
+      "wrongConfidentFields": 0,
+      "prematureReadyTurns": 0,
+      "authorityViolations": 0,
+      "malformedOutputs": 0,
+      "requiredFacts": 116,
+      "factsPresent": 90,
+      "forbiddenPositiveAttributes": 0,
+      "errorsOrNotRun": 0,
+      "modelCalls": 36,
+      "measuredLatencyTurns": 36,
+      "meanLatencyMs": 5189,
+      "knownSharedScopeDeltaNanos": {
+        "anthropic": 409588000,
+        "jev": 0
+      },
+      "unmeasuredCostTurns": 0,
+      "byCategory": {
+        "explicit_controls": {
+          "tasks": 6,
+          "correct": 4
+        },
+        "context_discourse": {
+          "tasks": 6,
+          "correct": 5
+        },
+        "clarification": {
+          "tasks": 6,
+          "correct": 4
+        },
+        "timezone_negation_goods": {
+          "tasks": 6,
+          "correct": 4
+        }
+      }
+    }
+  },
+  "paired": {
+    "modelWins": 4,
+    "baselineWins": 1,
+    "ties": 19,
+    "signTestTwoSidedP": 0.375,
+    "controlsNoRegression": false,
+    "controlsAllCorrect": false,
+    "improvementWithinThisSet": false
+  },
+  "interpretation": "Point task completion is higher in this known set, but the full explicit-control improvement gate failed. This does not establish general AI superiority or AI price savings. Related synthetic cases do not establish population independence/exchangeability; uncertainty calculations are descriptive."
+}
