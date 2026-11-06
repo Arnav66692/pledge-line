@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "b0f048b11bdb83fc330d5b79d253c61aaca01ecd",
+  "tests": 940,
+  "passed": 933,
+  "optionalSkipped": 7,
+  "failed": 0,
+  "cancelled": 0,
+  "durationMs": 78687.695292,
+  "method": "Complete serial Node test suite with donor and supplier PostgreSQL opt-ins against existing Neon connection; seven other optional environment-dependent checks skipped. No provider inference or PayPal payments invoked by this suite.",
+  "logSha256": "ec075dc4cb2f03fbf8589c5b322d65a1c3a2fdf7b5fb650fcf0f0d01619f1d33",
+  "scope": "Runtime unit/integration checks are separate from natural-language evaluation; this same source subsequently failed the fresh-nine full improvement gate. Later repairs require separate validation."
+}
