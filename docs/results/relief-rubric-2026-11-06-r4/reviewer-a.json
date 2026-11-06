@@ -1,0 +1,299 @@
+{
+  "assessmentId": "relief-outcome-assessment-a-20261106",
+  "reviewer": "independent-context-a",
+  "date": "2026-11-06",
+  "subject": "Implemented Pledge Line PayPal AI hackathon prototype",
+  "rubric": {
+    "criteria": [
+      "Technological Implementation",
+      "Design",
+      "Potential Impact",
+      "Innovation/Idea",
+      "Presentation"
+    ],
+    "range": [
+      1,
+      10
+    ],
+    "increment": 0.5,
+    "equalWeights": true,
+    "conversion": "sum(scores) / 50 * 90",
+    "status": "Internal scoring conventions; not an official Devpost numeric scale or weighting."
+  },
+  "scope": {
+    "packet": ".acceptance/relief-review-outcome-packet-20261106.md",
+    "packetSha256": "93e96f32fa16d370bcdad0453045a007c3a471735c44123b2e35f50ea3b86d8a",
+    "reviewedSourceCommit": "6498286541349e9bb36a51494a01d6ce5011f106",
+    "outcomeEvaluationSourceCommit": "499d0ad496aee3da4822939663ff8e8eb8f97118",
+    "screenshotSource": "499d0ad, per packet; unchanged primary UI, not attributed to 6498286",
+    "filmSource": "bff14304b2c173c45c9f403b700e199c1b63e41c",
+    "sandboxTreatment": "Sandbox is the required prototype environment. No penalty simply for mock rehearsal, sandbox money, absent production onboarding/SLA, or absence of a mandatory human study.",
+    "earlierSubjectiveAssessmentsRead": false,
+    "appMutations": false,
+    "networkOrProviderRequests": false,
+    "credentialsOrRuntimeStateAccessed": false
+  },
+  "criteria": [
+    {
+      "criterion": "Technological Implementation",
+      "score": 8.5,
+      "reasons": [
+        "Substantial integrated implementation: proposals bind current read-back terms, separate consent gates every financial action, sponsor capture is freshly confirmed before refund, changed terms invalidate approval, and unknown responses are reconciled by reads rather than another write.",
+        "The rehearsal invokes the actual call, gate, relief, checker and receipt modules with isolated mock state; tests inspect scenario outcomes, concurrency, input rejection, rate limiting and isolation from production dependencies. Retained records support actual sandbox pause/resume, sponsor capture/refund, invoice payment/webhook and multi-leg checkout.",
+        "The materially new frozen complete-task comparison gives useful current composed-system evidence: all twelve tasks complete versus seven for rules under identical call/gate/checker/mock code. Earlier classification and purchase-drafting gates still fail. The evidence remains twelve purposive tasks, with guarded follow-ups and seconds of model latency."
+      ],
+      "evidence": [
+        "src/call.js:458-465, 667-690, 706-815, 961-1049, 1089-1123",
+        "src/rehearsal.js; test/rehearsal.test.js; test/cancellation-choice.test.js",
+        "docs/results/functional-acceptance-2026-11-05/{donor,receipt,checkout,invoice,invoice-webhook}.json",
+        "docs/results/guarded-checkout-2026-11-05.json",
+        "docs/results/donor-outcome-2026-11-06/{fixture.json,protocol.md,harness-source.txt,outcomes.jsonl,summary.json}",
+        "docs/results/donor-route-fresh-2026-11-06.json; current packet retained purchase failures"
+      ],
+      "deductionIds": [
+        "D1"
+      ]
+    },
+    {
+      "criterion": "Design",
+      "score": 8.5,
+      "reasons": [
+        "Original-resolution desktop and phone images show disciplined typography, strong hierarchy and concrete financial status. The completed 390px unresolved view places captured sponsor amount, unresolved donor refund and active gift together before the detailed evidence.",
+        "The responsive native situation selector, synchronized controls, initially collapsed phone transcript, result focus/scroll behavior, semantic labels and 44px navigation targets make the prototype inspectable across the supplied viewports.",
+        "The conversational experience is less polished than the visual shell: both composed clarification outcomes respond with generic did-not-catch wording and a menu, even when the caller explicitly asks to understand pause versus cancellation. This is safe no-change behavior but weak decision support."
+      ],
+      "evidence": [
+        ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+        ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+        "web/rehearsal.html; web/rehearsal.js:6-11, 26-58; web/rehearsal.css; web/demo.css",
+        "docs/results/donor-outcome-2026-11-06/outcomes.jsonl: composed natural-clarify-undecided and natural-clarify-refuses-both"
+      ],
+      "deductionIds": [
+        "D3"
+      ]
+    },
+    {
+      "criterion": "Potential Impact",
+      "score": 7.5,
+      "reasons": [
+        "The target problem and outcome are concrete: a donor facing a hard month can receive eligible relief while the recurring gift remains active, with clear separate consent and an inspectable result. Actual sandbox records plus the interactive bounded rehearsal make the mechanism credible for a hackathon prototype.",
+        "The packet gives appropriately bounded fundraising context and acknowledges conventional donor-management alternatives. The result could reduce supported administrative work and make relief more trustworthy, but the current evidence establishes mechanism rather than observed benefit.",
+        "Sponsor participation and the practical value to nonprofits/donors are still hypotheses. No measured completion benefit for target users, retention/time-saving/uplift, sponsor partnership or willingness-to-pay is established. Equal gross funding also incurs fees. These limit confidence in potential impact; they are not imposed production or study prerequisites."
+      ],
+      "evidence": [
+        ".acceptance/relief-review-outcome-packet-20261106.md: Audience and workflow; Impact and alternatives; Retained actual provider evidence",
+        "docs/results/functional-acceptance-2026-11-05/donor.json",
+        "docs/DONOR-OUTCOMES-2026-11-06.md: Interpretation and limits",
+        "src/rehearsal.js; native completed screenshots"
+      ],
+      "deductionIds": [
+        "D2"
+      ]
+    },
+    {
+      "criterion": "Innovation/Idea",
+      "score": 8,
+      "reasons": [
+        "The strongest distinction is the combination of conversational supported-action completion, sponsor-first hardship relief, exact fresh consent, authoritative readback, sentence-level claim evidence and independently checkable signed records, including visible uncertainty.",
+        "The fresh paired comparison materially strengthens the idea beyond a scripted safety demo: natural-language task completion is six of six versus one of six for the existing rules arm, while both arms complete all direct controls.",
+        "The innovation is primarily a careful system composition. Conventional recurring-gift tools and standard payment/signature primitives already exist. The new result is neither a pure LLM ablation nor evidence of broad language superiority; purchase drafting remains below its rules baseline and negotiation has no demonstrated AI-specific savings."
+      ],
+      "evidence": [
+        "src/call.js; src/intent-guards.js; src/rehearsal.js",
+        "docs/results/donor-outcome-2026-11-06/{protocol.md,summary.json,outcomes.jsonl}",
+        "web/demo.html:19; web/demo-assets/donor-task-outcomes-20261106.txt",
+        ".acceptance/relief-review-outcome-packet-20261106.md: AI role and mixed evaluation results; Impact and alternatives"
+      ],
+      "deductionIds": [
+        "D1"
+      ]
+    },
+    {
+      "criterion": "Presentation",
+      "score": 8.5,
+      "reasons": [
+        "The supplied desktop and phone landing views lead with one understandable donor-relief story, direct rehearsal and receipt actions, and an immediately visible real movie poster. The archive keeps older procurement and historical evidence from competing with the primary story.",
+        "The caption transcript and provenance clearly distinguish disposable simulation from retained actual sandbox receipt evidence. The supplied frames show covered, unresolved and edited-receipt-rejected states with persistent scope labels. Current source includes caption delivery, reserved video dimensions and tested receipt chapter links.",
+        "The main film and primary rehearsal make no model request, so the AI-specific task benefit requires opening an archive labeled sandbox records and earlier demonstrations. The new comparison table is valuable but its placement makes a central AI differentiator less immediate. Full motion, narration intelligibility and synchronization were not personally assessed."
+      ],
+      "evidence": [
+        ".acceptance/rehearsal-evidence/focused-demo-hosted-native.png",
+        ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png",
+        ".acceptance/relief-film/{covered-final,unknown-final,edited-final}.png",
+        "web/demo.html:13-19; web/demo.js:70-82; test/demo.test.js",
+        "web/demo-assets/relief-demo-20261106.vtt; web/demo-assets/relief-demo-20261106-provenance.txt"
+      ],
+      "deductionIds": [
+        "D3"
+      ]
+    }
+  ],
+  "materialDeductions": [
+    {
+      "id": "D1",
+      "criteria": [
+        "Technological Implementation",
+        "Innovation/Idea"
+      ],
+      "pointsBelowTen": {
+        "Technological Implementation": 1.5,
+        "Innovation/Idea": 2
+      },
+      "finding": "Current composed-task evidence is positive but narrow, and broader AI reliability/value remains mixed.",
+      "evidence": "Twelve synthetic tasks in one run; two direct phrases overlap earlier routing fixtures; scripted caller withholds consent for unexpected proposals; direct function invocation/virtual clock/mock PayPal. Model-backed route latency 3439–4625ms. Original 11/12 wrong-mutation classification gate and purchase drafting 11/24 versus rules14/24 failures remain. Controlled suppliers share one sandbox merchant; no AI-specific negotiation savings.",
+      "improvement": "Preserve these results and add a separately frozen independent set covering different donor language and failure paths; distinguish composed-system gains from the model contribution and report latency alongside completion."
+    },
+    {
+      "id": "D2",
+      "criteria": [
+        "Potential Impact"
+      ],
+      "pointsBelowTen": {
+        "Potential Impact": 2.5
+      },
+      "finding": "The relief mechanism works in the supplied prototype evidence, but practical donor/nonprofit benefit and sponsor adoption are unestablished.",
+      "evidence": "Packet explicitly lacks target-user observations, retention or staff-time effects, willingness-to-pay and sponsor partnership; actual sponsor capture has processing fees.",
+      "improvement": "Strengthen the potential-impact case with a concrete sponsor operating assumption and focused donor/nonprofit feedback on the demonstrated workflow. These would increase evidence, not satisfy an invented hackathon prerequisite."
+    },
+    {
+      "id": "D3",
+      "criteria": [
+        "Design",
+        "Presentation"
+      ],
+      "pointsBelowTen": {
+        "Design": 1.5,
+        "Presentation": 1.5
+      },
+      "finding": "Visual clarity exceeds the quality of clarification dialogue and the prominence of current AI evidence.",
+      "evidence": "Composed ambiguity cases safely return generic did-not-catch/menu replies rather than explaining the caller’s options. Primary relief movie/rehearsal use simulation/rules; current model-backed12/12 versus7/12 evidence sits inside the closed archive named sandbox records and earlier demonstrations.",
+      "improvement": "Make safe clarification explain the supported choices, and provide a short clearly scoped pointer from the primary relief story to the existing current paired-task evidence."
+    }
+  ],
+  "hashVerification": {
+    "manifest": ".acceptance/relief-review-outcome-manifest-20261106.json",
+    "algorithm": "SHA-256",
+    "method": "Read every listed file as bytes and independently computed SHA-256 with node:crypto; compared every result to the manifest.",
+    "expectedFiles": 85,
+    "checkedFiles": 85,
+    "matchedFiles": 85,
+    "mismatches": [],
+    "packetHashMatched": true,
+    "scopeLimit": "Verified the 85 current manifest files. Did not access private raw outcome ledgers or claim to repeat the prior auditors’ private 24-ledger verification."
+  },
+  "pairedOutcomeVerification": {
+    "filesRead": [
+      "docs/DONOR-OUTCOMES-2026-11-06.md",
+      "docs/results/donor-outcome-2026-11-06/fixture.json",
+      "docs/results/donor-outcome-2026-11-06/harness-source.txt",
+      "docs/results/donor-outcome-2026-11-06/manifest.json",
+      "docs/results/donor-outcome-2026-11-06/outcomes.jsonl",
+      "docs/results/donor-outcome-2026-11-06/overlap-audit.json",
+      "docs/results/donor-outcome-2026-11-06/protocol.md",
+      "docs/results/donor-outcome-2026-11-06/summary.json",
+      "web/demo-assets/donor-task-outcomes-20261106.txt"
+    ],
+    "all24RowsInspected": true,
+    "recalculated": {
+      "rules": {
+        "ran": 12,
+        "complete": 7,
+        "controls": 6,
+        "natural": 1,
+        "approvedMockWrites": 6,
+        "wrongWrites": 0,
+        "unapprovedWrites": 0,
+        "checkerProblems": 0
+      },
+      "composed": {
+        "ran": 12,
+        "complete": 12,
+        "controls": 6,
+        "natural": 6,
+        "approvedMockWrites": 10,
+        "wrongWrites": 0,
+        "unapprovedWrites": 0,
+        "checkerProblems": 0
+      }
+    },
+    "publicProjectionRows": 24,
+    "publicProjectionMismatches": [],
+    "gatePassed": true,
+    "materialNewResult": true,
+    "consentBoundary": "Unexpected proposals receive no scripted follow-up consent. Zero wrong executed writes is conditional on that review policy, not real-donor safety evidence.",
+    "taxonomyBoundary": "Natural cancellation still emits stop_gift. Policy creates a fresh cancel proposal after explicit pause refusal; separate yes precedes mock cancellation. Task completion passes without relabeling the earlier failed route classification.",
+    "scopeBoundary": "Composed Anthropic/Jev/code-guard system versus this keyword router, not pure model ablation, a human/random sample or a broad superiority claim.",
+    "historicalFailedGatesRetained": [
+      "Earlier V1/V2/V3 routing latency/safety/accuracy gates, as retained by packet",
+      "Fresh routing11/12 versusrules6/12: failed zero-wrong-mutation condition",
+      "Fresh purchase drafting11/24 versusrules14/24: failed",
+      "Earlier negotiation overpaid; later deterministic guard does not show AI price advantage"
+    ]
+  },
+  "imagesInspected": [
+    {
+      "path": ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+      "width": 1440,
+      "height": 900,
+      "inspection": "view_image; detail original; personally inspected"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+      "width": 390,
+      "height": 844,
+      "inspection": "view_image; detail original; personally inspected"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/focused-demo-hosted-native.png",
+      "width": 1440,
+      "height": 900,
+      "inspection": "view_image; detail original; personally inspected"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png",
+      "width": 390,
+      "height": 844,
+      "inspection": "view_image; detail original; personally inspected"
+    },
+    {
+      "path": ".acceptance/relief-film/covered-final.png",
+      "width": 1280,
+      "height": 900,
+      "inspection": "view_image; detail original; personally inspected"
+    },
+    {
+      "path": ".acceptance/relief-film/unknown-final.png",
+      "width": 1280,
+      "height": 900,
+      "inspection": "view_image; detail original; personally inspected"
+    },
+    {
+      "path": ".acceptance/relief-film/edited-final.png",
+      "width": 1280,
+      "height": 900,
+      "inspection": "view_image; detail original; personally inspected"
+    }
+  ],
+  "viewLimits": {
+    "fullVideoWatched": false,
+    "audioListened": false,
+    "inspectedMedia": "Seven original-resolution PNGs, complete VTT transcript, exact provenance, and SHA-256 verification of the MP4 bytes; no inference of watched motion/audio.",
+    "liveBrowserOrDeploymentChecked": false,
+    "testsRerun": false,
+    "testEvidence": "Read relevant test source and recorded packet/document summaries. 1025 total /1016pass /9optional skips /0fail is reported evidence, not a new execution by this reviewer.",
+    "externalImpactSourcesIndependentlyBrowsed": false,
+    "impactSourceBasis": "Context as supplied in the factual packet; no browsing was authorized.",
+    "compliance": "Public YouTube upload, public source refresh and Devpost submission/rules status remain unestablished separately from criterion scoring."
+  },
+  "reviewInfrastructure": {
+    "rubricSkill": "agent-self-evaluation/SKILL.md absent under both configured .agents/skills and .codex/skills; explicit assigned five-criterion rubric used.",
+    "writes": "Only this assessment JSON was written."
+  },
+  "totals": {
+    "raw": 41,
+    "maximumRaw": 50,
+    "weightedPercentage": 82,
+    "outOf90": 73.8,
+    "maximumConverted": 90
+  }
+}

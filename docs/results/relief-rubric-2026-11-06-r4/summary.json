@@ -1,0 +1,29 @@
+{
+  "method": "Three fresh Codex contexts, same fixed packet/seven original-resolution images; no target or prior scores. Five equally weighted half-point criteria, linear1.8mapping90. Internal scale, not actual Claude API/human/official review. Full motion/audio not watched.",
+  "sourceCommit": "6498286541349e9bb36a51494a01d6ce5011f106",
+  "reviews": [
+    {
+      "reviewer": "a",
+      "totalOutOf50": 41.0,
+      "linearOutOf90": 73.8
+    },
+    {
+      "reviewer": "b",
+      "totalOutOf50": 42.0,
+      "linearOutOf90": 75.6
+    },
+    {
+      "reviewer": "c",
+      "totalOutOf50": 41.5,
+      "linearOutOf90": 74.7
+    }
+  ],
+  "medianOutOf90": 74.7,
+  "rangeOutOf90": [
+    73.8,
+    75.6
+  ],
+  "materialAddition": "New frozen complete-task comparison12/12versus7/12, public task evidence in closed supporting archive.",
+  "exactFrozenSourceArchivedPrivately": true,
+  "controlledBeforeAfterStudy": false
+}

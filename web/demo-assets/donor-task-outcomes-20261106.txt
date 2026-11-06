@@ -59,7 +59,15 @@
           "latencyMs": 1,
           "error": null
         }
-      ]
+      ],
+      "request": "What is the status and amount of my monthly gift, and when is the next payment?",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as active. The next gift is on December 1. What else can I help with?"
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": null
     },
     {
       "id": "control-pause",
@@ -87,7 +95,18 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "Please pause my monthly gift.",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as active. I can ask PayPal to pause your monthly gift. Do you want me to pause it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as suspended. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "control-resume",
@@ -115,7 +134,18 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "Please resume my monthly gift.",
+      "group": "direct_controls",
+      "initialStatus": "SUSPENDED",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as suspended. I can ask PayPal to restart your monthly gift. Do you want me to restart it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as active. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "control-cancel",
@@ -144,7 +174,20 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "I want to cancel my monthly gift.",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as active. Before you stop it, I can pause it instead. Would you like me to pause it? Please say yes or no.",
+        "OK, no pause. PayPal shows your monthly gift of $25.00 as active. Cancelling ends it for good, and it cannot be undone. Do you want me to cancel it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as cancelled. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "No",
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "control-hardship",
@@ -176,7 +219,18 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "I lost my job and can't afford this month's gift.",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "I'm sorry to hear that. PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, with the status completed. I can give that $25.00 back to you, and a sponsor's hardship fund would pay the same amount to Sunny Hollow Pantry. PayPal shows the sponsor's hold is open. This does not change your monthly gift. The next gift is on December 1. Should I give it back? Please say yes or no.",
+        "Done. PayPal now shows your charge of $25.00 as refunded. PayPal shows the sponsor's payment of the same amount to Sunny Hollow Pantry, with the status completed. PayPal now shows your monthly gift as active. The next gift is on December 1. If next month is hard too, you can ask me to pause it. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "control-charge-check",
@@ -199,7 +253,18 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "I do not recognize the PayPal charge on my bank statement.",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, with the status completed. In your PayPal activity, it is the transaction ending in 0042. If you still don't recognize it, I can ask staff to look at a refund. Would you like me to ask staff? Please say yes or no.",
+        "OK, I won't ask staff for a refund. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "No"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-resume-paraphrase",
@@ -227,7 +292,15 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "My monthly donation is on hold; please get the payments going again.",
+      "group": "natural_language",
+      "initialStatus": "SUSPENDED",
+      "replies": [
+        "Thanks, you are verified. I can read you your monthly gift, pause it, restart it, cancel it, or set up a one-time gift. What would you like to do?"
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": "Unexpected/missing proposal. No follow-up consent submitted."
     },
     {
       "id": "natural-pause-after-refusal",
@@ -255,7 +328,18 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "I don't want to cancel the gift. Please put it on hold while I sort out my expenses.",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as active. I can ask PayPal to pause your monthly gift. Do you want me to pause it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as suspended. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-cancel-refuses-pause",
@@ -284,7 +368,15 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "I don't want to pause my monthly gift. Please cancel it.",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as active. I can ask PayPal to pause your monthly gift. Do you want me to pause it? Please say yes or no."
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": "Unexpected/missing proposal. No follow-up consent submitted."
     },
     {
       "id": "natural-hardship-budget",
@@ -313,7 +405,15 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "My shifts were cut, and I have no room in my budget for this month's donation.",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "Sorry, I didn't catch that. You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift."
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": "Unexpected/missing proposal. No follow-up consent submitted."
     },
     {
       "id": "natural-clarify-undecided",
@@ -339,7 +439,15 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "I'm not sure whether to pause or cancel my monthly gift. I need to understand my choices before deciding.",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as active. I can ask PayPal to pause your monthly gift. Do you want me to pause it? Please say yes or no."
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-clarify-refuses-both",
@@ -365,7 +473,15 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "Please do not resume or cancel my monthly gift. I have not decided what to do with it.",
+      "group": "natural_language",
+      "initialStatus": "SUSPENDED",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as suspended. I can ask PayPal to restart your monthly gift. Do you want me to restart it? Please say yes or no."
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": null
     },
     {
       "id": "control-status",
@@ -386,7 +502,15 @@
           "latencyMs": 4625,
           "error": null
         }
-      ]
+      ],
+      "request": "What is the status and amount of my monthly gift, and when is the next payment?",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as active. The next gift is on December 1. What else can I help with?"
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": null
     },
     {
       "id": "control-pause",
@@ -414,7 +538,18 @@
           "latencyMs": 3690,
           "error": null
         }
-      ]
+      ],
+      "request": "Please pause my monthly gift.",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "I'm sorry to hear that. PayPal shows your monthly gift of $25.00 as active. I can ask PayPal to pause your monthly gift. Do you want me to pause it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as suspended. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "control-resume",
@@ -442,7 +577,18 @@
           "latencyMs": 3439,
           "error": null
         }
-      ]
+      ],
+      "request": "Please resume my monthly gift.",
+      "group": "direct_controls",
+      "initialStatus": "SUSPENDED",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as suspended. I can ask PayPal to restart your monthly gift. Do you want me to restart it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as active. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "control-cancel",
@@ -471,7 +617,20 @@
           "latencyMs": 3751,
           "error": null
         }
-      ]
+      ],
+      "request": "I want to cancel my monthly gift.",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "I'm sorry to hear that. PayPal shows your monthly gift of $25.00 as active. Before you stop it, I can pause it instead. Would you like me to pause it? Please say yes or no.",
+        "OK, no pause. PayPal shows your monthly gift of $25.00 as active. Cancelling ends it for good, and it cannot be undone. Do you want me to cancel it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as cancelled. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "No",
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "control-hardship",
@@ -503,7 +662,18 @@
           "latencyMs": 4350,
           "error": null
         }
-      ]
+      ],
+      "request": "I lost my job and can't afford this month's gift.",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "I understand. PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, with the status completed. I can give that $25.00 back to you, and a sponsor's hardship fund would pay the same amount to Sunny Hollow Pantry. PayPal shows the sponsor's hold is open. This does not change your monthly gift. The next gift is on December 1. Should I give it back? Please say yes or no.",
+        "Done. PayPal now shows your charge of $25.00 as refunded. PayPal shows the sponsor's payment of the same amount to Sunny Hollow Pantry, with the status completed. PayPal now shows your monthly gift as active. The next gift is on December 1. If next month is hard too, you can ask me to pause it. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "control-charge-check",
@@ -526,7 +696,18 @@
           "latencyMs": 3920,
           "error": null
         }
-      ]
+      ],
+      "request": "I do not recognize the PayPal charge on my bank statement.",
+      "group": "direct_controls",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "I'm sorry to hear that. PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, with the status completed. In your PayPal activity, it is the transaction ending in 0042. If you still don't recognize it, I can ask staff to look at a refund. Would you like me to ask staff? Please say yes or no.",
+        "OK, I won't ask staff for a refund. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "No"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-resume-paraphrase",
@@ -554,7 +735,18 @@
           "latencyMs": 4103,
           "error": null
         }
-      ]
+      ],
+      "request": "My monthly donation is on hold; please get the payments going again.",
+      "group": "natural_language",
+      "initialStatus": "SUSPENDED",
+      "replies": [
+        "PayPal shows your monthly gift of $25.00 as suspended. I can ask PayPal to restart your monthly gift. Do you want me to restart it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as active. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-pause-after-refusal",
@@ -582,7 +774,18 @@
           "latencyMs": 4433,
           "error": null
         }
-      ]
+      ],
+      "request": "I don't want to cancel the gift. Please put it on hold while I sort out my expenses.",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "I'm sorry to hear that. PayPal shows your monthly gift of $25.00 as active. I can ask PayPal to pause your monthly gift. Do you want me to pause it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as suspended. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-cancel-refuses-pause",
@@ -610,7 +813,18 @@
           "latencyMs": 4159,
           "error": null
         }
-      ]
+      ],
+      "request": "I don't want to pause my monthly gift. Please cancel it.",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "I'm sorry to hear that. PayPal shows your monthly gift of $25.00 as active. Cancelling ends it for good, and it cannot be undone. Do you want me to cancel it? Please say yes or no.",
+        "Done. PayPal now shows your monthly gift of $25.00 as cancelled. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-hardship-budget",
@@ -642,7 +856,18 @@
           "latencyMs": 4239,
           "error": null
         }
-      ]
+      ],
+      "request": "My shifts were cut, and I have no room in my budget for this month's donation.",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "I understand. PayPal shows the latest charge for your monthly gift to Sunny Hollow Pantry was $25.00 on November 1, with the status completed. I can give that $25.00 back to you, and a sponsor's hardship fund would pay the same amount to Sunny Hollow Pantry. PayPal shows the sponsor's hold is open. This does not change your monthly gift. The next gift is on December 1. Should I give it back? Please say yes or no.",
+        "Done. PayPal now shows your charge of $25.00 as refunded. PayPal shows the sponsor's payment of the same amount to Sunny Hollow Pantry, with the status completed. PayPal now shows your monthly gift as active. The next gift is on December 1. If next month is hard too, you can ask me to pause it. What else can I help with?"
+      ],
+      "followUpsGiven": [
+        "Yes"
+      ],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-clarify-undecided",
@@ -663,7 +888,15 @@
           "latencyMs": 4276,
           "error": null
         }
-      ]
+      ],
+      "request": "I'm not sure whether to pause or cancel my monthly gift. I need to understand my choices before deciding.",
+      "group": "natural_language",
+      "initialStatus": "ACTIVE",
+      "replies": [
+        "Sorry, I didn't catch that. You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift."
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": null
     },
     {
       "id": "natural-clarify-refuses-both",
@@ -684,7 +917,15 @@
           "latencyMs": 0,
           "error": null
         }
-      ]
+      ],
+      "request": "Please do not resume or cancel my monthly gift. I have not decided what to do with it.",
+      "group": "natural_language",
+      "initialStatus": "SUSPENDED",
+      "replies": [
+        "Sorry, I didn't catch that. You can ask about your monthly gift, pause it, restart it, cancel it, or give a one-time gift."
+      ],
+      "followUpsGiven": [],
+      "blockedFollowUp": null
     }
   ]
 }

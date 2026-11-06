@@ -1,0 +1,281 @@
+{
+  "assessmentId": "relief-outcome-assessment-b-20261106",
+  "assessmentDate": "2026-11-06",
+  "assessor": "Independent reviewer B",
+  "sourceCommit": "6498286541349e9bb36a51494a01d6ce5011f106",
+  "scope": "Implemented PayPal AI hackathon prototype, assessed only from the specified current factual packet and allowed local evidence. No prior subjective grades consulted.",
+  "conventions": {
+    "criteria": [
+      "Technological Implementation",
+      "Design",
+      "Potential Impact",
+      "Innovation/Idea",
+      "Presentation"
+    ],
+    "minimum": 1,
+    "maximum": 10,
+    "increment": 0.5,
+    "equalWeights": true,
+    "officialDevpostScale": false,
+    "formula": "sum(criteria scores) / 50 * 90",
+    "sandbox": "Required prototype setting; no deduction merely for using sandbox funds or mock simulations. Production operations and human studies are not mandatory hackathon features."
+  },
+  "criteria": [
+    {
+      "name": "Technological Implementation",
+      "score": 9,
+      "reasons": [
+        "Substantial functioning integration rather than an interface-only concept: retained actual sandbox donor changes, sponsor capture/refund, invoice payment and verified webhook, restart-surviving signed receipt, and two-leg purchasing checkout.",
+        "Source separates interpretation from payment authority. Fresh exact consent, exact target/amount checks, sponsor readback before refund, read-only recovery and visible unresolved outcomes are concrete mechanisms.",
+        "The new frozen outcome comparison is a material positive result: identical current call/gate/checker/mock implementation completed 12/12 with the composed router versus 7/12 with unchanged rules, both 6/6 controls. All 24 rows and all public projections were inspected.",
+        "Below maximum because model routing still takes roughly 3.4–4.6 seconds on the eleven nonzero cases, generalization is bounded by a twelve-task synthetic fixture, and earlier route-label and purchase-drafting failures remain relevant to the broader feature set."
+      ],
+      "evidence": [
+        "src/call.js:458",
+        "src/call.js:667",
+        "src/call.js:707",
+        "src/call.js:750",
+        "src/rehearsal.js",
+        "test/rehearsal.test.js",
+        "test/cancellation-choice.test.js",
+        "docs/results/functional-acceptance-2026-11-05/donor.json",
+        "docs/results/functional-acceptance-2026-11-05/invoice-webhook.json",
+        "docs/results/functional-acceptance-2026-11-05/receipt.json",
+        "docs/results/guarded-checkout-2026-11-05.json",
+        "docs/results/donor-outcome-2026-11-06/harness-source.txt",
+        "docs/results/donor-outcome-2026-11-06/outcomes.jsonl"
+      ]
+    },
+    {
+      "name": "Design",
+      "score": 8.5,
+      "reasons": [
+        "The native desktop views have deliberate typography, restrained color, clear primary actions and a comprehensible money/status hierarchy. Simulation, fees and uncertain outcomes are visible rather than hidden.",
+        "The native completed phone result shows sponsor $25, donor Unresolved and gift Active together. Collapsed conversation, synchronized native scenario selector, result focus/scroll and 44-pixel navigation targets address the small viewport.",
+        "Below maximum because the dense desktop interface inside the phone film is too small to inspect in place, and the actual ambiguity replies remain generic capability lists rather than explaining the caller's particular unresolved choice. These are observed communication limits, not assumed usability failures."
+      ],
+      "evidence": [
+        ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+        ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+        ".acceptance/rehearsal-evidence/focused-demo-hosted-native.png",
+        ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png",
+        "web/rehearsal.js",
+        "web/rehearsal.css",
+        "web/demo.css",
+        "docs/results/donor-outcome-2026-11-06/outcomes.jsonl: natural-clarify-undecided and natural-clarify-refuses-both"
+      ]
+    },
+    {
+      "name": "Potential Impact",
+      "score": 8,
+      "reasons": [
+        "The audience and problem are concrete: small nonprofits need after-hours donor care, and an eligible donor can receive a month's gift back while the recurring gift stays active. Sponsor-first funding and inspectable outcomes address a meaningful trust and support problem.",
+        "The new paired task result strengthens the mechanism by demonstrating successful supported-action completion for six contextual tasks versus one for this keyword baseline, rather than relying only on a model label.",
+        "The ceiling is limited by unresolved sponsor economics and demand: equal gross funding still incurs fees, and no sponsor partnership, donor/nonprofit adoption, measured staff savings or retention effect is established. These limits reduce confidence in scale of benefit, without making such studies mandatory deliverables.",
+        "Market statistics are treated as audience context reported in the permitted packet, not independently re-browsed facts or evidence of this product's effect."
+      ],
+      "evidence": [
+        ".acceptance/relief-review-outcome-packet-20261106.md: Audience and workflow; Impact and alternatives",
+        "docs/DONOR-OUTCOMES-2026-11-06.md",
+        "docs/RELIEF-REHEARSAL-2026-11-06.md",
+        "docs/results/functional-acceptance-2026-11-05/donor.json",
+        ".acceptance/rehearsal-evidence/final-desktop-complete-native.png"
+      ]
+    },
+    {
+      "name": "Innovation/Idea",
+      "score": 8,
+      "reasons": [
+        "The distinction is a coherent combination: conversational donor-task completion, sponsor-funded hardship relief, exact fresh consent, authoritative readback, sentence-level evidence and an independently checkable app-signed record.",
+        "This is more specific than a generic payment chatbot, and the paired current-pipeline outcome result supplies bounded evidence that interpretation adds useful task coverage over the unchanged keyword router.",
+        "Below maximum because conventional recurring management and receipts already exist; the contribution is mainly product/workflow composition. The result is not a pure LLM ablation, and controlled MCP suppliers plus a deterministic winning purchase plan do not establish autonomous open-market negotiation or AI-specific price savings."
+      ],
+      "evidence": [
+        ".acceptance/relief-review-outcome-packet-20261106.md: Impact and alternatives; AI role and mixed evaluation results",
+        "src/rehearsal.js",
+        "src/call.js",
+        "docs/results/donor-outcome-2026-11-06/protocol.md",
+        "docs/results/donor-outcome-2026-11-06/harness-source.txt",
+        "docs/results/guarded-checkout-2026-11-05.json"
+      ]
+    },
+    {
+      "name": "Presentation",
+      "score": 8.5,
+      "reasons": [
+        "The current landing page gives one primary donor-relief story with direct trial and receipt actions, a visible real poster and a compact 73-second film. Historical procurement material sits inside one closed optional archive.",
+        "Inspected film frames, seven captions and provenance clearly distinguish simulation from retained actual sandbox evidence, show success and uncertainty, and accurately bound receipt integrity to the app key.",
+        "The new archive supplies two verbatim model-backed task examples and an all-24-results link whose public projections match the result rows exactly.",
+        "Below maximum because the lead film demonstrates deterministic rehearsal and receipt checking rather than the newly evidenced model-backed language-to-task advantage; that advantage requires opening supporting material. The phone film's interface text is also too small to inspect without enlargement. I did not watch full motion or listen to audio, so narration quality, pacing and audiovisual continuity are not independently rated."
+      ],
+      "evidence": [
+        "web/demo.html:14",
+        "web/demo.html:19",
+        "web/demo.js",
+        "web/demo-assets/donor-task-outcomes-20261106.txt",
+        "web/demo-assets/relief-demo-20261106.vtt",
+        "web/demo-assets/relief-demo-20261106-provenance.txt",
+        ".acceptance/relief-film/covered-final.png",
+        ".acceptance/relief-film/unknown-final.png",
+        ".acceptance/relief-film/edited-final.png",
+        ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png"
+      ]
+    }
+  ],
+  "threeMaterialDeductions": [
+    {
+      "criteria": [
+        "Technological Implementation",
+        "Innovation/Idea"
+      ],
+      "finding": "Bounded composed-system evidence and remaining mixed AI performance.",
+      "basis": "One frozen synthetic paired run demonstrates 12/12 versus 7/12, not broad language reliability or pure LLM causality. Eleven model-routed cases add 3439–4625 ms. Two direct utterances overlap the earlier routing set; broader historical overlap was not exhaustively audited. The historical 11/12 route-label gate and 11/24 versus 14/24 purchase-drafting failure remain failed.",
+      "improvement": "Keep separate task/label claims and latency visible; any stronger generalization claim needs a differently authored frozen comparison."
+    },
+    {
+      "criteria": [
+        "Potential Impact"
+      ],
+      "finding": "Benefit scale depends on unestablished sponsor economics and demand.",
+      "basis": "A working sponsor-first refund mechanism is demonstrated, but gross matching incurs fees, and sponsor participation, adoption and retention or time-saving effects are unestablished. This is an uncertainty in projected impact, not a missing mandatory human study.",
+      "improvement": "Make sponsor funding and fee responsibility explicit in the product's impact case and substantiate projected benefits when such evidence exists."
+    },
+    {
+      "criteria": [
+        "Design",
+        "Presentation"
+      ],
+      "finding": "The strongest new AI evidence is less immediate than the primary relief mechanism.",
+      "basis": "The 73-second film is explicitly rules-based simulation plus historical receipt evidence; model-backed task results sit in the optional archive. In the 390-pixel landing screenshot, the film's desktop UI text is too small to inspect in place. Actual clarification responses list generic capabilities.",
+      "improvement": "Bring the existing bounded task result into a concise visible explanation, preserve its limits, and make ambiguous-choice replies and phone-readable evidence easier to understand."
+    }
+  ],
+  "pairedOutcomeVerification": {
+    "filesInspected": [
+      "docs/results/donor-outcome-2026-11-06/fixture.json",
+      "docs/results/donor-outcome-2026-11-06/protocol.md",
+      "docs/results/donor-outcome-2026-11-06/harness-source.txt",
+      "docs/results/donor-outcome-2026-11-06/manifest.json",
+      "docs/results/donor-outcome-2026-11-06/outcomes.jsonl",
+      "docs/results/donor-outcome-2026-11-06/summary.json",
+      "docs/results/donor-outcome-2026-11-06/overlap-audit.json"
+    ],
+    "resultsInspected": 24,
+    "publicProjectionsInspected": 24,
+    "allPublicProjectionsMatch": true,
+    "recomputed": {
+      "rules": {
+        "run": 12,
+        "complete": 7,
+        "controlsComplete": 6,
+        "naturalComplete": 1
+      },
+      "composed": {
+        "run": 12,
+        "complete": 12,
+        "controlsComplete": 6,
+        "naturalComplete": 6
+      },
+      "errors": 0,
+      "unapprovedWrites": 0,
+      "wrongWrites": 0,
+      "approvedMockWrites": 16,
+      "successfulMockCoverFlows": 3
+    },
+    "frozenGatePassed": true,
+    "fixtureSha256": "27e42a5a9b0ac0f590d4fe8d65f4f470a89660120a49ca9bf269cca81be173a8",
+    "protocolSha256": "ae06899447338c425e302233f04e93697d03fa126c9121ba9533b23421ebc25a",
+    "frozenManifestEntries": 64,
+    "freezeManifestMatchesStartRecord": true,
+    "consentBoundary": "Harness submits follow-ups only for expected proposal prefixes/kinds/targets, with exact $25 cover terms; unexpected proposals receive no consent. Zero wrong writes is conditional on this policy.",
+    "cancellationBoundary": "Composed natural-cancel-refuses-pause still emits stop_gift. Code proposes cancel after explicit pause refusal, separate Yes produces CANCELLED. This passes the outcome oracle and does not change historical route-label failure.",
+    "ledgerLimit": "All 24 public ledger hash fields inspected. Raw private ledgers were outside allowed inspection and were not independently rehashed in this review; prior two audits are packet-reported evidence."
+  },
+  "hashVerification": {
+    "manifest": ".acceptance/relief-review-outcome-manifest-20261106.json",
+    "method": "Read every listed file as bytes and compute SHA-256 with Node crypto; compare against each manifest entry.",
+    "expectedFiles": 85,
+    "verifiedFiles": 85,
+    "matchedFiles": 85,
+    "mismatches": [],
+    "packetExpectedSha256": "93e96f32fa16d370bcdad0453045a007c3a471735c44123b2e35f50ea3b86d8a",
+    "packetActualSha256": "93e96f32fa16d370bcdad0453045a007c3a471735c44123b2e35f50ea3b86d8a",
+    "limits": "Hash equality verifies identity against the supplied manifest, not the truth of every recorded claim. Hash verification did not execute application code."
+  },
+  "imagesInspected": [
+    {
+      "path": ".acceptance/rehearsal-evidence/final-desktop-complete-native.png",
+      "width": 1440,
+      "height": 900,
+      "observation": "Completed covered outcome, $25 sponsor/$25 donor/Active, fees and transcript.",
+      "tool": "view_image",
+      "detail": "original"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/final-mobile-complete-native.png",
+      "width": 390,
+      "height": 844,
+      "observation": "Completed unresolved outcome, all three money/status columns together, conversation closed.",
+      "tool": "view_image",
+      "detail": "original"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/focused-demo-hosted-native.png",
+      "width": 1440,
+      "height": 900,
+      "observation": "Primary relief story, trial/receipt actions and fully visible poster beside headline.",
+      "tool": "view_image",
+      "detail": "original"
+    },
+    {
+      "path": ".acceptance/rehearsal-evidence/focused-demo-phone-hosted-native.png",
+      "width": 390,
+      "height": 844,
+      "observation": "Clear primary actions and visible film, whose desktop UI text is tiny at this size.",
+      "tool": "view_image",
+      "detail": "original"
+    },
+    {
+      "path": ".acceptance/relief-film/covered-final.png",
+      "width": 1280,
+      "height": 900,
+      "observation": "Covered success and persistent SIMULATION. NO PAYMENTS label.",
+      "tool": "view_image",
+      "detail": "original"
+    },
+    {
+      "path": ".acceptance/relief-film/unknown-final.png",
+      "width": 1280,
+      "height": 900,
+      "observation": "Unresolved refund with sponsor captured and active gift; no false success.",
+      "tool": "view_image",
+      "detail": "original"
+    },
+    {
+      "path": ".acceptance/relief-film/edited-final.png",
+      "width": 1280,
+      "height": 900,
+      "observation": "Edited amount rejection, app-key integrity limitation and recorded sandbox/no-new-payment label.",
+      "tool": "view_image",
+      "detail": "original"
+    }
+  ],
+  "viewLimits": [
+    "Inspected all seven required original-resolution images and read captions/provenance; hashed the movie bytes. Did not watch the complete movie or hear narration.",
+    "No browsing, provider requests, runtime-state or credential access, payments, application mutations or test execution.",
+    "Current source and supporting result material are distinguished from screenshots at 499d0ad and film capture source bff1430; no new payment or screenshot is attributed to 6498286.",
+    "Suite counts 1025 total / 1016 pass / 9 optional integration skips / 0 fail and hosted/deployment checks are reported by the permitted packet/docs, not independently rerun here.",
+    "Public YouTube upload, Devpost submission, public source release and full eligibility/rules remain unestablished separately from the five category scores.",
+    "Required agent-self-evaluation skill was absent at the catalog-equivalent path and a read-only search of both provided skill roots found no copy; assessment uses the explicit supplied criteria and evidence boundaries."
+  ],
+  "computedTotals": {
+    "rawTotal": 42,
+    "rawMaximum": 50,
+    "averageCriterionScore": 8.4,
+    "mappedTotal": 75.6,
+    "mappedMaximum": 90,
+    "formula": "42 / 50 * 90 = 75.6",
+    "rounding": "Exact to one decimal"
+  },
+  "independentConclusion": "A technically strong, carefully bounded prototype with coherent donor-relief design and newly demonstrated composed-system task completion. Its clearest remaining ceilings are generalization/latency, sponsor-dependent impact confidence and the prominence/readability of model-backed evidence."
+}

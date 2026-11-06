@@ -33,3 +33,5 @@ Keep the procurement flow available for judge testing and a separate short walkt
 - Independent supplier participation, real user observations and fulfilled goods.
 
 The first three do not establish the last three. Report savings only against the initial supplied quotes using the same solver. An AI-versus-deterministic negotiation comparison is still required before claiming the model itself saves more. Collect user feedback and supplier permission with their consent; never invent interviews, savings, accessibility improvements or winning odds.
+
+The main demo also has a [recorded task comparison](DEMO-TASK-COMPARISON-2026-11-06.md): inspect all twelve requests and both routers’ actual dialogue and mock outcomes at `/demo#agent-proof`. This is retained model-backed evidence, not a new model call.
