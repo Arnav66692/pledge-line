@@ -827,3 +827,111 @@ test('shortened citations cannot detach a budget clock from its actual buyer con
   const actualClock = text.replace('Deliver 2026-11-23 Pacific', 'Deliver 2026-11-23 at 5 PM Pacific');
   assert.deepEqual(groundedDelivery(local, deadline, evidence, { now, timeZone: 'America/Los_Angeles', turns: [actualClock] }), { status: 'invalid', field: 'delivery_time' });
 });
+
+test('size prepositions, historical orders and temperature ratings do not invalidate a complete count', () => {
+  for (const [count, phrase] of [[34, 'individual hard-cover journals in B5 size'], [78, 'individual paper sleeves in C4 size']]) {
+    const text = `Purchase ${count} ${phrase}, with plain covers.`;
+    const citation = `${count} ${phrase.split(' in ')[0]}`;
+    assert.equal(quantityIsGrounded(count, citation, [text]), true, phrase);
+  }
+  const historical = 'Buy 34 individual canvas carry bags. My last order was 72 units; those are background figures.';
+  assert.equal(quantityIsGrounded(34, '34 individual canvas carry bags', [historical]), true);
+  assert.equal(quantityIsGrounded(72, '72 units', [historical]), false);
+  const heat = 'Buy 34 individual silicone utensils, heat-resistant to 215 C.';
+  assert.equal(quantityIsGrounded(34, '34 individual silicone utensils', [heat]), true);
+  assert.equal(quantityIsGrounded(215, '215 C', [heat]), false);
+  assert.equal(quantityIsGrounded(8, 'Buy 8 C shirts'), true, 'A bare letter without temperature context is not a thermal rating.');
+});
+
+test('hyphenated single-supplier policies and affirmative distribution retain their permission guards', () => {
+  for (const text of ['This must be a single-supplier order.', 'Use a single-vendor order.']) assert.equal(splitPermission([text]), 'deny', text);
+  for (const text of ['Okay to divide the order among suppliers now.', 'It is acceptable to distribute this order across vendors.']) assert.equal(splitPermission([text]), 'allow', text);
+  for (const text of ['Not okay to divide the order among suppliers.', 'If okay to divide the order among suppliers, ask again.',
+    'Okay to share the order details among suppliers.']) assert.notEqual(splitPermission([text]), 'allow', text);
+  assert.notEqual(splitPermission(['Not a single-supplier order.']), 'deny');
+  const input = raw(); input.assumptions = ['single_supplier_default']; input.evidence.split = 'This must be a single-supplier order.';
+  const result = normalized(input, goal.replace('Use one supplier.', input.evidence.split));
+  assert.equal(result.ready, true); assert.ok(!result.assumptions.includes('single_supplier_default'));
+});
+
+test('a bounded make-that correction can supply a missing count while financial and per-item replies still refuse', () => {
+  const prior = 'Buy individual blue polypropylene trays under USD 220 total. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  const reply = 'Make that 17 trays.';
+  assert.equal(quantityIsGrounded(17, reply, [prior, reply]), true);
+  assert.equal(quantityIsGrounded(17, reply), false);
+  for (const reply of ['Make that 17 cents.', 'Make that 17 trays per box.', 'Make that SKU 17 trays.']) {
+    assert.equal(quantityIsGrounded(17, reply, [prior, reply]), false, reply);
+  }
+});
+
+test('an explicit purchased package count resolves unit uncertainty without calculating its contents', () => {
+  const uncertain = 'Order blue ink pens in 10-pen packs. The quantity is 18, but I must confirm whether that is pens or packs.';
+  assert.equal(quantityIsGrounded(18, 'quantity is 18', [uncertain]), false);
+  const reply = 'Purchase 18 packs, with 10 blue ink pens in each pack.';
+  assert.equal(quantityIsGrounded(18, '18 packs', [uncertain, reply]), true);
+  assert.equal(quantityIsGrounded(10, '10 blue ink pens', [uncertain, reply]), false);
+  assert.equal(quantityIsGrounded(180, '180 pens', [uncertain, reply]), false);
+  assert.equal(quantityIsGrounded(6, 'Buy 6 boxes of 24 shirts'), false);
+  assert.equal(quantityIsGrounded(18, 'quantity is 18', [uncertain, 'The quantity is 18.']), false);
+});
+
+test('an explicitly discarded currency clause does not defeat an otherwise grounded USD amount', () => {
+  const original = 'Buy 17 individual blue nylon umbrellas. Budget USD 220 and also within EUR 200. Deliver 2026-11-23 at 3 PM Pacific.';
+  const reply = 'Use only the USD 220 total cap; ignore the euro amount.';
+  assert.equal(budgetIsGrounded(22000, reply, [original, reply]), true);
+  assert.equal(budgetIsGrounded(22000, 'USD 220 and EUR 200', [original]), false);
+  assert.equal(budgetIsGrounded(22000, 'EUR 220 total', [original, reply]), false);
+  assert.equal(budgetIsGrounded(22000, 'USD 220 total, EUR only', [original, reply]), false);
+});
+
+test('denying a currency-discard verb retains the foreign budget constraint', () => {
+  for (const verb of ['ignore', 'disregard', 'drop', 'exclude']) {
+    for (const denial of ['do not', 'never', 'don’t']) {
+      const evidence = `USD 230 total; ${denial} ${verb} the EUR210 total cap`;
+      const text = `Buy 19 blue umbrellas. Budget ${evidence}. Deliver 2026-11-23 at 3 PM Pacific.`;
+      assert.equal(budgetIsGrounded(23000, evidence, [text]), false, evidence);
+    }
+    const evidence = `USD 230 total; ${verb} the EUR210 total cap`;
+    const text = `Buy 19 blue umbrellas. Budget ${evidence}. Deliver 2026-11-23 at 3 PM Pacific.`;
+    assert.equal(budgetIsGrounded(23000, evidence, [text]), true, evidence);
+    assert.deepEqual(goalCurrencyContext([text]), { currency: 'USD', explicit: true });
+  }
+});
+
+test('contracted denials of distribution permission preserve original source evidence', () => {
+  const cases = [
+    ["It isn't okay to divide the order among suppliers.", 'is not'],
+    ["They aren't permitted to share the order among suppliers.", 'are not'],
+    ["It wasn't acceptable to distribute this order across vendors.", 'was not'],
+    ["They weren't allowed to divide this order among vendors.", 'were not'],
+    ["It wouldn't be okay to divide the order among suppliers.", 'would not'],
+    ["It shouldn't be acceptable to distribute this order across vendors.", 'should not'],
+    ["It won't be permitted to share the order among suppliers.", 'will not'],
+    ["It can't be okay to divide this order among vendors.", 'can not'],
+    ["It couldn't be acceptable to distribute this order across vendors.", 'could not'],
+    ["We mustn't allow multiple suppliers.", 'must not'],
+    ["We shan't allow multiple suppliers.", 'shall not'],
+    ["We don't allow multiple suppliers.", 'do not'],
+    ["It doesn't permit splitting the order.", 'does not'],
+    ["We didn't allow multiple suppliers.", 'did not'],
+  ];
+  for (const [contracted, expanded] of cases) for (const text of [contracted, contracted.replaceAll("'", '’'), contracted.replace(/\b\w+n't\b/, expanded)]) {
+    const policy = splitPolicy([text]);
+    assert.equal(policy.permission, 'deny', text); assert.equal(policy.source, text.slice(0, -1), text);
+  }
+  assert.equal(splitPermission(['It cannot be okay to divide this order among vendors.']), 'deny');
+  assert.equal(splitPermission(['It is okay to divide the order among suppliers.']), 'allow');
+  const unrelated = "We won't change the artwork, but it is acceptable to distribute this order across vendors.";
+  assert.equal(splitPermission([unrelated]), 'allow');
+  assert.equal(splitPolicy([unrelated]).source, 'it is acceptable to distribute this order across vendors');
+});
+
+test('known goods stated as contents cannot resolve an uncertain purchased unit', () => {
+  const uncertain = 'Order blue cotton shirts in 12-shirt packs. The quantity is 19, but I must confirm whether that is shirts or packs.';
+  for (const reply of ['There are 12 shirts in each pack.', 'There are 12 shirts on each rack.', 'There are 12 shirts for each pack.']) {
+    assert.equal(quantityIsGrounded(12, '12 shirts', [uncertain, reply]), false, reply);
+  }
+  const purchase = 'Purchase 19 packs, with 12 blue cotton shirts in each pack.';
+  assert.equal(quantityIsGrounded(19, '19 packs', [uncertain, purchase]), true);
+  assert.equal(quantityIsGrounded(12, '12 blue cotton shirts', [uncertain, purchase]), false);
+});

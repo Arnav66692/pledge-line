@@ -1,0 +1,1559 @@
+{
+  "evidenceClass": "OFFLINE COUNTERFACTUAL NORMALIZATION OF EXPOSED FRESH-NINE CAPTURED DRAFTS; not fresh inference, a holdout, or a new model-performance estimate.",
+  "actualNewProviderCalls": 0,
+  "originalPrimaryPreserved": true,
+  "originalSourceCommit": "b0f048b11bdb83fc330d5b79d253c61aaca01ecd",
+  "fixtureSha256": "8a30ea0af361e926c6fed2f3c25efa6d6a6b4be17e2d44a78e2cc5961556ea92",
+  "counts": {
+    "modelCorrectTasks": 24,
+    "baselineCorrectTasks": 15,
+    "modelControls": 6,
+    "baselineControls": 4
+  },
+  "sourceHashes": {
+    "src/goal-grounding.js": "29de7bb64bc2e781b15c0003c6912a7823e14e4c75c72cb7e68b6845dd5f941e",
+    "src/goal-intake.js": "c803ea6ccedd27742204fc23dd73ee78327eb4991228b8352ab86de2bb28d091",
+    "scripts/goal-intake-eval.js": "769fcc217c6b1278cf1eb314721a6a532224eea5d2b2fe15bca5020ba9937347",
+    "scripts/conversation-goal-eval.js": "730ea38b345e5d964ae604dca9929cc5bf17043d35d4088f8efbe296b532b05a"
+  },
+  "results": [
+    {
+      "id": "C-01",
+      "category": "explicit_controls",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "mugs_material_color",
+              "blank_style",
+              "mug_capacity"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-02",
+      "category": "explicit_controls",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "shirts_material_color",
+              "neckline",
+              "shirt_size"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-03",
+      "category": "explicit_controls",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 4,
+            "factsPresent": 4,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 4,
+            "factsPresent": 4,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-04",
+      "category": "explicit_controls",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 4,
+            "factsPresent": 4,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 4,
+            "factsPresent": 4,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-05",
+      "category": "explicit_controls",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-06",
+      "category": "explicit_controls",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-07",
+      "category": "context_discourse",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "tote_material_color",
+              "strap_style"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "tote_material_color",
+              "strap_style"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 3,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "tote_material_color",
+              "strap_style"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-08",
+      "category": "context_discourse",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 1,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-09",
+      "category": "context_discourse",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "backpack_material_color",
+              "backpack_capacity"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "backpack_material_color",
+              "backpack_capacity"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-10",
+      "category": "context_discourse",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-11",
+      "category": "context_discourse",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "scarf_material",
+              "scarf_color",
+              "weave_style"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "scarf_material",
+              "scarf_color",
+              "weave_style"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-12",
+      "category": "context_discourse",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-13",
+      "category": "clarification",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-14",
+      "category": "clarification",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-15",
+      "category": "clarification",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-16",
+      "category": "clarification",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-17",
+      "category": "clarification",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-18",
+      "category": "clarification",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        },
+        {
+          "turn": 2,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-19",
+      "category": "timezone_negation_goods",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 2,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 2,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "vest_material_color",
+              "reflective_detail"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-20",
+      "category": "timezone_negation_goods",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-21",
+      "category": "timezone_negation_goods",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-22",
+      "category": "timezone_negation_goods",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 3,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 3,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "runner_material_color",
+              "edge_style",
+              "runner_length"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-23",
+      "category": "timezone_negation_goods",
+      "modelCorrect": true,
+      "baselineCorrect": false,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 5,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 5,
+            "factsPresent": 5,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "assumptionsMatch": true,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": false,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": false,
+            "exactFields": 0,
+            "scoredFields": 5,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 5,
+            "factsPresent": 0,
+            "missingFactIds": [
+              "plate_material_color",
+              "plate_diameter",
+              "rim_style",
+              "exclude_gold_trim",
+              "exclude_floral_patterns"
+            ],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-24",
+      "category": "timezone_negation_goods",
+      "modelCorrect": true,
+      "baselineCorrect": true,
+      "turns": [
+        {
+          "turn": 1,
+          "capturedModel": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": true,
+            "sourceCitationsValid": true
+          },
+          "baseline": {
+            "correct": true,
+            "malformed": false,
+            "authorityViolation": false,
+            "appropriateClarification": true,
+            "exactFields": 0,
+            "scoredFields": 0,
+            "wrongConfidentFields": 0,
+            "prematureReady": false,
+            "requiredFacts": 0,
+            "factsPresent": 0,
+            "missingFactIds": [],
+            "forbiddenPositiveAttributes": 0,
+            "sourceEvidencePresent": false,
+            "sourceCitationsValid": null
+          }
+        }
+      ]
+    }
+  ]
+}

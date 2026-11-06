@@ -77,6 +77,8 @@ function baselineNumericSpans(text) {
   add('zone', /\b(?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/gi);
   add('size', /\b[abc](?:10|[0-9])\b/gi);
   add('dimension', /(?<!\d)\d+(?:\.\d+)?\s*(?:mm|cm|kg|ml|oz|ft|m|g|l|inches?|feet|yards?)(?=\b|(?:wide|long|high|tall|thick|deep)\b)/gi, (match) => !countedClothingSize(text, match));
+  add('temperature', /(?<!\d)\d+(?:\.\d+)?\s*°\s*[CF]\b/gi);
+  add('temperature', /\b(?:heat[- ]resistant(?:\s+to)?|temperature(?:\s+(?:rating|of|is))?|rated(?:\s+(?:to|for))?)\s+\d+(?:\.\d+)?\s*(?:°\s*)?[CF]\b/gi);
   add('money', new RegExp(`[$€£¥]\\s*-?${NUMBER}|\\b(?:USD|EUR|GBP|CAD|AUD|JPY)(?![A-Za-z_])\\s*${NUMBER}|\\b${NUMBER}\\s+(?:USD|EUR|GBP|CAD|AUD|JPY|dollars?|euros?|pounds?|yen|cents?|credits?|tokens?)\\b`, 'gi'));
   return result;
 }
@@ -159,7 +161,7 @@ function clockEvidence(text) {
     if (hour < 1 || hour > 12 || minute > 59) { invalid = true; continue; }
     add((hour % 12 + (match[3].replaceAll('.', '').toLowerCase() === 'pm' ? 12 : 0)) * 60 + minute, match.index);
   }
-  for (const match of text.matchAll(/\bat\s+(\d{1,2}):(\d{2})(?!\s*[ap]\.?m)\b/gi)) {
+  for (const match of text.matchAll(/\bat\s+(\d{1,2}):(\d{2})(?!\s*[ap]\.?m\.?\b)\b/gi)) {
     const hour = Number(match[1]), minute = Number(match[2]);
     if (hour > 23 || minute > 59) { invalid = true; continue; }
     add(hour * 60 + minute, match.index);
@@ -240,26 +242,27 @@ function explicitSplitPermission(turns) {
   const sharing = `(?:shared|divided|distributed|share|divide|distribute)\\s+(?:${order}\\s+)?(?:among|across|between)\\s+(?:(?:multiple|several|two or more)\\s+)?${supplier}`;
   const orderVerb = `(?:share|split|divide|distribute|fulfill|fulfil)\\s+${order}`;
   const denyPatterns = [
-    /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
+    /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
     new RegExp(`\\b(?:no more than|not more than|at most) one ${supplier}\\b|\\b(?:no|not|never)\\s+(?:${plural}|across ${supplier})\\b`, 'gi'),
     new RegExp(`\\b(?:not|don't|dont|cannot|can't|can not|may not|must not)\\s+(?:allow(?:ing)?|permit(?:ting)?|approv(?:e|ing)|use)(?:\\s+\\w+){0,4}\\s+(?:split(?:ting|s)?|${plural}|across ${supplier})\\b`, 'gi'),
     new RegExp(`\\b(?:split(?:ting|s)?|${plural})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|not acceptable|unacceptable|forbidden)\\b`, 'gi'),
     new RegExp(`\\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not|not)\\s+(?:\\w+\\s+){0,6}${sharing}\\b`, 'gi'),
-    new RegExp(`\\b${group}\\s+(?:may not|must not|will not|cannot|can't|can not|do not|don't|dont|should not)\\s+${orderVerb}`, 'gi'),
+    new RegExp(`\\b${group}\\s+(?:may not|must not|will not|cannot|can't|can not|do not|don't|dont|should not|not)\\s+${orderVerb}`, 'gi'),
     new RegExp(`\\b(?:no|not|never)\\s+${group}\\s+(?:may|can)\\s+${orderVerb}`, 'gi'),
   ];
-  const allowPattern = new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}split(?:ting)?\\b|\\bsplit(?:ting)?(?:\\s+\\w+){0,3}\\s+(?:allowed|okay|ok|fine|permitted|acceptable)\\b|\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${plural}|across ${supplier})\\b|\\b(?:${plural}|across ${supplier})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted|acceptable)\\b|\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}${sharing}\\b|\\b${group}\\s+(?:may|can)\\s+${orderVerb}`, 'gi');
+  const allowPattern = new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}split(?:ting)?\\b|\\bsplit(?:ting)?(?:\\s+\\w+){0,3}\\s+(?:allowed|okay|ok|fine|permitted|acceptable)\\b|\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${plural}|across ${supplier})\\b|\\b(?:${plural}|across ${supplier})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted|acceptable)\\b|\\b(?:may|can|allow|permit|(?:okay|ok|fine|permitted|allowed|acceptable)\\s+to)\\s+(?:\\w+\\s+){0,2}${sharing}\\b|\\b${group}\\s+(?:may|can)\\s+${orderVerb}`, 'gi');
   let permission = 'unspecified';
   for (const turn of turns) {
     const signals = [];
-    for (const clause of turn.replaceAll('’', "'").split(/[.!?;\n]+|\bbut\b/i)) {
+    const policyText = turn.replaceAll('’', "'").replace(/\b(?:is|are|was|were|wo|ca|could|should|would|must|sha|do|does|did|have|has|had|need|dare|ai)n't\b/gi, (token) => `not${' '.repeat(token.length - 3)}`);
+    for (const clause of policyText.split(/[.!?;\n]+|\bbut\b/i)) {
       const awaitingApproval = /\b(?:after|before|until)(?:\s+[a-z'-]+){0,4}\s+(?:approv(?:al|e[ds]?)|confirm(?:ation|ed|s)?|consent(?:s|ed)?)\b/i.test(clause);
       if ((/\b(?:if|when|unless|provided|assuming)\b/i.test(clause) || awaitingApproval) && new RegExp(`\\bsplit(?:ting|s)?\\b|\\b${supplier}\\b`, 'i').test(clause)) {
         signals.push({ value: 'conflict', clause, index: 0 }); continue;
       }
       const denied = denyPatterns.flatMap((pattern) => [...clause.matchAll(pattern)].map((match) => ({ index: match.index, end: match.index + match[0].length })));
-      for (const match of clause.matchAll(/\b(?:one|single) (?:supplier|vendor)\b/gi)) {
-        if (!/\b(?:more than|at least|not|not only)\s*$/i.test(clause.slice(0, match.index))) denied.push({ index: match.index, end: match.index + match[0].length });
+      for (const match of clause.matchAll(/\b(?:one|single)[ -](?:supplier|vendor)\b/gi)) {
+        if (!/\b(?:more than|at least|(?:not|not only)(?:\s+(?:a|an|the))?)\s*$/i.test(clause.slice(0, match.index))) denied.push({ index: match.index, end: match.index + match[0].length });
       }
       const allowed = [...clause.matchAll(allowPattern)]
         .filter((match) => !denied.some((item) => match.index < item.end && item.index < match.index + match[0].length))
@@ -316,14 +319,14 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
     if (match[2].toLowerCase().split(/[\s-]+/).some((word) => countRoles.has(word)) ||
       /(?:[$€£¥]\s*|\b(?:not|no|instead of|USD|EUR|GBP|CAD|AUD|JPY)\s*)$/i.test(before) ||
       /\b(?:sku|price|cost|budget|date|time|size|print|colou?r|logo|design|january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(?:id|code|number|count))?\s*[:#=]?\s*$|\b(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)\s+of\s*$/i.test(before) ||
-      /^\s+(?:colou?rs?|prints?|designs?|sizes?|per\b|for each\b)/i.test(after)) continue;
-    quantities.push({ value: number(match[1]), index: match.index, end: match.index + match[0].length });
+      /^\s+(?:colou?rs?|prints?|designs?|sizes?|per\b|for each\b|on each\b|in each\b)/i.test(after)) continue;
+    quantities.push({ value: number(match[1]), index: match.index, end: match.index + match[0].length, objectUnit: true });
   }
   // Independently bind catalog-free item phrases to an explicit purchasing role.
   // A phrase has at most nine words; packaging contents and non-order numeric roles ask again.
   const countRole = /\b(?:buy|order|need|needs|want|require|purchase|procure|get|keep|retain|use|set)\b/gi;
   const countField = /\b(?:quantity|qty|count)\b/gi;
-  const pastRole = /\b(?:previous|prior|historical|old|original|last year|last time|invoice|quoted?|estimate|vendor|supplier|used to)\b/gi;
+  const pastRole = /\b(?:previous|prior|historical|old|original|last year|last time|invoice|quoted?|estimate|vendor|supplier|used to|last (?:order|purchase|invoice|request))\b/gi;
   const roleIndex = (pattern, text) => [...text.matchAll(pattern)].at(-1)?.index ?? -1;
   const countIntent = (clause) => {
     const verbs = [...clause.matchAll(countRole)].filter((match) => !/^(?:order|purchase)$/i.test(match[0]) ||
@@ -339,7 +342,7 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
     if (intent >= 0 && /\b(?:not|never|no|don't|dont|doesn't|doesnt|won't|wont|wouldn't|wouldnt|shouldn't|shouldnt|can't|cant|cannot|mustn't|mustnt|shan't|shant|couldn't|couldnt|no need to)(?:\s+(?:ever|actually|really|currently|now|please|to|exactly)){0,3}\s*$/i.test(clause.slice(0, intent))) return false;
     return historic < 0 || intent > historic && /[,;]|\b(?:now|today|instead|actually|current|new|this time|this event|this order)\b|\band\s+(?:I|we)\b/i.test(clause.slice(historic, intent));
   };
-  const shortReply = new RegExp(`^\\s*${NUMBER}\\s+${descriptor}(?:\\s+${descriptor}){0,7}(?:\\s*,\\s*(?:same|unchanged|keep (?:the )?same|retain (?:the )?same)\\s+${descriptor}(?:\\s+${descriptor}){0,7})?(?:\\s*,\\s*please)?\\s*[.!]?\\s*$`, 'i').test(turns.at(-1)) && [...turns.at(-1).matchAll(new RegExp(`\\b${NUMBER}\\b`, 'gi'))].filter((match) => !/^(?:and[ -]*)+$/i.test(match[0])).length === 1;
+  const shortReply = new RegExp(`^\\s*(?:(?:make that|make it)\\s+)?${NUMBER}\\s+${descriptor}(?:\\s+${descriptor}){0,7}(?:\\s*,\\s*(?:same|unchanged|keep (?:the )?same|retain (?:the )?same)\\s+${descriptor}(?:\\s+${descriptor}){0,7})?(?:\\s*,\\s*please)?\\s*[.!]?\\s*$`, 'i').test(turns.at(-1)) && [...turns.at(-1).matchAll(new RegExp(`\\b${NUMBER}\\b`, 'gi'))].filter((match) => !/^(?:and[ -]*)+$/i.test(match[0])).length === 1;
   const inheritedPurchase = priorGoals.some((turn, index) => [...turn.matchAll(/\b(?:buy|order|need|needs|want|require|purchase|procure|get|quantity|qty|count)\b/gi)].some((match) => {
     const end = match.index + match[0].length;
     const clause = turn.slice(0, end).replaceAll('’', "'").split(/[;!?\n]|\.\s+|\b(?:but|however|while)\b/i).at(-1);
@@ -357,17 +360,21 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
     if (!tail || number(match[1]) <= 12 && /^\s*(?:a\.?m\.?|p\.?m\.?)\b/i.test(after)) continue;
     const sourceWords = [...tail[1].matchAll(/\S+/g)], selected = [];
     for (const token of sourceWords) {
-      if (/^(?:with|for|at|by|on|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|made|constructed|manufactured|finished|was|were|is|are|has|have|had|please|due|instead|rather)$/i.test(token[0])) break;
+      if (/^(?:with|for|at|by|on|in|under|within|including|total|budget|cost|price|per|each|and|or|to|from|delivered|delivery|deliver|supplied|provided|made|constructed|manufactured|finished|was|were|is|are|has|have|had|please|due|instead|rather)$/i.test(token[0])) break;
       if (/^of$/i.test(token[0]) && !(selected.length === 1 && /^pairs?$/i.test(selected[0][0]))) break;
       selected.push(token);
     }
-    if (!selected.length || selected.length > 9 || selected.some((token) => /^(?:suppliers?|vendors?)$/i.test(token[0])) || selected.some((token, index) => (countRoles.has(token[0].toLowerCase()) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(token[0])) && token[0].toLowerCase() !== 'of' &&
+    const packageWord = /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?)$/i.test(selected[0]?.[0] ?? '');
+    const packageEnd = end + tail[0].indexOf(tail[1]) + (selected[0]?.[0].length ?? 0);
+    const purchasedUnit = packageWord && ((inheritedPurchase && shortReply && match.index >= turnStarts.at(-1)) || /\b(?:buy|order|purchase|procure|get)\s*$/i.test(before)) &&
+      /^\s*(?:[,;.!?]|$|\b(?:with|containing|each)\b)/i.test(goal.slice(packageEnd));
+    if (!selected.length || selected.length > 9 || selected.some((token) => /^(?:suppliers?|vendors?)$/i.test(token[0])) || selected.some((token, index) => (countRoles.has(token[0].toLowerCase()) || /^(?:cents?|penn(?:y|ies)|euros?|pounds?|yen|rupees?|francs?|pesos?|credits?|tokens?)$/i.test(token[0])) && token[0].toLowerCase() !== 'of' && !(purchasedUnit && index === 0) &&
       !(index === selected.length - 1 && index > 0 && /^(?:boxes|cases|cartons|bundles|sets)$/i.test(token[0]))) ||
-      /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)$/i.test(selected[0][0]) ||
+      /^(?:packs?|boxes?|cases?|cartons?|bundles?|sets?|dozens?)$/i.test(selected[0][0]) && !purchasedUnit ||
       /^(?:percent|percentage|sizes?|prints?|printing|colou?rs?|logos?|designs?|sku|inches?|centimeters?|centimetres?|mm|cm|hours?|days?|weeks?|months?|years?|volunteers?|participants?|people|suppliers?|vendors?)$/i.test(selected.at(-1)[0])) continue;
     const last = selected.at(-1), phraseEnd = end + tail[0].indexOf(tail[1]) + last.index + last[0].length;
-    if (/[a-z0-9'_-]/i.test(goal[phraseEnd] ?? '') || /^\s+(?:per|for each|on each)\b/i.test(goal.slice(phraseEnd))) continue;
-    quantities.push({ value: number(match[1]), index: match.index, end: phraseEnd });
+    if (/[a-z0-9'_-]/i.test(goal[phraseEnd] ?? '') || /^\s+(?:per|for each|on each|in each)\b/i.test(goal.slice(phraseEnd))) continue;
+    quantities.push({ value: number(match[1]), index: match.index, end: phraseEnd, objectUnit: true });
   }
   for (const match of goal.matchAll(/\bquantity\s*[:=]?\s*(\d{1,3})\b/gi)) quantities.push({ value: Number(match[1]), index: match.index + match[0].lastIndexOf(match[1]), end: match.index + match[0].length });
   for (const match of goal.matchAll(new RegExp(`\\b(${NUMBER})\\s+(?:for|as)\\s+(?:the\\s+)?(?:complete\\s+)?(?:quantity|qty|count)\\b`, 'gi'))) {
@@ -402,6 +409,12 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
       /^\s*(?:requested|proposed|suggested|quoted|planned)\b/i.test(after) && /\b(?:unapproved|not approved|never approved|declined|rejected|previous|earlier|historical)\b/i.test(before + ' ' + after) ||
       /\b(?:request|proposal|quote|estimate)\b/i.test(before) && /^\s*(?:was|were|is|are)?\s*(?:unapproved|not approved|never approved|declined|rejected)\b/i.test(after);
   };
+  const ambiguousUnitTurn = turns.findLastIndex((text) => text.split(/[.!?;\n]/).some((clause) =>
+    /\b(?:quantity|qty|count)\b/i.test(clause) && /\b(?:whether|unsure|unclear|confirm|not sure)\b/i.test(clause) && /\b(?:or|versus|vs)\b/i.test(clause) &&
+    !/\b(?:currency|USD|EUR|GBP|CAD|AUD|JPY|dollars?|euros?)\b/i.test(clause)));
+  if (ambiguousUnitTurn >= 0 && !quantities.some((candidate) => candidate.objectUnit && candidate.index >= (turnStarts[ambiguousUnitTurn + 1] ?? Infinity) && countIsCurrent(candidate.index) && !componentCount(candidate.index) && !isReported(candidate) && !protectedSpans.some((span) => candidate.index >= span.start && candidate.index < span.stop))) {
+    return refused('What purchased unit does the complete quantity count: individual goods or packages?');
+  }
   const quantity = choose(quantities.filter((candidate) => countIsCurrent(candidate.index) && !componentCount(candidate.index) && !isReported(candidate) &&
     !protectedSpans.some((span) => candidate.index >= span.start && candidate.index < span.stop)), goal);
   if (!integer(quantity, 1, 500)) return refused('What is the complete quantity?');
@@ -420,7 +433,9 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
     const previousMoney = moneyMatches[moneyIndex - 1];
     const before = goal.slice(Math.max(previousMoney ? previousMoney.index + previousMoney[0].length : 0, match.index - 120), match.index).split(/[!?;\n]|\.\s+/).at(-1);
     const after = goal.slice(match.index + match[0].length, Math.min(moneyMatches[moneyIndex + 1]?.index ?? goal.length, match.index + match[0].length + 120));
-    if (/\bnot\s*$/i.test(before) || /^\s*(?:each|per\b)/i.test(after)) continue;
+    const removed = /\b(ignore|disregard|drop|exclude)\s*(?:(?:the|that|this|old|earlier|previous|quoted)\s+){0,3}$/i.exec(before.replaceAll('’', "'"));
+    const deniedRemoval = removed && /\b(?:not|never|no|[a-z]+n't|cannot)(?:\s+(?:ever|just|simply|silently|merely|actually|really))?\s*$/i.test(before.slice(0, removed.index).replaceAll('’', "'"));
+    if (removed && !deniedRemoval || !removed && /\b(?:not|instead of|rather than|do not use|don't use|never use)\s*(?:(?:the|that|this|old|earlier|previous|quoted)\s+){0,3}$/i.test(before.replaceAll('’', "'")) || /^\s*(?:each|per\b)/i.test(after)) continue;
     const roleBefore = before.split(/\b(?:but|however|and|while)\b/i).at(-1);
     const purchaseTarget = `(?:these\\s+(?:[a-z-]+\\s+){0,6}(?:${items}|items?|goods|supplies)|(?:this|the)\\s+(?:order|purchase))`;
     const allocated = '(?:earmarked|reserved|allocated|set aside|dedicated)';

@@ -613,3 +613,111 @@ test('baseline cannot use a malformed budget clock as the otherwise missing deli
   const text = 'Buy 27 white cotton shirts. Deliver 2026-11-23 Pacific. Budget now 18:30; final budget USD 185. Use one supplier.';
   assert.equal(deterministicGoalDraft(input(text)).ready, false);
 });
+
+test('baseline independently handles size clauses, thermal properties and historical order counts', () => {
+  const finish = 'Budget USD 220. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const phrase of ['34 individual hard-cover journals in B5 size, with plain covers', '34 individual silicone utensils, heat-resistant to 215 C',
+    '34 individual canvas carry bags. My last order was 72 units; those are background figures']) {
+    const draft = deterministicGoalDraft(input(`Purchase ${phrase}. ${finish}`));
+    assert.equal(draft.ready, true, phrase); assert.equal(draft.rfq.quantity, 34);
+  }
+});
+
+test('baseline preserves explicit hyphenated and affirmative supplier policies', () => {
+  const start = 'Buy 34 individual canvas carry bags under USD 220. Deliver 2026-11-23 at 3 PM Pacific. ';
+  const single = deterministicGoalDraft(input(`${start}This must be a single-supplier order.`));
+  assert.equal(single.ready, true); assert.equal(single.rfq.allowSplit, false); assert.ok(!single.assumptions.includes('single_supplier_default'));
+  const divided = deterministicGoalDraft(input(`${start}Okay to divide the order among suppliers now.`));
+  assert.equal(divided.ready, true); assert.equal(divided.rfq.allowSplit, true);
+  for (const text of ['Not okay to divide the order among suppliers.', 'If okay to divide the order among suppliers, ask again.',
+    'Okay to share the order details among suppliers.']) {
+    const draft = deterministicGoalDraft(input(start + text));
+    assert.equal(draft.ready && draft.rfq.allowSplit, false, text);
+  }
+});
+
+test('baseline independently resolves missing counts and explicitly purchased package units without arithmetic', () => {
+  const finish = 'The total cap is USD 220. Deliver 2026-11-23 at 3 PM Pacific. Single supplier only.';
+  const bins = [`Buy individual blue polypropylene trays. ${finish}`];
+  const count = deterministicGoalDraft({ ...input('Make that 17 trays.'), priorGoals: bins });
+  assert.equal(count.ready, true); assert.equal(count.rfq.quantity, 17);
+  const uncertain = `Order blue ink pens in 10-pen packs. The quantity is 18, but I must confirm whether that is pens or packs. ${finish}`;
+  assert.equal(deterministicGoalDraft(input(uncertain)).ready, false);
+  const packs = deterministicGoalDraft({ ...input('Purchase 18 packs, with 10 blue ink pens in each pack.'), priorGoals: [uncertain] });
+  assert.equal(packs.ready, true); assert.equal(packs.rfq.quantity, 18);
+  assert.equal(deterministicGoalDraft({ ...input('The quantity is 18.'), priorGoals: [uncertain] }).ready, false);
+});
+
+test('baseline retains only an explicitly selected USD cap after a discarded currency constraint', () => {
+  const original = 'Buy 17 individual blue nylon umbrellas. Budget USD 220 and also within EUR 200. Deliver 2026-11-23 at 3 PM Pacific.';
+  const reply = 'Use only the USD 220 total cap; ignore the euro amount.';
+  assert.equal(deterministicGoalDraft(input(original)).ready, false);
+  const result = deterministicGoalDraft({ ...input(reply), priorGoals: [original] });
+  assert.equal(result.ready, true); assert.equal(result.rfq.budgetCents, 22000);
+});
+
+test('baseline keeps a foreign constraint when its discard verb is denied', () => {
+  const finish = 'Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const verb of ['ignore', 'disregard', 'drop', 'exclude']) {
+    for (const denial of ['do not', 'never', 'don’t']) {
+      const text = `Buy 19 blue umbrellas. Budget USD 230 total; ${denial} ${verb} the EUR210 total cap. ${finish}`;
+      assert.equal(deterministicGoalDraft(input(text)).ready, false, text);
+    }
+    const text = `Buy 19 blue umbrellas. Budget USD 230 total; ${verb} the EUR210 total cap. ${finish}`;
+    const draft = deterministicGoalDraft(input(text));
+    assert.equal(draft.ready, true, text); assert.equal(draft.rfq.budgetCents, 23000);
+  }
+});
+
+test('baseline denies contracted supplier-distribution permission but retains an affirmative choice', () => {
+  const start = 'Buy 34 canvas carry bags under USD 220. Deliver 2026-11-23 at 3 PM Pacific. ';
+  const cases = [
+    ["It isn't okay to divide the order among suppliers.", 'is not'],
+    ["They aren't permitted to share the order among suppliers.", 'are not'],
+    ["It wasn't acceptable to distribute this order across vendors.", 'was not'],
+    ["They weren't allowed to divide this order among vendors.", 'were not'],
+    ["It wouldn't be okay to divide the order among suppliers.", 'would not'],
+    ["It shouldn't be acceptable to distribute this order across vendors.", 'should not'],
+    ["It won't be permitted to share the order among suppliers.", 'will not'],
+    ["It can't be okay to divide this order among vendors.", 'can not'],
+    ["It couldn't be acceptable to distribute this order across vendors.", 'could not'],
+    ["We mustn't allow multiple suppliers.", 'must not'],
+    ["We shan't allow multiple suppliers.", 'shall not'],
+    ["We don't allow multiple suppliers.", 'do not'],
+    ["It doesn't permit splitting the order.", 'does not'],
+    ["We didn't allow multiple suppliers.", 'did not'],
+  ];
+  for (const [contracted, expanded] of cases) for (const policy of [contracted, contracted.replaceAll("'", '’'), contracted.replace(/\b\w+n't\b/, expanded)]) {
+    const draft = deterministicGoalDraft(input(start + policy));
+    assert.equal(draft.ready, true, policy); assert.equal(draft.rfq.allowSplit, false, policy);
+    assert.ok(!draft.assumptions.includes('single_supplier_default'), policy);
+  }
+  const closed = deterministicGoalDraft(input(start + 'It cannot be okay to divide this order among vendors.'));
+  assert.equal(closed.ready, true); assert.equal(closed.rfq.allowSplit, false);
+  for (const policy of ['It is okay to divide the order among suppliers.', "We won't change the artwork, but it is acceptable to distribute this order across vendors."]) {
+    const positive = deterministicGoalDraft(input(start + policy));
+    assert.equal(positive.ready, true); assert.equal(positive.rfq.allowSplit, true);
+  }
+});
+
+test('baseline refuses contents-only counts while purchased pack counts resolve the unit', () => {
+  const uncertain = 'Order blue cotton shirts in 12-shirt packs. The quantity is 19, but I must confirm whether that is shirts or packs. Budget USD 230. Deliver 2026-11-23 at 3 PM Pacific. Use one supplier.';
+  for (const goal of ['There are 12 shirts in each pack.', 'There are 12 shirts on each rack.', 'There are 12 shirts for each pack.']) {
+    assert.equal(deterministicGoalDraft({ ...input(goal), priorGoals: [uncertain] }).ready, false, goal);
+  }
+  const draft = deterministicGoalDraft({ ...input('Purchase 19 packs, with 12 blue cotton shirts in each pack.'), priorGoals: [uncertain] });
+  assert.equal(draft.ready, true); assert.equal(draft.rfq.quantity, 19);
+});
+
+test('baseline does not confuse the America IANA region with an AM suffix after a 24-hour clock', () => {
+  for (const [timeZone, clock, deadline] of [
+    ['America/Los_Angeles', '10:25', '2027-02-16T18:25:00.000Z'],
+    ['America/New_York', '14:35', '2027-02-16T19:35:00.000Z']]) {
+    const text = `Buy 37 individual blue ceramic mugs. Total cap USD 270. Deliver February 16, 2027 at ${clock} ${timeZone}. Use one supplier.`;
+    const draft = deterministicGoalDraft({ ...input(text), timeZone });
+    assert.equal(draft.ready, true, timeZone); assert.equal(draft.rfq.deadline, deadline);
+    assert.equal(draft.rfq.quantity, 37); assert.equal(draft.rfq.budgetCents, 27000);
+  }
+  const am = deterministicGoalDraft(input('Buy 37 mugs under USD 270. Deliver February 16, 2027 at 10:25 AM America/Los_Angeles. Use one supplier.'));
+  assert.equal(am.ready, true); assert.equal(am.rfq.deadline, '2027-02-16T18:25:00.000Z');
+});
