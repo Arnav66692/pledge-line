@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { canonicalZone, parseOffset, resolveLocalDelivery, splitPermission, strictIsoInstant } from '../src/goal-grounding.js';
+import { canonicalZone, parseOffset, resolveLocalDelivery, strictIsoInstant } from '../src/goal-grounding.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SCOPE = 'pledge-line-functional-20261105';
@@ -169,6 +169,40 @@ function deadlineOf(goal, now, timeZone) {
   return atDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
 }
 
+/** Independent explicit split-policy grammar; conditional or conflicting buyer statements ask again. */
+function explicitSplitPermission(turns) {
+  const supplier = '(?:suppliers?|vendors?)', plural = `(?:multiple|several|more than one|two or more) ${supplier}`;
+  const denyPatterns = [
+    /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
+    new RegExp(`\\b(?:no more than|not more than|at most) one ${supplier}\\b|\\b(?:no|not|never)\\s+(?:${plural}|across ${supplier})\\b`, 'gi'),
+    new RegExp(`\\b(?:not|don't|dont|cannot|can't|can not|may not|must not)\\s+(?:allow(?:ing)?|permit(?:ting)?|approv(?:e|ing)|use)(?:\\s+\\w+){0,4}\\s+(?:split(?:ting|s)?|${plural}|across ${supplier})\\b`, 'gi'),
+    new RegExp(`\\b(?:split(?:ting|s)?|${plural})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|forbidden)\\b`, 'gi'),
+  ];
+  const allowPattern = new RegExp(`\\b(?:may|can|allow|permit)\\s+(?:\\w+\\s+){0,2}split(?:ting)?\\b|\\bsplit(?:ting)?(?:\\s+\\w+){0,3}\\s+(?:allowed|okay|ok|fine|permitted)\\b|\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${plural}|across ${supplier})\\b|\\b(?:${plural}|across ${supplier})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted)\\b`, 'gi');
+  let permission = 'unspecified';
+  for (const turn of turns) {
+    const signals = [];
+    for (const clause of turn.replaceAll('’', "'").split(/[.!?;\n]+|\bbut\b/i)) {
+      const awaitingApproval = /\b(?:after|before|until)(?:\s+[a-z'-]+){0,4}\s+(?:approv(?:al|e[ds]?)|confirm(?:ation|ed|s)?|consent(?:s|ed)?)\b/i.test(clause);
+      if ((/\b(?:if|when|unless|provided|assuming)\b/i.test(clause) || awaitingApproval) && new RegExp(`\\bsplit(?:ting|s)?\\b|\\b${supplier}\\b`, 'i').test(clause)) {
+        signals.push({ value: 'conflict', clause, index: 0 }); continue;
+      }
+      const denied = denyPatterns.flatMap((pattern) => [...clause.matchAll(pattern)].map((match) => ({ index: match.index, end: match.index + match[0].length })));
+      for (const match of clause.matchAll(/\b(?:one|single) (?:supplier|vendor)\b/gi)) {
+        if (!/\b(?:more than|at least|not|not only)\s*$/i.test(clause.slice(0, match.index))) denied.push({ index: match.index, end: match.index + match[0].length });
+      }
+      const allowed = [...clause.matchAll(allowPattern)].filter((match) => !denied.some((item) => match.index < item.end && item.index < match.index + match[0].length));
+      signals.push(...[...denied.map((item) => ({ value: 'deny', clause, index: item.index })),
+        ...allowed.map((match) => ({ value: 'allow', clause, index: match.index }))].sort((first, second) => first.index - second.index));
+    }
+    if (!signals.length) continue;
+    const last = signals.at(-1), opposed = signals.some((signal) => signal.value !== last.value);
+    const corrected = /\b(?:actually|instead|rather|make that|change|correct|correction|final|now)\b[^.!?;]{0,60}$/i.test(last.clause.slice(0, last.index));
+    permission = signals.some((signal) => signal.value === 'conflict') || opposed && !corrected ? 'conflict' : last.value;
+  }
+  return permission;
+}
+
 /** A documented explicit-field parser, not an intentionally empty or model-trained baseline. */
 export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 'UTC' }) {
   const refused = (clarification) => ({ ready: false, rfq: null, clarification, assumptions: [], requiresReview: true, authorizesPayment: false, model: 'deterministic_explicit_fields' });
@@ -280,7 +314,7 @@ export function deterministicGoalDraft({ goal, priorGoals = [], now, timeZone = 
   if (lastIsoTurn >= 0 && lastClockTurn > lastIsoTurn) return refused('Please restate the final delivery date and time together, including its time zone.');
   const deadline = deadlineOf(goal, now, timeZone);
   if (!Number.isFinite(deadline) || deadline <= now || deadline > now + 366 * DAY) return refused('What future delivery date and time should apply?');
-  const permission = splitPermission(turns);
+  const permission = explicitSplitPermission(turns);
   if (permission === 'conflict') return refused('Is splitting the order allowed?');
   const noSplit = permission === 'deny', yesSplit = permission === 'allow';
   const assumptions = [];

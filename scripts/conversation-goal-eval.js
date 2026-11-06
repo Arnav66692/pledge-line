@@ -30,6 +30,110 @@ const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min
 const text = (value, min, max) => typeof value === 'string' && value.trim().length >= min && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const fail = (code) => { throw Error(code); };
+const PRIVATE_TRACE_MAX_BYTES = 64 * 1024;
+const PRIVATE_TRACE_SENSITIVE_KEY = /api[-_]?key|authorization|bearer|(?:access|refresh|session|confirmation|receipt)[-_]?token|secret|password|passphrase|cookie|database[-_]?url|db[-_]?uri|^pin$|^token$/i;
+
+function redactTraceText(value) {
+  return value.replace(/\bsk-(?:ant-)?[A-Za-z0-9_-]{8,}\b/g, '[redacted-key]')
+    .replace(/\b(?:jev|typesafe|ts)[_-][A-Za-z0-9_-]{8,}\b/gi, '[redacted-key]')
+    .replace(/\bBearer\s+[^\s"'<>\\]+/gi, 'Bearer [redacted]')
+    .replace(/\bpostgres(?:ql)?:\/\/[^\s"'<>\\]+/gi, '[redacted-database-uri]')
+    .replace(/\b(?:ANTHROPIC_API_KEY|TYPESAFE_API_KEY|JEV_API_KEY|DATABASE_URL|sessionSecret|receiptSecret|confirmationToken|x-call-secret|x-procurement-secret)\s*[:=]\s*[^\s,;"'<>\\]+/gi, '[redacted-capability]')
+    .replace(/([?&](?:token|secret|key|sessionSecret|receiptSecret|confirmationToken)=)[^&#\s"'<>\\]+/gi, '$1[redacted]')
+    .replace(/\b[A-Fa-f0-9]{32,}\b|\b[A-Za-z0-9_-]{40,}\b/g, '[redacted-opaque-value]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]');
+}
+
+/** Private synthetic-evaluation diagnostics only. It never serializes a request or provider headers. */
+export function privateResponseCapture(response, { maximumBytes = PRIVATE_TRACE_MAX_BYTES, responseIndex = 1 } = {}) {
+  if (!integer(maximumBytes, 1024, PRIVATE_TRACE_MAX_BYTES) || !integer(responseIndex, 1, Number.MAX_SAFE_INTEGER) || !plain(response)) fail('CONVERSATION_TRACE_INVALID');
+  let clipped = false, redactions = 0;
+  const sanitize = (value, depth = 0) => {
+    if (value === null || typeof value === 'boolean') return value;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : '[unsupported-number]';
+    if (typeof value === 'string') {
+      const clean = redactTraceText(value);
+      if (clean !== value) redactions += 1;
+      return clean;
+    }
+    if (depth >= 12) { clipped = true; return '[depth-truncated]'; }
+    if (Array.isArray(value)) {
+      if (value.length > 64) clipped = true;
+      return value.slice(0, 64).map((item) => sanitize(item, depth + 1));
+    }
+    if (!plain(value)) return '[unsupported-value]';
+    const entries = Object.entries(value), result = Object.create(null);
+    if (entries.length > 128) clipped = true;
+    for (const [key, item] of entries.slice(0, 128)) {
+      if (/headers?/i.test(key)) { redactions += 1; continue; }
+      if (PRIVATE_TRACE_SENSITIVE_KEY.test(key)) { result[key] = '[redacted]'; redactions += 1; }
+      else result[redactTraceText(key)] = sanitize(item, depth + 1);
+    }
+    return result;
+  };
+  const metadata = Object.fromEntries(Object.entries(response).filter(([key]) => !['id', 'request_id', 'requestId', 'content'].includes(key) && !/headers?/i.test(key)));
+  const contents = Array.isArray(response.content) ? response.content : [];
+  const requestId = response.id ?? response.request_id ?? response.requestId;
+  const safe = sanitize({ metadata,
+    contentTypes: contents.map((block) => typeof block?.type === 'string' ? block.type : '[unknown]'),
+    toolDrafts: contents.filter((block) => block?.type === 'tool_use').map((block) => ({ name: block.name, input: block.input })) });
+  const originalTools = contents.filter((block) => block?.type === 'tool_use');
+  for (const [index, tool] of (safe.toolDrafts ?? []).entries()) tool.toolCallIdSha256 = typeof originalTools[index]?.id === 'string' ? hash(originalTools[index].id) : null;
+  const record = { kind: 'synthetic_provider_response', responseIndex,
+    requestIdSha256: typeof requestId === 'string' ? hash(requestId) : null,
+    captureTruncated: clipped, redactions, ...safe };
+  // Reserve room for the writer's timestamp. Large values become a valid bounded JSON preview, never a broken JSONL line.
+  if (Buffer.byteLength(JSON.stringify(record)) <= maximumBytes - 128) return record;
+  const serialized = JSON.stringify(safe), digest = hash(serialized);
+  let preview = serialized.slice(0, Math.floor(maximumBytes / 2));
+  const bounded = () => ({ kind: record.kind, responseIndex, requestIdSha256: record.requestIdSha256,
+    captureTruncated: true, redactions, redactedResponseSha256: digest, responsePreview: preview });
+  while (Buffer.byteLength(JSON.stringify(bounded())) > maximumBytes - 128 && preview.length) preview = preview.slice(0, Math.floor(preview.length * 0.75));
+  return bounded();
+}
+
+/** A failed private capture stops this evaluation wrapper; it does not alter or reset the funding ledger. */
+export function observeSyntheticGateway(gateway, { persist, maximumBytes = PRIVATE_TRACE_MAX_BYTES } = {}) {
+  if (!gateway || typeof gateway.anthropic !== 'function' || typeof gateway.jev !== 'function' || typeof persist !== 'function' ||
+    !integer(maximumBytes, 1024, PRIVATE_TRACE_MAX_BYTES)) fail('CONVERSATION_OBSERVER_INVALID');
+  let stopped = false, inFlight = false, responseIndex = 0;
+  const available = () => { if (stopped) fail('CONVERSATION_OBSERVER_STOPPED'); if (inFlight) fail('CONVERSATION_OBSERVER_BUSY'); };
+  return Object.freeze({
+    async anthropic(...args) {
+      available(); inFlight = true;
+      try {
+        const response = await gateway.anthropic(...args);
+        persist(privateResponseCapture(response, { maximumBytes, responseIndex: ++responseIndex }));
+        return response;
+      } catch { stopped = true; fail('CONVERSATION_OBSERVER_FAILED'); }
+      finally { inFlight = false; }
+    },
+    async jev(...args) {
+      available(); inFlight = true;
+      try { return await gateway.jev(...args); }
+      catch { stopped = true; fail('CONVERSATION_OBSERVER_FAILED'); }
+      finally { inFlight = false; }
+    },
+    ...(typeof gateway.status === 'function' ? { status: (...args) => gateway.status(...args) } : {}),
+  });
+}
+
+export function openPrivateTrace(file) {
+  if (typeof file !== 'string' || !file) fail('CONVERSATION_PRIVATE_TRACE_REQUIRED');
+  const directory = fs.statSync(path.dirname(path.resolve(file)));
+  if (!directory.isDirectory() || (directory.mode & 0o077) !== 0) fail('CONVERSATION_PRIVATE_DIRECTORY_REQUIRED');
+  const fd = fs.openSync(file, 'wx', 0o600);
+  let closed = false;
+  return {
+    persist(row) {
+      if (closed) fail('CONVERSATION_PRIVATE_TRACE_CLOSED');
+      const line = JSON.stringify({ ...row, recordedAt: new Date().toISOString() }) + '\n';
+      if (Buffer.byteLength(line) > PRIVATE_TRACE_MAX_BYTES) fail('CONVERSATION_PRIVATE_FRAME_TOO_LARGE');
+      fs.writeFileSync(fd, line); fs.fsyncSync(fd);
+    },
+    close() { if (!closed) { closed = true; fs.closeSync(fd); } },
+  };
+}
 
 function validDeadline(value, now) {
   if (typeof value !== 'string') return false;
@@ -282,13 +386,13 @@ async function main(args) {
   const flags = new Map();
   for (let index = 0; index < args.length; index += 1) {
     const name = args[index];
-    if (!['--freeze', '--run-offline', '--run-model', '--fixture', '--manifest', '--archive', '--output'].includes(name) || flags.has(name)) fail('CONVERSATION_USAGE');
-    flags.set(name, ['--fixture', '--manifest', '--archive', '--output'].includes(name) ? args[++index] : true);
+    if (!['--freeze', '--run-offline', '--run-model', '--fixture', '--manifest', '--archive', '--output', '--private-trace'].includes(name) || flags.has(name)) fail('CONVERSATION_USAGE');
+    flags.set(name, ['--fixture', '--manifest', '--archive', '--output', '--private-trace'].includes(name) ? args[++index] : true);
   }
   if (['--freeze', '--run-offline', '--run-model'].filter((name) => flags.has(name)).length !== 1 || typeof flags.get('--fixture') !== 'string' || typeof flags.get('--manifest') !== 'string') fail('CONVERSATION_USAGE');
   const fixtureText = boundedFile(flags.get('--fixture')), fixture = validateConversationFixture(JSON.parse(fixtureText)), hashes = conversationSourceHashes();
   if (flags.has('--freeze')) {
-    if (typeof flags.get('--archive') !== 'string' || flags.has('--output')) fail('CONVERSATION_USAGE');
+    if (typeof flags.get('--archive') !== 'string' || flags.has('--output') || flags.has('--private-trace')) fail('CONVERSATION_USAGE');
     const archive = path.resolve(flags.get('--archive'));
     fs.mkdirSync(archive, { mode: 0o700 });
     for (const name of Object.keys(hashes)) {
@@ -303,25 +407,30 @@ async function main(args) {
     process.stdout.write(JSON.stringify({ frozen: true, caseCount: manifest.caseCount, fixtureSha256: manifest.fixtureSha256, sourceFiles: Object.keys(hashes).length }) + '\n');
     return;
   }
-  if (typeof flags.get('--output') !== 'string' || flags.has('--archive')) fail('CONVERSATION_USAGE');
+  if (typeof flags.get('--output') !== 'string' || flags.has('--archive') || flags.has('--private-trace') && !flags.has('--run-model')) fail('CONVERSATION_USAGE');
   const manifest = JSON.parse(boundedFile(flags.get('--manifest')));
   verifyConversationFreeze(fixtureText, manifest, hashes); verifyArchive(manifest);
   if (manifest.caseCount !== fixture.cases.length) fail('CONVERSATION_FREEZE_MISMATCH');
   const fd = fs.openSync(flags.get('--output'), 'wx', 0o600);
   const persist = (row) => { fs.writeFileSync(fd, JSON.stringify({ ...row, recordedAt: new Date().toISOString() }) + '\n'); fs.fsyncSync(fd); };
-  let database;
+  let database, privateTrace;
   try {
     persist({ kind: 'run_started', fixtureSha256: manifest.fixtureSha256, sourceHashes: hashes, modelRun: flags.has('--run-model') });
     let agent = null, budgetStatus = null;
     if (flags.has('--run-model')) {
       if (process.env.AI_PREPAID_ONLY_CONFIRMED !== 'true' || process.env.AI_BUDGET_SCOPE !== SCOPE ||
         !['3', '3.00'].includes(process.env.AI_ANTHROPIC_LIMIT_USD) || !['0.1', '0.10'].includes(process.env.AI_JEV_LIMIT_USD)) fail('CONVERSATION_EXISTING_SCOPE_REQUIRED');
+      const privatePath = flags.get('--private-trace') ?? `${flags.get('--output')}.private.jsonl`;
+      if (typeof privatePath !== 'string' || path.resolve(privatePath) === path.resolve(flags.get('--output'))) fail('CONVERSATION_PRIVATE_TRACE_REQUIRED');
+      privateTrace = openPrivateTrace(privatePath);
+      privateTrace.persist({ kind: 'synthetic_trace_started', fixtureSha256: manifest.fixtureSha256, sourceHashes: hashes,
+        scope: 'Private synthetic evaluation response diagnostics only. No requests, headers or production user event stream.' });
       const [{ connectDatabase }, { createAiBudget }, { createAiGateway }, { createMainAgent }] = await Promise.all([
         import('../src/database.js'), import('../src/ai-budget.js'), import('../src/ai-gateway.js'), import('../src/agent.js')]);
       database = await connectDatabase(process.env.DATABASE_URL);
       const budget = createAiBudget({ pool: database.pool, scope: SCOPE, limits: LIMITS }); await budget.checkSchema();
       const gateway = createAiGateway({ budget, anthropicApiKey: process.env.ANTHROPIC_API_KEY, jevApiKey: process.env.TYPESAFE_API_KEY });
-      agent = createMainAgent({ gateway }); budgetStatus = () => gateway.status();
+      agent = createMainAgent({ gateway: observeSyntheticGateway(gateway, { persist: (row) => privateTrace.persist(row) }) }); budgetStatus = () => gateway.status();
       if (!scopeAvailable(await budgetStatus())) fail('CONVERSATION_EXISTING_SCOPE_UNAVAILABLE');
     }
     const report = await runConversationEval({ fixture, agent, budgetStatus, persist,
@@ -332,6 +441,7 @@ async function main(args) {
     persist({ kind: 'run_failed', error: 'CONVERSATION_CONFIGURATION_OR_PERSISTENCE_FAILED' }); process.exitCode = 1;
   } finally {
     try { await database?.pool.end(); } catch { persist({ kind: 'close_failed', error: 'CONVERSATION_DATABASE_CLOSE_FAILED' }); process.exitCode = 1; }
+    try { privateTrace?.close(); } catch { persist({ kind: 'close_failed', error: 'CONVERSATION_PRIVATE_TRACE_CLOSE_FAILED' }); process.exitCode = 1; }
     fs.closeSync(fd);
   }
 }

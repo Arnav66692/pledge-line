@@ -251,23 +251,55 @@ export function budgetIsGrounded(cents, evidence, turns = [evidence]) {
   return goalCurrencyContext(turns).currency === 'USD' && latestFieldValue(turns, 'budget') === cents && (budgetCandidates(evidence).some((candidate) => candidate.value === cents) || /^\s*[\d,]+(?:\.\d{1,2})?\s*$/.test(evidence) && Math.round(numberWords(evidence) * 100) === cents);
 }
 
-/** A later explicit buyer statement replaces the earlier split policy. Negation is checked before positive phrases. */
-export function splitPermission(turns) {
-  let permission = 'unspecified';
-  for (const turn of turns) {
-    const text = String(turn).replaceAll('’', "'"), clauses = text.split(/(?:[.!?;\n]+|\bbut\b)/i), signals = [];
+/** Bounded buyer-policy grammar with exact source provenance; later explicit turns replace earlier policy. */
+export function splitPolicy(turns) {
+  let result = { permission: 'unspecified', source: '', turnIndex: null };
+  const party = '(?:suppliers?|vendors?)', many = `(?:multiple|several|more than one|two or more) ${party}`;
+  const negatives = [
+    /\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b/gi,
+    new RegExp(`\\b(?:no more than|not more than|at most) one ${party}\\b`, 'gi'),
+    new RegExp(`\\b(?:no|not|never)\\s+(?:${many}|across ${party})\\b`, 'gi'),
+    new RegExp(`\\b(?:not|don't|dont|cannot|can't|can not|may not|must not)\\s+(?:allow(?:ing)?|permit(?:ting)?|approv(?:e|ing)|use)(?:\\s+\\w+){0,4}\\s+(?:split(?:ting|s)?|${many}|across ${party})\\b`, 'gi'),
+    new RegExp(`\\b(?:split(?:ting|s)?|${many})(?:\\s+\\w+){0,2}\\s+(?:is |are )?(?:not allowed|not permitted|forbidden)\\b`, 'gi'),
+  ];
+  const positives = [
+    /\b(?:may|can|allow|permit)\s+(?:\w+\s+){0,2}split(?:ting)?\b/gi,
+    /\bsplit(?:ting)?(?:\s+\w+){0,3}\s+(?:allowed|okay|ok|fine|permitted)\b/gi,
+    new RegExp(`\\b(?:allow|permit|use|can use|may use)(?:\\s+\\w+){0,2}\\s+(?:${many}|across ${party})\\b`, 'gi'),
+    new RegExp(`\\b(?:${many}|across ${party})(?:\\s+\\w+){0,2}\\s+(?:allowed|okay|ok|fine|permitted)\\b`, 'gi'),
+  ];
+  for (const [turnIndex, turn] of turns.entries()) {
+    const raw = String(turn), text = raw.replaceAll('’', "'"), signals = [];
     let cursor = 0;
-    for (const clause of clauses) {
-      const index = text.indexOf(clause, cursor); cursor = index + clause.length;
-      const negative = /\b(?:one|single) supplier\b|\b(?:do not|don't|dont|never|no|may not|must not|will not|cannot|can't|can not|could not|would not|should not)\s+(?:\w+\s+){0,3}split(?:ting|s)?\b|\bnot\s+(?:allow(?:ing)?|permit(?:ting)?|approv(?:e|ing))(?:\s+\w+){0,4}\s+(?:split(?:ting|s)?|multiple suppliers|across suppliers)\b|\bsplit(?:ting|s)?(?:\s+\w+){0,2}\s+(?:is |are )?(?:not allowed|not permitted|forbidden)\b/i.test(clause);
-      const positive = /\b(?:may|can|allow|permit)\s+(?:\w+\s+){0,2}split(?:ting)?\b|\bsplit(?:ting)?(?:\s+\w+){0,3}\s+(?:allowed|okay|ok|fine|permitted)\b|\b(?:allow|permit|can use|may use)(?:\s+\w+){0,2}\s+(?:multiple suppliers|across suppliers)\b|\b(?:multiple suppliers|across suppliers)(?:\s+\w+){0,2}\s+(?:allowed|okay|ok|fine|permitted)\b/i.test(clause);
-      if (negative || positive) signals.push({ policy: negative ? 'deny' : 'allow', index, end: cursor });
+    for (const clause of text.split(/(?:[.!?;\n]+|\bbut\b)/i)) {
+      const start = text.indexOf(clause, cursor); cursor = start + clause.length;
+      const source = raw.slice(start, cursor).trim();
+      const conditional = /\b(?:if|when|unless|provided|assuming)\b|\b(?:after|before|until)(?:\s+[a-z'-]+){0,4}\s+(?:approv(?:al|e[ds]?)|confirm(?:ation|ed|s)?|consent(?:s|ed)?)\b/i.test(clause);
+      if (conditional && new RegExp(`\\bsplit(?:ting|s)?\\b|\\b${party}\\b`, 'i').test(clause)) {
+        signals.push({ permission: 'conflict', source, index: start, end: cursor, clauseStart: start }); continue;
+      }
+      const denied = negatives.flatMap((pattern) => [...clause.matchAll(pattern)].map((match) => ({ index: match.index, end: match.index + match[0].length })));
+      for (const match of clause.matchAll(new RegExp(`\\b(?:one|single) (?:supplier|vendor)\\b`, 'gi'))) {
+        if (!/\b(?:more than|at least|not|not only)\s*$/i.test(clause.slice(0, match.index))) denied.push({ index: match.index, end: match.index + match[0].length });
+      }
+      const allowed = positives.flatMap((pattern) => [...clause.matchAll(pattern)].map((match) => ({ index: match.index, end: match.index + match[0].length })))
+        .filter((match) => !denied.some((deny) => match.index < deny.end && deny.index < match.end));
+      for (const [permission, matches] of [['deny', denied], ['allow', allowed]]) for (const match of matches) {
+        signals.push({ permission, source, index: start + match.index, end: start + match.end, clauseStart: start });
+      }
     }
     if (!signals.length) continue;
-    const last = signals.at(-1), previous = signals.slice(0, -1).findLast((signal) => signal.policy !== last.policy);
-    permission = previous && !/\b(?:actually|instead|rather|make that|change|correct|correction|final|now)\b/i.test(text.slice(previous.end, last.end)) ? 'conflict' : last.policy;
+    signals.sort((first, second) => first.index - second.index || first.end - second.end);
+    const last = signals.at(-1), previous = signals.slice(0, -1).findLast((signal) => signal.permission !== last.permission);
+    const corrected = /\b(?:actually|instead|rather|make that|change|correct|correction|final|now)\b[^.!?;]{0,60}$/i.test(text.slice(last.clauseStart, last.index));
+    const permission = signals.some((signal) => signal.permission === 'conflict') || previous && !corrected ? 'conflict' : last.permission;
+    result = { permission, source: permission === 'conflict' || last.source.length > 500 ? '' : last.source, turnIndex };
   }
-  return permission;
+  return result;
+}
+
+export function splitPermission(turns) {
+  return splitPolicy(turns).permission;
 }
 
 export function sourceClauses(value, turns) {

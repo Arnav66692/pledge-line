@@ -6,9 +6,13 @@ This compares language-task completion by the revised main agent and a strengthe
 
 The final suite has 24 independently authored **synthetic** tasks: six explicit controls, six contextual/discourse tasks, six clarification tasks, and six timezone/negation/goods tasks. A separate author receives this contract and supported product limits without implementation, baseline outputs or model outputs. After the offline diagnostic described below, the same author session prepared fresh wording and numeric instances while remaining blind to implementation and outcomes; its earlier authored wording remained available. Their wording and labels are retained without selecting tasks according to which approach wins. This is independent case authorship inside the development process, not independent customers or externally held-out language.
 
+Later rounds reuse the same author session, retaining its earlier wording and schema/policy feedback. New wording does not renew a fully blind or external holdout. Each round must retain its source, original cases, primary outcomes and exposure caveat; any later aggregate-outcome or audit-feedback exposure must be stated. Newly authored cases after substantive changes remain separate from exposed regression cases and do not replace an unfavorable result.
+
 Each task has one to three precommitted buyer turns, an explicit UTC reference timestamp and an IANA organization timezone. Every turn has a ready-or-clarify label. Later turns are delivered identically to both arms even if an arm answered incorrectly earlier. Replies are scripted in advance, rather than chosen after seeing a model question. The current and prior buyer turns are untrusted input; neither arm receives an invented assistant conversation or payment permission. Both approaches have the same three-turn maximum.
 
 A ready label supplies the exact count, total USD cents, delivery instant, split policy, declared default assumptions, and every scored goods requirement. Equivalent ISO offsets represent the same instant. A clarification label names the missing or conflicting constraint. The author must label every turn, including the incomplete original request before a follow-up.
+
+The product's fixed defaults apply to both arms: an unspecified budget currency defaults to **USD**, disclosed with `currency_usd`; unspecified split permission defaults to **false**, disclosed with `single_supplier_default`. Absence of a currency alone does not require a currency question. Unsupported or conflicting currencies can require clarification. These defaults do not identify whether an otherwise ambiguous bare number is a budget or a quantity. An independent post-run audit will document any label-policy mismatch separately; the frozen primary result, including the third round's reported 9/24 model task result, remains unchanged. Errata and diagnostic interpretations must remain separate from that primary result, with no edited-label rerun presented as fresh evaluation.
 
 The JSON contract is:
 
@@ -79,11 +83,18 @@ node --max-old-space-size=96 --env-file=.database.env --env-file=.ai.env \
   --env-file=.acceptance.env scripts/conversation-goal-eval.js --run-model \
   --fixture .acceptance/conversation-v3-authored.json \
   --manifest .acceptance/conversation-v3.manifest.json \
-  --output .acceptance/conversation-v3-model.jsonl
+  --output .acceptance/conversation-v3-model.jsonl \
+  --private-trace .acceptance/conversation-v3-model.private.jsonl
 ```
 
 Actual calls require the user's existing API-credit authorization and the same `pledge-line-functional-20261105` allocation, capped at $3 Anthropic and $0.10 Jev. The harness checks schemas but never initializes or resets funding, migrates a database, clears a stop, changes models, tries subscription credentials or switches providers. There is at most one `interpretGoal` call per precommitted turn and no request retry. A model request failure stops subsequent model dispatch; failed and unrun turns stay recorded.
 
 The output is exclusive JSONL. A full write and fsync persist each request-start barrier and each completed/error/unrun turn before another model call. The final summary includes all denominators. Partial interruption leaves the existing lines reviewable. Public records contain bounded numeric/date/boolean output and scored fact IDs, not raw provider bodies or arbitrary source evidence.
+
+For new synthetic runs, a harness-only wrapper observes the existing guarded Anthropic response after its usage was verified and settled, before returning it unchanged to the production agent. It records bounded tool draft inputs, safe model metadata and usage, and SHA-256 identifiers in a **separate private** JSONL stream. No request prompt, request headers or production application event stream is recorded. The optional `--private-trace` path defaults to `OUTPUT.private.jsonl`; its directory must deny group/other access and its file is created exclusively with mode0600. Every frame receives a full write and fsync before a later dispatch. Response indices follow the sequential request order.
+
+Capture frames are at most64KiB. Credential/capability keys, known API-key/bearer/database-URI patterns, emails and long opaque values are redacted; headers are omitted. Oversized/deep diagnostics are explicitly marked truncated and retain a bounded valid-JSON preview rather than claiming a complete capture. This is defensive pattern redaction, not proof that arbitrary text contains no sensitive data. Raw frames remain private until reviewed and must not be copied wholesale into public metrics. The observer is installed only by this synthetic evaluation CLI; production server state and the production agent constructor are unchanged.
+
+A private capture or persistence failure prevents the agent from consuming that response and locally stops both wrapped provider methods. The existing evaluator retains the failed turn and every later unrun model turn. It does not retry, clear a funding stop, change scope, or alter an already verified accounting entry. The bounded public scorer, labels, gates and weights remain unchanged by observability.
 
 Shared scope means concurrent app inference can contaminate deltas. The harness does not claim it excluded outside traffic. No synthetic outcome establishes donor usability, retention, sponsor economics, independent supplier fulfillment, live-money readiness, official hackathon compliance or a guaranteed judging score. A later changed version needs new independently authored cases; exposed cases become regression fixtures.

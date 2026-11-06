@@ -7,7 +7,8 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { deterministicGoalDraft } from '../scripts/goal-intake-eval.js';
 import { CATEGORIES, checkConversationDraft, conversationSourceHashes, pairedSignTest, runConversationEval,
-  validateConversationFixture, verifyConversationFreeze, wilsonInterval } from '../scripts/conversation-goal-eval.js';
+  validateConversationFixture, verifyConversationFreeze, wilsonInterval, privateResponseCapture,
+  observeSyntheticGateway, openPrivateTrace } from '../scripts/conversation-goal-eval.js';
 
 const now = Date.parse('2026-11-05T20:00:00Z'), timeZone = 'America/Los_Angeles';
 const hash = (value) => createHash('sha256').update(value).digest('hex');
@@ -24,6 +25,94 @@ function task(id = 'C-01', category = 'explicit_controls') {
 function fixture(tasks = [task()]) { return { version: 1, disclosure: 'Public artificial component-test inputs, never held-out or customer evidence.', cases: tasks }; }
 function balanced() { return fixture(CATEGORIES.flatMap((category, group) => Array.from({ length: 6 }, (_, index) => task(`C-${String(group * 6 + index + 1).padStart(2, '0')}`, category)))); }
 const draft = (context = input()) => deterministicGoalDraft(context);
+
+function syntheticProviderResponse() {
+  return { id: 'msg_synthetic_identifier', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', stop_reason: 'tool_use', stop_sequence: null,
+    usage: { input_tokens: 123, output_tokens: 45, cache_read_input_tokens: 0 },
+    content: [{ type: 'tool_use', id: 'tool_synthetic_identifier', name: 'draft_procurement_brief', input: {
+      ready: true, quantity: 60, budgetCents: 80000, specification: 'White cotton shirts with one navy print.', allowSplit: false,
+    } }] };
+}
+
+test('private observation captures tool inputs and verified metadata before returning the unchanged response', async () => {
+  const response = syntheticProviderResponse(), before = structuredClone(response), events = [], request = { system: 'request-only-private-marker', messages: [] };
+  const wrapped = observeSyntheticGateway({ async anthropic(body) { assert.equal(body, request); events.push('provider'); return response; }, async jev() { throw Error('Must not call'); } },
+    { persist(frame) { events.push('persist'); assert.equal(frame.metadata.model, response.model); assert.deepEqual(JSON.parse(JSON.stringify(frame.metadata.usage)), response.usage);
+      assert.equal(frame.requestIdSha256, hash(response.id)); assert.equal(frame.toolDrafts[0].toolCallIdSha256, hash(response.content[0].id));
+      assert.equal(frame.toolDrafts[0].input.quantity, 60); assert.equal(frame.responseIndex, 1); assert.equal(frame.captureTruncated, false);
+      assert.doesNotMatch(JSON.stringify(frame), /request-only-private-marker|msg_synthetic_identifier|tool_synthetic_identifier/); } });
+  assert.equal(await wrapped.anthropic(request), response); events.push('consumer');
+  assert.deepEqual(events, ['provider', 'persist', 'consumer']);
+  assert.deepEqual(response, before, 'Observation must not rewrite data the production agent validates.');
+});
+
+test('private observation redacts credentials, capabilities, database URIs, headers and opaque values', () => {
+  const response = syntheticProviderResponse(), capability = 'q'.repeat(43);
+  response.headers = { authorization: 'Bearer synthetic-header-secret' };
+  response.content[0].input.apiKey = 'synthetic-api-key';
+  response.content[0].input.sessionSecret = capability;
+  response.content[0].input.headers = { 'x-call-secret': 'synthetic-call-secret' };
+  response.content[0].input.note = `Bearer synthetic-bearer-secret postgres://reader:synthetic-password@db.invalid/store sk-ant-synthetic-key-12345 ${capability} buyer@example.test`;
+  const frame = privateResponseCapture(response), serialized = JSON.stringify(frame);
+  assert.equal(frame.toolDrafts[0].input.quantity, 60);
+  assert.ok(frame.redactions >= 4);
+  assert.doesNotMatch(serialized, /synthetic-header-secret|synthetic-api-key|synthetic-call-secret|synthetic-bearer-secret|synthetic-password|sk-ant-synthetic-key-12345|buyer@example|q{43}|"headers"/);
+  assert.match(serialized, /redacted/);
+});
+
+test('private observation remains a valid bounded frame when provider diagnostics exceed the capture budget', () => {
+  const response = syntheticProviderResponse(); response.content[0].input.largeExplanation = '詳細 '.repeat(15000);
+  const frame = privateResponseCapture(response, { maximumBytes: 4096 });
+  assert.equal(frame.captureTruncated, true);
+  assert.ok(Buffer.byteLength(JSON.stringify(frame)) <= 4096);
+  assert.equal(JSON.parse(JSON.stringify(frame)).kind, 'synthetic_provider_response');
+  assert.equal(frame.requestIdSha256, hash(response.id));
+  assert.throws(() => privateResponseCapture(response, { maximumBytes: 512 }), /TRACE_INVALID/);
+});
+
+test('observer persistence failure latches both wrapped dispatch methods without changing the funding gateway', async () => {
+  let anthropicCalls = 0, jevCalls = 0, statusCalls = 0;
+  const wrapped = observeSyntheticGateway({ async anthropic() { anthropicCalls += 1; return syntheticProviderResponse(); },
+    async jev() { jevCalls += 1; return {}; }, async status() { statusCalls += 1; return { stopped: false }; } },
+  { persist() { throw Error('synthetic-private-disk-detail'); } });
+  await assert.rejects(wrapped.anthropic({}), /OBSERVER_FAILED/);
+  await assert.rejects(wrapped.anthropic({}), /OBSERVER_STOPPED/);
+  await assert.rejects(wrapped.jev({}), /OBSERVER_STOPPED/);
+  assert.equal(anthropicCalls, 1); assert.equal(jevCalls, 0);
+  assert.deepEqual(await wrapped.status(), { stopped: false }); assert.equal(statusCalls, 1);
+});
+
+test('a failed response capture preserves the failed turn and prevents all subsequent model dispatch', async () => {
+  let calls = 0;
+  const wrapped = observeSyntheticGateway({ async anthropic() { calls += 1; return syntheticProviderResponse(); }, async jev() { throw Error('Must not call'); } },
+    { persist() { throw Error('synthetic-private-capture-failure'); } });
+  const report = await runConversationEval({ fixture: fixture([task(), task('C-02', 'context_discourse')]), fullSuite: false,
+    agent: { async interpretGoal(context) { await wrapped.anthropic({}); return draft(context); } } });
+  assert.equal(calls, 1); assert.equal(report.completed, false);
+  assert.equal(report.tasks[0].turns[0].arms.main_agent.status, 'error');
+  assert.equal(report.tasks[1].turns[0].arms.main_agent.status, 'not_run');
+  assert.equal(report.summary.main_agent.errorsOrNotRun, 2);
+  assert.doesNotMatch(JSON.stringify(report), /synthetic-private-capture-failure/);
+});
+
+test('private trace files require private directories, exclusive0600 creation and bounded full writes', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pledge-private-trace-'));
+  try {
+    const output = path.join(directory, 'response.jsonl'), trace = openPrivateTrace(output);
+    assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+    trace.persist(privateResponseCapture(syntheticProviderResponse()));
+    const original = fs.readFileSync(output, 'utf8');
+    assert.equal(JSON.parse(original).kind, 'synthetic_provider_response');
+    assert.throws(() => openPrivateTrace(output));
+    assert.throws(() => trace.persist({ large: 'plain '.repeat(20000) }), /FRAME_TOO_LARGE/);
+    assert.equal(fs.readFileSync(output, 'utf8'), original);
+    trace.close(); trace.close();
+    assert.throws(() => trace.persist({ kind: 'late' }), /TRACE_CLOSED/);
+    const publicDirectory = path.join(directory, 'public'); fs.mkdirSync(publicDirectory); fs.chmodSync(publicDirectory, 0o755);
+    assert.throws(() => openPrivateTrace(path.join(publicDirectory, 'unsafe.jsonl')), /PRIVATE_DIRECTORY_REQUIRED/);
+    assert.equal(fs.existsSync(path.join(publicDirectory, 'unsafe.jsonl')), false);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
 
 test('fixture validation fixes24 tasks/six per category and bounds every labeled turn', () => {
   const f = balanced();

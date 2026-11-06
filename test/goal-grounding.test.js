@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { budgetIsGrounded, canonicalZone, goalCurrencyContext, groundedDelivery, numberWords, quantityIsGrounded, resolveLocalDelivery, sourceClauses, splitPermission, strictIsoInstant } from '../src/goal-grounding.js';
+import { budgetIsGrounded, canonicalZone, goalCurrencyContext, groundedDelivery, numberWords, quantityIsGrounded, resolveLocalDelivery, sourceClauses, splitPermission, splitPolicy, strictIsoInstant } from '../src/goal-grounding.js';
 import { normalizeGoalDraft } from '../src/goal-intake.js';
 
 const now = Date.parse('2026-11-05T20:00:00Z');
@@ -72,6 +72,27 @@ test('split permission respects surrounding negation, same-turn conflict and lat
   assert.equal(splitPermission(['Do not split.', 'We may split across suppliers.']), 'allow');
 });
 
+test('split policy distinguishes comparative supplier permission from single-source limits and returns exact provenance', () => {
+  for (const phrase of ['More than one supplier is allowed', 'Multiple vendors are fine', 'We may use several vendors']) {
+    assert.deepEqual(splitPolicy([phrase + '.']), { permission: 'allow', source: phrase, turnIndex: 0 }, phrase);
+  }
+  for (const phrase of ['Use a single supplier', 'Use one vendor', 'No more than one supplier is allowed',
+    'Not more than one vendor is permitted', 'Multiple vendors are not allowed', 'No multiple vendors are allowed',
+    "We don't allow multiple vendors", 'We dont allow multiple vendors', 'We don’t permit several suppliers']) {
+    assert.deepEqual(splitPolicy([phrase + '.']), { permission: 'deny', source: phrase, turnIndex: 0 }, phrase);
+  }
+  for (const phrase of ['Use one vendor. Multiple vendors are allowed.', 'Split only if the buyer confirms',
+    'Multiple suppliers are allowed when delivery is late', 'Split unless shipping costs more',
+    'We can split after buyer approval', 'We may use multiple vendors before buyer confirmation', 'Splitting is allowed until I consent']) {
+    assert.equal(splitPolicy([phrase]).permission, 'conflict', phrase);
+  }
+  assert.deepEqual(splitPolicy(['More than one supplier is allowed.', 'Actually use a single vendor.']), {
+    permission: 'deny', source: 'Actually use a single vendor', turnIndex: 1 });
+  assert.deepEqual(splitPolicy(['Compare vendor quotes.']), { permission: 'unspecified', source: '', turnIndex: null });
+  assert.deepEqual(splitPolicy(['Don’t split across vendors.']), { permission: 'deny', source: 'Don’t split across vendors', turnIndex: 0 });
+  assert.equal(splitPolicy(['x'.repeat(501) + ' Use one supplier.']).source, '', 'An overlong source clause cannot exceed the evidence bound.');
+});
+
 test('only bounded exact clauses may be exposed as source evidence', () => {
   assert.deepEqual(sourceClauses('100 white cotton shirts\nUse one supplier', [goal]), ['100 white cotton shirts', 'Use one supplier']);
   assert.equal(sourceClauses('100 blue polyester shirts', [goal]), null);
@@ -129,15 +150,60 @@ test('ambiguous zone abbreviations and invented date-only times require clarific
   assert.equal(result.ready, false); assert.deepEqual(result.missingFields, ['delivery_time']);
 });
 
-test('selected goods clauses cannot contain invented material or an uncited paraphrase', () => {
+test('goods specification comes only from validated source clauses and ignores the duplicated model summary', () => {
   const input = raw(); input.specification = 'white cotton shirts with navy print';
   const result = normalized(input);
-  assert.equal(result.ready, false); assert.ok(result.missingFields.includes('specification'));
+  assert.equal(result.ready, true); assert.equal(result.rfq.specification, 'white cotton shirts');
+  assert.doesNotMatch(result.rfq.specification, /navy/);
+  input.specification = 'Invented titanium mugs with free shipping and embroidery';
+  assert.equal(normalized(input).rfq.specification, 'white cotton shirts');
   input.evidence.specification = 'white polyester shirts'; input.specification = input.evidence.specification;
   assert.equal(normalized(input).ready, false);
+  input.evidence.specification = 'shirts';
+  assert.equal(normalized(input).ready, false, 'The canonical source goods description must still be at least8characters.');
 });
 
-test('split conflicts or source-disagreeing evidence cannot acquire ready status', () => {
+test('known matching supplier policy uses server source provenance rather than a duplicate model citation', () => {
+  const input = raw(); input.quantity = 72; input.specification = 'Seventy-two mugs';
+  input.evidence.quantity = '72 ceramic mugs'; input.evidence.specification = 'ceramic mugs'; input.evidence.split = 'single';
+  const text = goal.replace('100 white cotton shirts', '72 ceramic mugs').replace('Use one supplier', 'Use a single supplier');
+  const single = normalized(input, text);
+  assert.equal(single.ready, true); assert.equal(single.rfq.allowSplit, false);
+  assert.equal(single.sourceEvidence.split, 'Use a single supplier');
+  assert.equal(single.rfq.specification, 'ceramic mugs');
+  assert.ok(!single.assumptions.includes('single_supplier_default'));
+  input.evidence.split = 'Invented model policy is never source evidence';
+  const canonical = normalized(input, text);
+  assert.equal(canonical.ready, true); assert.equal(canonical.sourceEvidence.split, 'Use a single supplier');
+  assert.doesNotMatch(JSON.stringify(canonical), /Invented model policy/);
+  const mismatch = normalized(input, text.replace('Use a single supplier', 'More than one supplier is allowed'));
+  assert.equal(mismatch.ready, false); assert.ok(mismatch.missingFields.includes('split_policy'));
+  input.allowSplit = true; input.evidence.split = '';
+  const multiple = normalized(input, text.replace('Use a single supplier', 'More than one supplier is allowed'));
+  assert.equal(multiple.ready, true); assert.equal(multiple.rfq.allowSplit, true);
+  assert.equal(multiple.sourceEvidence.split, 'More than one supplier is allowed');
+  const denied = normalized(input, text.replace('Use a single supplier', 'No more than one supplier is allowed'));
+  assert.equal(denied.ready, false); assert.ok(denied.missingFields.includes('split_policy'));
+  const conditional = normalized(input, text.replace('Use a single supplier', 'Multiple suppliers are allowed only if I confirm'));
+  assert.equal(conditional.ready, false); assert.ok(conditional.missingFields.includes('split_policy'));
+  const needsApproval = normalized(input, text.replace('Use a single supplier', 'We can split after buyer approval'));
+  assert.equal(needsApproval.ready, false); assert.ok(needsApproval.missingFields.includes('split_policy'));
+  const contractedDenial = normalized(input, text.replace('Use a single supplier', "We don't allow multiple vendors"));
+  assert.equal(contractedDenial.ready, false); assert.ok(contractedDenial.missingFields.includes('split_policy'));
+  input.allowSplit = false;
+  const canonicalDenial = normalized(input, text.replace('Use a single supplier', "We don't allow multiple vendors"));
+  assert.equal(canonicalDenial.ready, true); assert.equal(canonicalDenial.rfq.allowSplit, false);
+  assert.equal(canonicalDenial.sourceEvidence.split, "We don't allow multiple vendors");
+  input.allowSplit = true;
+  const unknown = normalized(input, text.replace('Use a single supplier', 'Compare supplier quotes'));
+  assert.equal(unknown.ready, false); assert.ok(unknown.missingFields.includes('split_policy'));
+  input.allowSplit = false;
+  const defaulted = normalized(input, text.replace('Use a single supplier', 'Compare supplier quotes'));
+  assert.equal(defaulted.ready, true); assert.equal(defaulted.rfq.allowSplit, false);
+  assert.equal(defaulted.sourceEvidence.split, ''); assert.ok(defaulted.assumptions.includes('single_supplier_default'));
+});
+
+test('conflicting buyer split policies cannot acquire ready status', () => {
   const input = raw(); input.evidence.split = 'Use one supplier';
   const result = normalized(input, goal + ' Split orders allowed.');
   assert.equal(result.ready, false); assert.deepEqual(result.missingFields, ['split_policy']);
@@ -270,7 +336,7 @@ test('latest goods replacements invalidate stale or positively retained replaced
 test('a split-only correction does not overwrite quantity, money or delivery context', () => {
   const input = raw(); input.evidence.split = 'We may not split across suppliers';
   const result = normalized(input, 'Actually, we may not split across suppliers.', { priorGoals: [goal] });
-  assert.equal(result.ready, false, 'source quotes remain exact and case-sensitive');
+  assert.equal(result.ready, true); assert.equal(result.sourceEvidence.split, 'Actually, we may not split across suppliers');
   input.evidence.split = 'we may not split across suppliers';
   const accepted = normalized(input, 'Actually, we may not split across suppliers.', { priorGoals: [goal] });
   assert.equal(accepted.ready, true); assert.equal(accepted.rfq.quantity, 100); assert.equal(accepted.rfq.budgetCents, 80000);

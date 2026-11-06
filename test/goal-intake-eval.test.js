@@ -142,6 +142,28 @@ test('baseline handles negated split permission, contextual amounts and visible 
   assert.equal(unsupportedReply.ready, false);
 });
 
+test('baseline independently supports comparative and vendor split policy without treating conditional permission as consent', () => {
+  const complete = 'Buy 72 ceramic mugs under USD 800 total. Deliver 2026-11-13 at 5 PM Pacific.';
+  for (const phrase of ['More than one supplier is allowed.', 'Multiple vendors are fine.', 'We may use several vendors.']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${phrase}`));
+    assert.equal(draft.ready, true, phrase); assert.equal(draft.rfq.allowSplit, true, phrase);
+  }
+  for (const phrase of ['Use a single supplier.', 'Use one vendor.', 'No more than one supplier is allowed.',
+    'Not more than one vendor is permitted.', 'Multiple vendors are not allowed.', 'No multiple vendors are allowed.',
+    "We don't allow multiple vendors.", 'We dont allow multiple vendors.', 'We don’t permit several suppliers.']) {
+    const draft = deterministicGoalDraft(input(`${complete} ${phrase}`));
+    assert.equal(draft.ready, true, phrase); assert.equal(draft.rfq.allowSplit, false, phrase);
+    assert.ok(!draft.assumptions.includes('single_supplier_default'), phrase);
+  }
+  for (const phrase of ['Use one vendor. Multiple vendors are allowed.', 'Split only if the buyer confirms.',
+    'Multiple suppliers are allowed when delivery is late.', 'Split unless shipping costs more.',
+    'We can split after buyer approval.', 'We may use multiple vendors before buyer confirmation.', 'Splitting is allowed until I consent.']) {
+    assert.equal(deterministicGoalDraft(input(`${complete} ${phrase}`)).ready, false, phrase);
+  }
+  const revised = deterministicGoalDraft({ ...input('Actually use a single vendor.'), priorGoals: [`${complete} More than one supplier is allowed.`] });
+  assert.equal(revised.ready, true); assert.equal(revised.rfq.allowSplit, false);
+});
+
 test('baseline selects current budget currency without reviving unsupported or historical currency', () => {
   const priorGoals = ['Buy 100 cotton shirts for EUR 800, delivery 2026-11-13T17:00:00-08:00.'];
   const corrected = deterministicGoalDraft({ ...input('Actually the final budget is USD 700 total.'), priorGoals });
