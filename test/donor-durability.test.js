@@ -24,6 +24,7 @@ function memoryStore() {
     listEvents: async ({ afterSeq = 0, limit = 10000 } = {}) => [...events.values()].filter((x) => x.seq > afterSeq).sort((a, b) => a.seq - b.seq).slice(0, limit).map(copy),
     createCall: async (value) => { const row = { ...copy(value), revision: 0 }; records.set(value.id, row); trace.push('call-created'); return copy(row); },
     loadCall: async ({ id }) => copy(records.get(id) ?? null),
+    getAction: async ({ operationKey }) => copy([...actions.values()].find((action) => action.operationKey === operationKey) ?? null),
     listSweepCalls: async ({ activeBefore, expiryBefore, limit }) => [...records.values()].filter((r) => !r.snapshot.ended &&
       (r.snapshot.lastActiveAt <= activeBefore || r.snapshot.pending?.expiresAt <= expiryBefore)).slice(0, limit).map((r) => r.id),
     saveCall: async ({ id, snapshot, expectedRevision }) => {
@@ -224,6 +225,77 @@ test('a bounded durable sweep finds an idle call that was never hydrated after r
   assert.equal(await second.calls.sweep(), 1);
   assert.equal(first.store.records.get(started.callId).snapshot.ended, true);
   assert.equal([...first.store.actions.values()].filter((a) => a.kind === 'delete_draft').length, 1);
+});
+
+test('two-worker stale sweep discovery cannot restore or persist a freshly active verified proposal', async () => {
+  for (const cached of [false, true]) {
+    const first = await stack(), { callId } = await verify(first);
+    const second = await stack({ store: first.store, clock: first.clock, modify: () => first.paypal });
+    if (cached) {
+      await second.calls.get(callId);
+      await first.say(callId, first.config.pin, 'keypad');
+    }
+    first.clock.advance(first.config.limits.callIdleMs + 1);
+    const lease = first.store.withCallLease, restore = second.raw.restore;
+    let fresh, eventsAfterRefresh, restores = 0;
+    second.raw.restore = (...args) => { restores += 1; return restore(...args); };
+    first.store.withCallLease = async (input, work) => {
+      assert.equal(input.id, callId);
+      // Discovery has finished, but the second worker has not acquired its lease yet.
+      // Refresh through the first worker now, so an eligibility read outside the lease would be stale.
+      first.store.withCallLease = lease;
+      const reply = await pauseOffer(first, callId);
+      assert.equal(reply.state.verified, true); assert.ok(reply.state.pending);
+      fresh = copy(first.store.records.get(callId)); eventsAfterRefresh = copy([...first.store.events.values()]);
+      return lease(input, work);
+    };
+    assert.equal(await second.calls.sweep(), 0, `cached=${cached}`);
+    assert.equal(restores, 0, 'The stale candidate must be skipped before hydration.');
+    assert.deepEqual(first.store.records.get(callId), fresh, 'A maintenance no-op must not change revision, verification or pending consent.');
+    assert.deepEqual([...first.store.events.values()], eventsAfterRefresh, 'A maintenance no-op must not append restore/withdrawal audit.');
+    assert.equal(first.store.actions.size, 0);
+    assert.equal((await first.calls.get(callId)).verified, true, 'The active worker must not be forced to restore by a no-op revision.');
+  }
+});
+
+test('two-worker terminal recovery discovery does not hydrate, save or contact the provider', async () => {
+  for (const state of ['confirmed', 'failed']) {
+    const first = await stack(), { callId } = await verify(first);
+    const action = { id: randomUUID(), operationKey: `pending:${randomUUID()}:suspend`, callId, kind: 'suspend', targetId: 'TESTSUB001',
+      state: 'unknown', updatedAt: first.clock.now().toISOString(), binding: { afterSeq: 0, turn: 1 }, providerId: null };
+    first.store.actions.set(action.id, action);
+    let reads = 0, restores = 0;
+    const second = await stack({ store: first.store, clock: first.clock, modify: (p) => ({ ...p,
+      getSubscription: async (...args) => { reads += 1; return p.getSubscription(...args); },
+    }) });
+    const restore = second.raw.restore; second.raw.restore = (...args) => { restores += 1; return restore(...args); };
+    const lease = first.store.withCallLease;
+    first.store.withCallLease = async (input, work) => {
+      assert.equal(input.id, callId); first.store.withCallLease = lease;
+      await lease({ id: callId }, () => first.store.recordActionOutcome({ id: action.id, state, evidence: { kind: 'other_worker_terminal' } }));
+      return lease(input, work);
+    };
+    const record = copy(first.store.records.get(callId)), events = copy([...first.store.events.values()]);
+    assert.equal(await second.calls.recover(), 0, state);
+    assert.equal(reads, 0); assert.equal(restores, 0);
+    assert.deepEqual(first.store.records.get(callId), record);
+    assert.deepEqual([...first.store.events.values()], events);
+    assert.equal(first.store.actions.get(action.id).state, state);
+    assert.equal((await first.calls.get(callId)).verified, true);
+  }
+});
+
+test('a genuinely expired proposal discovered after restart still withdraws authority and requires PIN', async () => {
+  const first = await stack(), { callId } = await verify(first); await pauseOffer(first, callId);
+  const original = copy(first.store.records.get(callId)); assert.ok(original.snapshot.pending);
+  first.clock.advance(first.config.limits.pendingTtlMs + 1);
+  const second = await stack({ store: first.store, clock: first.clock, modify: () => first.paypal });
+  await second.calls.sweep();
+  const saved = first.store.records.get(callId);
+  assert.ok(saved.revision > original.revision); assert.equal(saved.snapshot.verified, false); assert.equal(saved.snapshot.pending, null);
+  assert.ok([...first.store.events.values()].some((event) => event.callId === callId && event.type === 'session_restored'));
+  assert.ok([...first.store.events.values()].some((event) => event.callId === callId && event.type === 'withdrawn'));
+  assert.equal(first.store.actions.size, 0);
 });
 
 test('100 older unresolved actions cannot starve confirmation or background recovery of a newer call', async () => {

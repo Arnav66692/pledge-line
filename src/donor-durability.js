@@ -254,8 +254,7 @@ export function wrapDurableCalls({ calls, store, ledger, durability, paypal = nu
       operation.then(resolve, reject);
     });
   }
-  async function load(id, allowExpired = false) {
-    const record = await store.loadCall({ id });
+  function hydrate(id, record, allowExpired = false) {
     if (!record || (!allowExpired && Date.parse(record.expiresAt) <= now().getTime())) refuse('DONOR_CALL_EXPIRED');
     if (!calls.has(id) || revisions.get(id) !== record.revision) {
       calls.restore(record);
@@ -263,11 +262,17 @@ export function wrapDurableCalls({ calls, store, ledger, durability, paypal = nu
     }
     return record;
   }
-  async function runLeased(id, fn, { allowExpired = false, replyReady = false } = {}) {
+  async function runLeased(id, fn, { allowExpired = false, replyReady = false, maintenanceCheck = null } = {}) {
     const leased = await store.withCallLease({ id }, async (signal) => {
+      const record = await store.loadCall({ id });
+      signalCheck(signal);
+      // Discovery is only a hint. A no-longer-eligible maintenance candidate must not restore
+      // consent state, append restore audit or create a revision that resets the active worker.
+      if (maintenanceCheck && !await maintenanceCheck(record)) { signalCheck(signal); return 0; }
+      signalCheck(signal);
       await ledger.reload();
       await ledger.ensureCapacity();
-      const record = await load(id, allowExpired);
+      hydrate(id, record, allowExpired);
       const active = { id, revision: record.revision, signal };
       return durability.withContext(active, async () => {
         try {
@@ -304,7 +309,16 @@ export function wrapDurableCalls({ calls, store, ledger, durability, paypal = nu
     recoveryCursor = { id: last.id, updatedAt: last.updatedAt };
     let confirmed = 0;
     for (const action of candidates) {
-      try { if (await run(action.callId, () => durability.recoverAction(action, paypal), { allowExpired: true })) confirmed += 1; }
+      let freshAction = null;
+      try { if (await run(action.callId, () => durability.recoverAction(freshAction, paypal), { allowExpired: true,
+        maintenanceCheck: async (record) => {
+          if (!record) return false;
+          const fresh = await store.getAction({ operationKey: action.operationKey });
+          if (fresh?.id !== action.id || fresh.callId !== action.callId || !unresolved(fresh)) return false;
+          freshAction = fresh;
+          return true;
+        },
+      })) confirmed += 1; }
       catch { /* The durable unresolved action retains its original identity and blocks replacement. */ }
     }
     return confirmed;
@@ -343,7 +357,15 @@ export function wrapDurableCalls({ calls, store, ledger, durability, paypal = nu
         for (const id of await store.listSweepCalls({ activeBefore: calls.sweepBefore(), expiryBefore: now().getTime(), limit: 3 })) candidates.add(id);
       }
       for (const id of candidates) {
-        try { count += await run(id, () => calls.sweepOne(id), { allowExpired: true }); } catch { /* Retain persisted call and action evidence. */ }
+        try { count += await run(id, () => calls.sweepOne(id), { allowExpired: true,
+          maintenanceCheck: (record) => {
+            const snapshot = record?.snapshot;
+            if (!snapshot || snapshot.ended !== false) return false;
+            const idleBefore = calls.sweepBefore?.(), pendingExpiry = snapshot.pending?.expiresAt;
+            return Number.isFinite(idleBefore) && Number.isFinite(snapshot.lastActiveAt) && snapshot.lastActiveAt <= idleBefore ||
+              Number.isFinite(pendingExpiry) && pendingExpiry <= now().getTime();
+          },
+        }); } catch { /* Retain persisted call and action evidence. */ }
       }
       await recover();
       return count;

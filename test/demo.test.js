@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { loadConfig } from '../src/config.js';
 import { buildDeps, createServer } from '../src/server.js';
 import { tempLedgerPath } from './helpers.js';
+import { verifyReceipt } from '../src/receipt-seal.js';
 
 test('guided evidence page is available without a PIN and cannot start a payment by POST', async () => {
   const deps = buildDeps(loadConfig({ PAYPAL_MODE: 'mock', ROUTER_MODE: 'rules' }), { ledgerPath: tempLedgerPath(), log: { info() {}, error() {} } });
@@ -23,7 +24,7 @@ test('guided evidence page is available without a PIN and cannot start a payment
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
 
-function browser({ originalValid = true }) {
+function browser({ originalValid = true, source = JSON.stringify({ sentences: [{ text: 'Your refund was $25.00.' }] }), verify = null } = {}) {
   const elements = new Map();
   const element = (id) => {
     if (!elements.has(id)) elements.set(id, { textContent: '', hidden: false, disabled: false, events: {},
@@ -36,10 +37,10 @@ function browser({ originalValid = true }) {
   window: { addEventListener() {} }, setTimeout, clearTimeout,
   fetch: async (url, options) => {
     calls.push({ url, options });
-    if (url.endsWith('.txt')) return { ok: true, text: async () => JSON.stringify({ sentences: [{ text: 'Your refund was $25.00.' }] }) };
+    if (url.endsWith('.txt')) return { ok: true, text: async () => source };
     assert.equal(url, '/api/receipts/check');
-    const altered = JSON.parse(options.body).sentences[0].text.includes('$250.00');
-    return { ok: true, json: async () => ({ check: { ok: originalValid && !altered } }) };
+    const altered = JSON.parse(options.body).sentences.some((sentence) => sentence.text.includes('$250.00'));
+    return { ok: true, json: async () => ({ check: verify ? verify(options.body) : { ok: originalValid && !altered } }) };
   } };
   vm.runInNewContext(fs.readFileSync(new URL('../web/demo.js', import.meta.url), 'utf8'), context);
   return { element, calls };
@@ -55,4 +56,24 @@ test('tampering demo verifies the original before attributing failure to the edi
   assert.match(valid.element('verification').textContent, /Edited copy rejected/);
   assert.equal(valid.calls.filter((call) => call.options?.method === 'POST').length, 2);
   assert.equal(valid.element('verify-edited').disabled, false);
+});
+
+test('the edited receipt retains its signed line layout and changes only one sentence field', async () => {
+  const source = fs.readFileSync(new URL('../web/demo-assets/covered-month-receipt.txt', import.meta.url), 'utf8');
+  const sentence = JSON.parse(source).sentences.find((entry) => entry.text.includes('$25.00'));
+  const expected = source.replace(`"text":${JSON.stringify(sentence.text)}`,
+    `"text":${JSON.stringify(sentence.text.replace('$25.00', '$250.00'))}`);
+  assert.notEqual(expected, source);
+  const key = JSON.parse(fs.readFileSync(new URL('../web/demo-assets/receipt-public-key.txt', import.meta.url), 'utf8'));
+  const verify = (body) => verifyReceipt(body, { publicKey: key.pem, keyId: key.keyId });
+  assert.equal(verify(source).ok, true);
+  const page = browser({ source, verify });
+  await page.element('verify-edited').events.click();
+  const sent = page.calls.filter((call) => call.options?.method === 'POST');
+  assert.equal(sent[0].options.body, source);
+  assert.equal(sent[1].options.body, expected);
+  assert.equal(sent[1].options.body.split('\n').length, source.split('\n').length);
+  assert.equal(verify(sent[1].options.body).signedByThisLine, true);
+  assert.deepEqual(verify(sent[1].options.body).changed, [sentence.n]);
+  assert.match(page.element('verification').textContent, /Edited copy rejected/);
 });

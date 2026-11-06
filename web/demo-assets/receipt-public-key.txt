@@ -1,0 +1,1 @@
+{"alg":"Ed25519","keyId":"b63c499b55817461","publicKey":"3ae9ae0d92fb6844993ae247c1a1d21588fe1ce74898356f3518f3dccc34f013","pem":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOumuDZL7aESZOuJHwaHSFYj+HOdImDVvNRjz3Mw08BM=\n-----END PUBLIC KEY-----\n"}

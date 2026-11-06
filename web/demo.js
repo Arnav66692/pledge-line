@@ -54,12 +54,15 @@
         status.textContent = 'This instance could not verify the original. Check its configured receipt signing identity.';
         return;
       }
+      let editedText = text;
       if (tamper) {
         const sentence = payload.sentences.find((entry) => entry.text.includes('$25.00'));
         if (!sentence) throw Error('Example amount unavailable');
-        sentence.text = sentence.text.replace('$25.00', '$250.00');
+        const originalField = `"text":${JSON.stringify(sentence.text)}`;
+        if (!text.includes(originalField)) throw Error('Example layout unavailable');
+        editedText = text.replace(originalField, `"text":${JSON.stringify(sentence.text.replace('$25.00', '$250.00'))}`);
       }
-      const result = tamper ? await check(JSON.stringify(payload)) : baseline;
+      const result = tamper ? await check(editedText) : baseline;
       if (!tamper) status.textContent = 'Original verified. The signature is valid and the receipt is unchanged.';
       else status.textContent = result.check?.ok === false ? 'Edited copy rejected. Changing $25.00 to $250.00 breaks the receipt proof.' : 'The edited receipt was unexpectedly accepted. Do not rely on this check.';
     } catch { status.textContent = 'Verification is unavailable on this instance. You can download the receipt and check it on the accepted deployment.'; }
