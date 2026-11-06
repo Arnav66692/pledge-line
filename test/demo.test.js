@@ -34,17 +34,18 @@ test('guided evidence page is available without a PIN and cannot start a payment
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
 
-function browser({ originalValid = true, source = JSON.stringify({ sentences: [{ text: 'Your refund was $25.00.' }] }), verify = null } = {}) {
+function browser({ originalValid = true, source = JSON.stringify({ sentences: [{ text: 'Your refund was $25.00.' }] }), verify = null, hash = '' } = {}) {
   const elements = new Map();
   const element = (id) => {
     if (!elements.has(id)) elements.set(id, { textContent: '', hidden: false, disabled: false, events: {},
       addEventListener(name, fn) { this.events[name] = fn; }, setAttribute() {}, removeAttribute() {}, focus() {} });
     return elements.get(id);
   };
-  const calls = [], chapters = [0, 1, 2, 3].map((i) => element(`chapter${i}`));
+  const calls = [], chapters = ['covered', 'purchase', 'recovery', 'verify'].map((id, i) => Object.assign(element(`chapter${i}`), { id }));
+  const windowEvents = {};
   const context = { document: { getElementById: element, querySelector: element, addEventListener() {},
     querySelectorAll: (selector) => selector === '.chapter' ? chapters : [0, 1, 2, 3].map((i) => element(`link${i}`)) },
-  window: { addEventListener() {} }, setTimeout, clearTimeout,
+  window: { location: { hash }, addEventListener(name, fn) { windowEvents[name] = fn; } }, setTimeout, clearTimeout,
   fetch: async (url, options) => {
     calls.push({ url, options });
     if (url.endsWith('.txt')) return { ok: true, text: async () => source };
@@ -53,8 +54,26 @@ function browser({ originalValid = true, source = JSON.stringify({ sentences: [{
     return { ok: true, json: async () => ({ check: verify ? verify(options.body) : { ok: originalValid && !altered } }) };
   } };
   vm.runInNewContext(fs.readFileSync(new URL('../web/demo.js', import.meta.url), 'utf8'), context);
-  return { element, calls };
+  return { element, calls, chapters, windowEvents, location: context.window.location };
 }
+
+test('a receipt deep link opens its proof chapter without performing a verification or payment', () => {
+  const page = browser({ hash: '#verify' });
+  assert.deepEqual(page.chapters.map((chapter) => chapter.hidden), [true, true, true, false]);
+  assert.equal(page.calls.length, 0);
+  page.location.hash = '#purchase';
+  page.windowEvents.hashchange();
+  assert.deepEqual(page.chapters.map((chapter) => chapter.hidden), [true, false, true, true]);
+  assert.equal(page.calls.length, 0);
+});
+
+test('an unknown or malformed evidence anchor safely opens the first chapter', () => {
+  for (const hash of ['', '#unknown', '#%E0%A4%A', '#<script>']) {
+    const page = browser({ hash });
+    assert.deepEqual(page.chapters.map((chapter) => chapter.hidden), [false, true, true, true]);
+    assert.equal(page.calls.length, 0);
+  }
+});
 
 test('tampering demo verifies the original before attributing failure to the edit', async () => {
   const failed = browser({ originalValid: false });

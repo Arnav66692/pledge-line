@@ -69,5 +69,11 @@
     finally { verifying = false; original.disabled = edited.disabled = false; }
   }
   original.addEventListener('click', () => verify(false)); edited.addEventListener('click', () => verify(true));
-  show(0);
+  function showHash() {
+    const index = chapters.findIndex((chapter) => `#${chapter.id}` === window.location?.hash);
+    if (index >= 0) { stop(); show(index); }
+    return index;
+  }
+  window.addEventListener('hashchange', showHash);
+  if (showHash() < 0) show(0);
 })();
