@@ -1,0 +1,690 @@
+{
+  "evidenceClass": "One frozen independently authored synthetic donor-task comparison. Actual Anthropic/Jev gateway requests; all payments mocked. Not independent human benefit, population accuracy or pure LLM ablation.",
+  "sourceCommit": "499d0ad496aee3da4822939663ff8e8eb8f97118",
+  "fixtureSha256": "27e42a5a9b0ac0f590d4fe8d65f4f470a89660120a49ca9bf269cca81be173a8",
+  "summary": {
+    "arms": {
+      "rules": {
+        "expectedCases": 12,
+        "ran": 12,
+        "complete": 7,
+        "controlsComplete": 6,
+        "naturalComplete": 1,
+        "errors": 0,
+        "notRun": 0,
+        "unapprovedWrites": 0,
+        "wrongWrites": 0,
+        "checkerProblems": 0
+      },
+      "composed": {
+        "expectedCases": 12,
+        "ran": 12,
+        "complete": 12,
+        "controlsComplete": 6,
+        "naturalComplete": 6,
+        "errors": 0,
+        "notRun": 0,
+        "unapprovedWrites": 0,
+        "wrongWrites": 0,
+        "checkerProblems": 0
+      }
+    },
+    "completed": true,
+    "runFailure": false,
+    "passed": true,
+    "providerRequestAttempts": {
+      "anthropic": 11,
+      "jev": 11
+    },
+    "limits": "Independently authored synthetic task fixture. Two direct control utterances exactly overlap the earlier routing set. Natural tasks are not exact matches against the prior Nov6 12case routing fixture; broader earlier fixtures were not exhaustively audited. New outcome/state/consent oracles, not12unseenlanguagecases. Composed router includes model and deterministic guards, notpurecausalLLMablation. All payments mocked. Historical routing/purchase failures unchanged."
+  },
+  "consentBoundary": "The harness withheld consent for unexpected proposals. Zero wrongly executed changes is conditional on that policy. Two direct-control utterances overlap the earlier routing fixture. The original 11/12 classification gate and purchase-drafting failures remain unchanged.",
+  "cases": [
+    {
+      "id": "control-status",
+      "arm": "rules",
+      "complete": true,
+      "actualProposals": [],
+      "actualWrites": [],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "gift_status",
+          "model": "rules",
+          "latencyMs": 1,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-pause",
+      "arm": "rules",
+      "complete": true,
+      "actualProposals": [
+        "suspend"
+      ],
+      "actualWrites": [
+        {
+          "kind": "suspend",
+          "ok": true
+        }
+      ],
+      "finalStatus": "SUSPENDED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "pause_gift",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-resume",
+      "arm": "rules",
+      "complete": true,
+      "actualProposals": [
+        "activate"
+      ],
+      "actualWrites": [
+        {
+          "kind": "activate",
+          "ok": true
+        }
+      ],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "resume_gift",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-cancel",
+      "arm": "rules",
+      "complete": true,
+      "actualProposals": [
+        "suspend",
+        "cancel"
+      ],
+      "actualWrites": [
+        {
+          "kind": "cancel",
+          "ok": true
+        }
+      ],
+      "finalStatus": "CANCELLED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "stop_gift",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-hardship",
+      "arm": "rules",
+      "complete": true,
+      "actualProposals": [
+        "cover_month"
+      ],
+      "actualWrites": [
+        {
+          "kind": "cover_capture",
+          "ok": true
+        },
+        {
+          "kind": "cover_refund",
+          "ok": true
+        }
+      ],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 2500,
+        "donorRefundedCents": 2500
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "hardship_cover",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-charge-check",
+      "arm": "rules",
+      "complete": true,
+      "actualProposals": [
+        "refund_request"
+      ],
+      "actualWrites": [],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "charge_check",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-resume-paraphrase",
+      "arm": "rules",
+      "complete": false,
+      "actualProposals": [],
+      "actualWrites": [],
+      "finalStatus": "SUSPENDED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [
+        "proposal_sequence",
+        "write_sequence_or_response",
+        "final_status",
+        "missing_task_reads",
+        "missing_task_events",
+        "followup_blocked"
+      ],
+      "routes": [
+        {
+          "intent": "repeat",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-pause-after-refusal",
+      "arm": "rules",
+      "complete": true,
+      "actualProposals": [
+        "suspend"
+      ],
+      "actualWrites": [
+        {
+          "kind": "suspend",
+          "ok": true
+        }
+      ],
+      "finalStatus": "SUSPENDED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "pause_gift",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-cancel-refuses-pause",
+      "arm": "rules",
+      "complete": false,
+      "actualProposals": [
+        "suspend"
+      ],
+      "actualWrites": [],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [
+        "proposal_sequence",
+        "write_sequence_or_response",
+        "final_status",
+        "missing_task_events",
+        "followup_blocked"
+      ],
+      "routes": [
+        {
+          "intent": "pause_gift",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-hardship-budget",
+      "arm": "rules",
+      "complete": false,
+      "actualProposals": [],
+      "actualWrites": [],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [
+        "proposal_sequence",
+        "write_sequence_or_response",
+        "cover_outcome",
+        "missing_task_reads",
+        "missing_task_events",
+        "final_mock_money",
+        "followup_blocked"
+      ],
+      "routes": [
+        {
+          "intent": "unclear",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-clarify-undecided",
+      "arm": "rules",
+      "complete": false,
+      "actualProposals": [
+        "suspend"
+      ],
+      "actualWrites": [],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [
+        "proposal_sequence",
+        "clarification_route_or_reply"
+      ],
+      "routes": [
+        {
+          "intent": "pause_gift",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-clarify-refuses-both",
+      "arm": "rules",
+      "complete": false,
+      "actualProposals": [
+        "activate"
+      ],
+      "actualWrites": [],
+      "finalStatus": "SUSPENDED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [
+        "proposal_sequence",
+        "clarification_route_or_reply"
+      ],
+      "routes": [
+        {
+          "intent": "resume_gift",
+          "model": "rules",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-status",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [],
+      "actualWrites": [],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "gift_status",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 4625,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-pause",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "suspend"
+      ],
+      "actualWrites": [
+        {
+          "kind": "suspend",
+          "ok": true
+        }
+      ],
+      "finalStatus": "SUSPENDED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "pause_gift",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 3690,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-resume",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "activate"
+      ],
+      "actualWrites": [
+        {
+          "kind": "activate",
+          "ok": true
+        }
+      ],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "resume_gift",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 3439,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-cancel",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "suspend",
+        "cancel"
+      ],
+      "actualWrites": [
+        {
+          "kind": "cancel",
+          "ok": true
+        }
+      ],
+      "finalStatus": "CANCELLED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "stop_gift",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 3751,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-hardship",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "cover_month"
+      ],
+      "actualWrites": [
+        {
+          "kind": "cover_capture",
+          "ok": true
+        },
+        {
+          "kind": "cover_refund",
+          "ok": true
+        }
+      ],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 2500,
+        "donorRefundedCents": 2500
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "hardship_cover",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 4350,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "control-charge-check",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "refund_request"
+      ],
+      "actualWrites": [],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "charge_check",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 3920,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-resume-paraphrase",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "activate"
+      ],
+      "actualWrites": [
+        {
+          "kind": "activate",
+          "ok": true
+        }
+      ],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "resume_gift",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 4103,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-pause-after-refusal",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "suspend"
+      ],
+      "actualWrites": [
+        {
+          "kind": "suspend",
+          "ok": true
+        }
+      ],
+      "finalStatus": "SUSPENDED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "pause_gift",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 4433,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-cancel-refuses-pause",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "cancel"
+      ],
+      "actualWrites": [
+        {
+          "kind": "cancel",
+          "ok": true
+        }
+      ],
+      "finalStatus": "CANCELLED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "stop_gift",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 4159,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-hardship-budget",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [
+        "cover_month"
+      ],
+      "actualWrites": [
+        {
+          "kind": "cover_capture",
+          "ok": true
+        },
+        {
+          "kind": "cover_refund",
+          "ok": true
+        }
+      ],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 2500,
+        "donorRefundedCents": 2500
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "hardship_cover",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 4239,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-clarify-undecided",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [],
+      "actualWrites": [],
+      "finalStatus": "ACTIVE",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "unclear",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 4276,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "natural-clarify-refuses-both",
+      "arm": "composed",
+      "complete": true,
+      "actualProposals": [],
+      "actualWrites": [],
+      "finalStatus": "SUSPENDED",
+      "mockMoney": {
+        "sponsorCapturedCents": 0,
+        "donorRefundedCents": 0
+      },
+      "mismatches": [],
+      "routes": [
+        {
+          "intent": "unclear",
+          "model": "claude-sonnet-5-5",
+          "latencyMs": 0,
+          "error": null
+        }
+      ]
+    }
+  ]
+}
