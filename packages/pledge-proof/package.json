@@ -1,0 +1,32 @@
+{
+  "name": "pledge-proof",
+  "version": "0.1.0",
+  "description": "Check the facts in a support bot's reply against the PayPal subscription reads and writes behind it.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./paypal": "./src/paypal.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/",
+    "example": "node examples/support-bot/index.js"
+  },
+  "keywords": [
+    "paypal",
+    "subscriptions",
+    "support-bot",
+    "llm",
+    "fact-check"
+  ]
+}
