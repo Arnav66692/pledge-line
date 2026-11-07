@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en" data-page="subscribers">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subscribers, Pledge Line</title>
+  <meta name="description" content="Any business or person with a PayPal subscription can run the Pledge Line after-hours voice line. A demo on PayPal's test system, no real money moves.">
+  <meta name="theme-color" content="#ece4dd" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151918" media="(prefers-color-scheme: dark)">
+  <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/instrument-serif-latin-400-italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/chrome.css">
+  <link rel="stylesheet" href="/subscribers.css">
+  <script src="/chrome.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the page</a>
+
+  <header class="header">
+    <a class="logo" href="/" aria-label="Pledge Line, home"><span class="logo__a">pledge</span><span class="logo__b">line</span></a>
+    <nav class="header__nav" aria-label="Primary">
+      <a class="nav-item" href="/">The line</a>
+      <a class="nav-item" href="/#receipts-title">Receipts</a>
+      <a class="nav-item" href="/procurement">Supply desk</a>
+      <a class="nav-item" href="/demo">Demo &amp; evidence</a>
+      <a class="nav-item" href="/rehearsal">Try relief</a>
+      <a class="nav-item" href="/subscribers" data-page-link="subscribers">Subscribers</a>
+    </nav>
+    <button class="disc disc--menu" type="button" aria-expanded="false" aria-controls="menu" data-menu-toggle>
+      <span class="disc__fill" aria-hidden="true"></span>
+      <span class="disc__dots" aria-hidden="true"><i></i><i></i></span>
+      <span class="disc__x" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></span>
+      <span class="visually-hidden">Menu</span>
+    </button>
+  </header>
+
+  <div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu" hidden>
+    <div class="menu__shade" data-menu-close></div>
+    <div class="menu__panel"><div class="menu__inner">
+      <nav class="menu__nav" aria-label="Menu">
+        <ol class="menu__list">
+          <li><a class="menu__item" href="/"><sup>01</sup><span class="menu__label">The line</span><span class="menu__line" aria-hidden="true"></span></a></li>
+          <li><a class="menu__item" href="/#receipts-title"><sup>02</sup><span class="menu__label">Receipts</span><span class="menu__line" aria-hidden="true"></span></a></li>
+          <li><a class="menu__item" href="/procurement"><sup>03</sup><span class="menu__label">Supply desk</span><span class="menu__line" aria-hidden="true"></span></a></li>
+          <li><a class="menu__item" href="/demo"><sup>04</sup><span class="menu__label">Demo and evidence</span><span class="menu__line" aria-hidden="true"></span></a></li>
+          <li><a class="menu__item" href="/subscribers" data-page-link="subscribers"><sup>05</sup><span class="menu__label">Subscribers</span><span class="menu__line" aria-hidden="true"></span></a></li>
+        </ol>
+      </nav>
+      <div class="menu__foot">
+        <p class="menu__contact"><span>The after-hours line for subscribers</span><span>A demo, no real money.</span></p>
+      </div>
+    </div></div>
+  </div>
+
+  <main id="main" class="sub-page" tabindex="-1">
+    <section class="sub-intro" aria-labelledby="sub-title">
+      <p class="sub-kicker">For subscribers</p>
+      <h1 id="sub-title">Any subscriber can run this line.</h1>
+      <p class="sub-lead">Any business or person with a PayPal subscription can run this line. A gym, a creator, a club, a small shop or a nonprofit can each give its subscribers a voice line that checks, pauses, restarts or cancels a monthly payment, by voice.</p>
+      <p class="sub-lead">The donor line is the first example. A different business changes three settings, listed below, and the line works the same way.</p>
+      <p class="sub-note">This is a demo on PayPal's test system. No real money moves, and the subscription belongs to a test PayPal account.</p>
+      <p><a class="pill pill--dark" href="/">Try the donor line</a></p>
+    </section>
+
+    <section aria-labelledby="can-title">
+      <h2 id="can-title">What a subscriber can do by voice</h2>
+      <ul class="sub-list">
+        <li><strong>Check the gift or subscription.</strong> The line reads its amount, status and next payment from PayPal.</li>
+        <li><strong>Pause it.</strong> The line asks for a yes before it changes anything.</li>
+        <li><strong>Restart it.</strong> A paused gift starts again after a yes.</li>
+        <li><strong>Cancel it.</strong> Cancelling ends it for good and cannot be undone, so the line asks for a yes first. It offers a pause before it cancels.</li>
+        <li><strong>Ask how it knows.</strong> Say "how do you know". The line reads PayPal again and says what it just checked.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="not-title">
+      <h2 id="not-title">What it does not do</h2>
+      <ul class="sub-list">
+        <li><strong>It does not take a new payment.</strong> It works on the subscription that already exists.</li>
+        <li><strong>It does not change a plan.</strong> It pauses, restarts or cancels a subscription. It does not switch it to another plan.</li>
+        <li><strong>It does not handle disputes.</strong> It can tell you what a charge was, and that is as far as it goes.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="built-title">
+      <h2 id="built-title">How it's built</h2>
+      <p>The pledge-proof library sits in its own folder. Its README explains how it is built.</p>
+      <p><a class="sub-link" href="https://github.com/Arnav66692/pledge-line/blob/pilot/packages/pledge-proof/README.md">packages/pledge-proof/README.md</a></p>
+    </section>
+
+    <section aria-labelledby="run-title">
+      <h2 id="run-title">Run it for your business</h2>
+      <p>Three settings make the line yours. Set them as environment variables on the server, then follow the steps in SETUP.md.</p>
+      <ul class="sub-list">
+        <li><strong>Its PayPal subscription id.</strong> Set as DEMO_SUBSCRIPTION_ID.</li>
+        <li><strong>Its name for the line.</strong> Set as ORG_NAME. Digits, @ and $ are not allowed in it.</li>
+        <li><strong>Its PIN.</strong> Set as PILOT_PIN. Use 4 to 6 digits. Callers type it on the keypad.</li>
+      </ul>
+      <p><a class="sub-link" href="https://github.com/Arnav66692/pledge-line/blob/pilot/SETUP.md">Read SETUP.md</a></p>
+    </section>
+  </main>
+
+  <footer class="sub-foot">
+    <p>Pledge Line, open source under MIT.</p>
+    <p><a href="/">The line</a> <a href="/subscribers">Subscribers</a></p>
+    <p>&copy;2026</p>
+  </footer>
+
+  <div class="cursor" aria-hidden="true"><div class="cursor__inner"><div class="cursor__ring"></div></div></div>
+</body>
+</html>

@@ -493,6 +493,10 @@ function createApi(deps) {
       if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
       return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'rehearsal.html'));
     }
+    if (pathname === '/subscribers') {
+      if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+      return serveFile(res, path.join(deps.webDir ?? WEB_DIR, 'subscribers.html'));
+    }
     if (pathname === '/api/rehearsal') {
       if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed.');
       limitOr429(rehearsals, ip);

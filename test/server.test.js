@@ -70,6 +70,16 @@ test('static files are served from web/ with the right types and security header
   assert.match((await rawGet('/style.css')).headers['content-type'], /text\/css/);
 });
 
+test('/subscribers serves the subscribers page with the same content security policy as /', async () => {
+  const home = await rawGet('/');
+  const page = await rawGet('/subscribers');
+  assert.equal(page.status, 200);
+  assert.match(page.headers['content-type'], /text\/html/);
+  assert.match(page.body, /Any subscriber can run this line/);
+  assert.equal(page.headers['content-security-policy'], home.headers['content-security-policy']);
+  assert.equal(page.headers['x-frame-options'], home.headers['x-frame-options']);
+});
+
 const PAGE_POLICY = "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'";
 
 test('the unseen look files serve with their types and the page policy, with STAFF_KEY unset', async () => {
