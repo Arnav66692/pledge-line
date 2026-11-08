@@ -1,0 +1,64 @@
+/* The typesafe skin for the pages that carry their own stylesheet (demo, rehearsal, supply desk). Loaded after the page's
+   own CSS, it remaps their colour and font variables onto the shared system, turns the top bar into 36px tiles, squares
+   every control and sets the ink footer strip. Layouts stay the page's own. */
+@font-face { font-family: "TS Grotesk"; src: url("/fonts/hanken-grotesk-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "TS Terminal"; src: url("/fonts/vt323-latin-400-normal.woff2") format("woff2"); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: "TS Mono"; src: url("/fonts/jetbrains-mono-latin-300-normal.woff2") format("woff2"); font-weight: 300; font-display: swap; }
+
+:root {
+  --ts-ink: #1e1e1e; --ts-paper: #fefefe; --ts-body: #dedede; --ts-chrome: #c4c4c4;
+  --ts-blue: #009cde; --ts-gold: #ffc439; --ts-navy: #003087;
+  --ts-grot: "TS Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --ts-term: "TS Terminal", ui-monospace, monospace;
+  --ts-mono: "TS Mono", ui-monospace, Menlo, monospace;
+  --ts-ease: cubic-bezier(0.12, 0.23, 0.5, 1);
+  --paper: var(--ts-paper); --ink: var(--ts-ink); --surface: var(--ts-body); --muted: #4a4a4a; --line: rgb(30 30 30 / 0.4);
+  --focus: var(--ts-navy); --accent: var(--ts-gold); --navy: var(--ts-navy); --gold: var(--ts-gold);
+  --sans: var(--ts-grot); --serif: var(--ts-grot);
+}
+html { font-family: var(--ts-grot); }
+body { background: var(--ts-paper); color: var(--ts-ink); font-family: var(--ts-grot); letter-spacing: 0.85px; }
+h1, h2, h3, .wordmark { font-family: var(--ts-grot) !important; font-style: normal !important; letter-spacing: normal !important; }
+h1 { font-weight: 500 !important; line-height: 0.9 !important; text-wrap: balance; }
+h2, h3 { font-weight: 500 !important; }
+h1 em, h1 i, h2 em, h2 i { font-style: normal; }
+.kicker, .eyebrow { font-family: var(--ts-mono) !important; font-weight: 300; letter-spacing: 0.8px !important; text-transform: none !important; }
+:focus-visible { outline: 2px solid var(--ts-navy) !important; outline-offset: 2px !important; }
+
+/* Top bar: separate tiles flush to the top. */
+body > header, .site-head {
+  display: flex !important; align-items: flex-start !important; gap: 5px !important; flex-wrap: wrap;
+  width: min(1240px, calc(100% - 60px)); margin: 0 auto !important; padding: 0 !important;
+  border: 0 !important; background: none !important;
+}
+body > header nav, .site-head nav { display: flex !important; gap: 5px !important; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+body > header .wordmark, .site-head > a:first-child, body > header nav a, .site-head nav a {
+  display: inline-flex !important; align-items: center; height: 36px; padding: 0 12px !important;
+  background: var(--ts-paper); color: var(--ts-ink); box-shadow: inset 0 0 0 1px var(--ts-ink);
+  font: 400 15px/18px var(--ts-grot) !important; letter-spacing: 0.75px !important; text-decoration: none !important;
+  transition: color 0.33s var(--ts-ease);
+}
+body > header .wordmark, .site-head > a:first-child { font-weight: 500 !important; }
+body > header nav a:hover, .site-head nav a:hover, body > header .wordmark:hover { color: var(--ts-navy); }
+body > header nav a[aria-current], .site-head nav a[aria-current] { background: var(--ts-ink); color: var(--ts-paper); }
+
+/* Controls are square tiles. Hover takes the state colour. */
+button, .button, input, select, textarea { border-radius: 0 !important; }
+button, .button { box-shadow: none; border-color: var(--ts-ink); }
+button:hover:not(:disabled), .button:hover { background: var(--ts-navy) !important; color: var(--ts-paper) !important; border-color: var(--ts-navy) !important; }
+
+/* Footer strip, ink. */
+body > footer {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px;
+  min-height: 68px; margin: 0 !important; padding: 14px max(30px, calc((100% - 1240px) / 2)) !important;
+  background: var(--ts-ink) !important; color: var(--ts-paper) !important; border: 0 !important;
+  font: 400 15px/18px var(--ts-grot); letter-spacing: 0.75px;
+}
+body > footer a { color: var(--ts-paper); }
+body > footer a:hover { color: var(--ts-gold); }
+
+@media (max-width: 809.98px) {
+  body > header, .site-head { width: calc(100% - 20px); }
+  body > header .wordmark, .site-head > a:first-child, body > header nav a, .site-head nav a { height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }

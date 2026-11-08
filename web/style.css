@@ -1,347 +1,293 @@
-/* The donor page. One unseen-style hero over the room, then the call workspace on the same 2rem frame. Many donors are
-   older, so the workspace runs larger than unseen's own body text and keeps solid surfaces wherever text sits. */
-
-/* ---- Modes. Without chrome.js the hero and the workspace simply stack ---- */
-.hero {
-  position: relative; z-index: 3;
-  height: 100svh;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  text-align: center;
-  padding: 0 1.15rem 3.6rem;
-}
-html[data-mode] .hero { position: fixed; inset: 0; }
-html[data-mode="hero"] { overflow: hidden; }
-html[data-mode="hero"] .ws { visibility: hidden; }
-html[data-mode="call"] .hero { visibility: hidden; pointer-events: none; }
-html[data-mode="call"] .corner { opacity: 0; visibility: hidden; pointer-events: none; }
+/* The donor page in the typesafe system. Paper hero with a desk of windows, then the call as three windows on the blue
+   ground, the questions on gold, and the ink footer strip. Many donors are older, so text inside the call windows runs
+   a step larger than Typesafe's own small body. */
 
 /* ---- Hero ---- */
-.hero__float { display: flex; flex-direction: column; align-items: center; will-change: transform; }
-.hero__title { margin: 0; display: flex; flex-direction: column; align-items: center; font-weight: 400; color: var(--scene-ink); }
-.hero__caps { font-size: 1.09rem; line-height: 1; letter-spacing: -0.01em; text-transform: uppercase; margin-bottom: 1.5rem; }
-.hero__l1 { font-family: var(--serif); font-style: italic; font-size: 7.1rem; line-height: 0.911; letter-spacing: -0.04em; padding: 0 0.1em; }
-.hero__l2 { font-size: 7rem; line-height: 0.95; letter-spacing: -0.02em; padding-bottom: 0.06em; }
-.hero__cta { margin-top: 1.7rem; }
-.hero__note {
-  position: absolute; left: 0; right: 0; bottom: 6.2rem; margin: 0 auto; max-width: 44rem;
-  font-size: 0.95rem; line-height: 1.4; color: var(--scene-ink);
-}
-.hero .btn { font-size: 1.05rem; }
+.hero { padding-top: calc(36px + 64px); padding-bottom: var(--ts-sec); }
+.hero .marks { padding: 20px 20px 30px; margin-bottom: 50px; }
+.hero .eyebrow { margin-bottom: 20px; }
+.hero__l1, .hero__l2 { display: inline; }
+.hero__row { display: grid; grid-template-columns: minmax(0, 620px) minmax(0, 620px); gap: 0; align-items: start; }
+.hero__copy { display: grid; gap: 50px; align-content: start; padding-right: 40px; }
+.hero__text { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.hero__copy .btn { justify-self: start; }
 
-/* ---- Workspace ---- */
+/* The desk: real lines from a sandbox test call, in windows that overlap and can be tugged. */
+.desk { position: relative; height: 470px; }
+.desk .win { position: absolute; touch-action: none; }
+.desk .win__bar { cursor: grab; }
+.desk .win.is-held .win__bar { cursor: grabbing; }
+.desk__a { left: 0; top: 0; width: 470px; z-index: 1; }
+.desk__b { right: 0; top: 205px; width: 300px; z-index: 2; }
+.desk__c { left: 40px; top: 290px; width: 340px; z-index: 3; }
+.desk__caption { position: absolute; left: 0; bottom: 0; margin: 0; }
+.log-lines { list-style: none; margin: 0; padding: 4px 2px 0; display: grid; gap: 6px; }
+.log-lines li { font: 400 19px/20px var(--ts-term); letter-spacing: 0.18px; }
+.log-lines .you { color: #4a4a4a; }
+.log-lines b { font-weight: 400; background: var(--ts-ink); color: var(--ts-body); padding: 0 4px; }
+.read-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.cells { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; height: 16px; margin: 6px 0 10px; background: var(--ts-paper); box-shadow: 0 0 0 1px var(--ts-ink); }
+.cells i { background: var(--ts-ink); }
+.desk__c .small { color: var(--ts-ink-86); }
+.callno { margin: 8px 0 0; font: 300 10px/12px var(--ts-mono); letter-spacing: 0.5px; overflow-wrap: anywhere; }
+
+/* ---- The call, on the blue ground ---- */
+.line-sec .rail { margin-bottom: 50px; color: var(--ts-ink); }
+.line-head { display: grid; grid-template-columns: minmax(0, 620px) minmax(0, 400px); gap: 20px 100px; align-items: end; margin-bottom: 50px; }
 .ws {
-  position: relative; z-index: 2;
-  display: grid; gap: 2rem;
-  grid-template-columns: minmax(0, 27rem) minmax(0, 1fr) minmax(0, 27rem);
+  display: grid; gap: 20px;
+  grid-template-columns: minmax(0, 400px) minmax(0, 1fr) minmax(0, 400px);
   align-items: start;
-  padding: 6.4rem 2rem 2rem;
-  font-size: 1.2rem; line-height: 1.5;
+  font: 400 18px/22px var(--ts-grot); letter-spacing: 0.9px;
 }
 .ws:focus { outline: none; }
-.panel { min-width: 0; padding: 1.7rem 1.7rem 1.9rem; background: var(--surface); color: var(--ink); }
-.panel h2 { margin: 0 0 1rem; font-size: 2.3rem; line-height: 1.05; font-weight: 400; letter-spacing: -0.025em; }
-.panel h3 { margin: 0 0 0.5rem; font-size: 0.8rem; line-height: 1.3; font-weight: 400; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
-.kicker { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
+.panel h2 { margin: 6px 0 10px; font: 500 30px/27px var(--ts-grot); letter-spacing: 0.6px; }
+.panel h3 { margin: 0 0 6px; font: 300 13px/15.6px var(--ts-mono); letter-spacing: 0.65px; text-transform: uppercase; color: var(--ts-ink-86); }
+.panel .win__body { padding: 10px 10px 20px; }
 
 .label, .field-label {
-  display: block;
-  margin: 0 0 0.45rem;
-  font-size: 0.85rem; line-height: 1.3;
-  text-transform: uppercase; letter-spacing: 0.02em;
-  color: var(--muted);
+  display: block; margin: 0 0 6px;
+  font: 300 13px/15.6px var(--ts-mono); letter-spacing: 0.65px; text-transform: uppercase;
+  color: var(--ts-ink-86);
 }
-.hint { margin: 0.4rem 0; font-size: 1.02rem; line-height: 1.45; color: var(--muted); }
+.hint { margin: 6px 0; font: 400 17px/20.4px var(--ts-grot); letter-spacing: 0.85px; color: var(--ts-ink-86); }
 
 /* ---- Controls ---- */
-select, input[type="text"] {
-  width: 100%; min-height: 3.2rem;
-  padding: 0.6rem 0.9rem;
-  font: inherit; font-size: 1.15rem;
-  border: 1px solid var(--ink); border-radius: 0;
-  background: transparent; color: var(--ink);
+select, input[type="text"], input[type="password"] {
+  width: 100%; min-height: 40px; padding: 6px 10px;
+  font: 400 18px/22px var(--ts-grot); letter-spacing: 0.9px;
+  border: 0; border-radius: 0; box-shadow: inset 0 0 0 1px var(--ts-ink);
+  background: var(--ts-paper); color: var(--ts-ink);
 }
 .select { position: relative; }
-.select select { appearance: none; -webkit-appearance: none; padding-right: 2.6rem; }
+.select select { appearance: none; -webkit-appearance: none; padding-right: 36px; }
 .select::after {
-  content: ""; position: absolute; right: 1rem; top: 50%; width: 0.55rem; height: 0.55rem; margin-top: -0.4rem;
-  border: solid var(--ink); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none;
+  content: ""; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px; margin-top: -6px;
+  border: solid var(--ts-ink); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none;
 }
-select option { color: #212121; background: #fff; }
 button:disabled { cursor: not-allowed; }
 
-.call-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.4rem; }
-.call-head h2 { margin: 0; }
+.call-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.call-head h2 { margin: 6px 0; }
 
-/* Mute of the line's voice: a real checkbox drawn as a small disc. */
-.toggle { position: relative; display: inline-flex; align-items: center; gap: 0.55rem; font-size: 0.95rem; color: var(--muted); cursor: pointer; }
+/* Mute: a real checkbox drawn as a small square tile. */
+.toggle { position: relative; display: inline-flex; align-items: center; gap: 8px; font: 400 15px/18px var(--ts-grot); letter-spacing: 0.75px; cursor: pointer; }
 .toggle input { position: absolute; left: 0; top: 50%; width: 1px; height: 1px; margin: 0; opacity: 0; }
-.toggle__disc { position: relative; flex: none; width: 2.2rem; height: 2.2rem; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink); overflow: hidden; }
-.toggle__disc::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--ink); transform: scale(0); transition: transform 0.69s var(--expo); }
-.toggle__disc::after {
-  content: ""; position: absolute; left: 50%; top: 50%; width: 1.1rem; height: 1.5px; margin: -0.75px 0 0 -0.55rem;
-  background: var(--ink); transform: rotate(-45deg) scaleX(0.35); transition: transform 0.6s var(--expo), background-color 0.4s;
-}
-.toggle input:checked + .toggle__disc::before { transform: scale(1.05); }
-.toggle input:checked + .toggle__disc::after { background: var(--paper); transform: rotate(-45deg); }
-@media (prefers-color-scheme: dark) { .toggle input:checked + .toggle__disc::after { background: #212121; } }
-.toggle input:focus-visible + .toggle__disc { outline: 2px solid var(--focus); outline-offset: 3px; }
+.toggle__disc { position: relative; flex: none; width: 20px; height: 20px; background: var(--ts-paper); box-shadow: inset 0 0 0 1px var(--ts-ink); }
+.toggle__disc::after { content: ""; position: absolute; inset: 4px; background: var(--ts-ink); transform: scale(0); }
+.toggle input:checked + .toggle__disc::after { transform: none; }
+.toggle input:focus-visible + .toggle__disc { outline: 2px solid var(--ts-state); outline-offset: 2px; }
 .toggle input:disabled + .toggle__disc { opacity: 0.45; }
 
-.status { margin: 0.6rem 0 1rem; font-size: 1.2rem; }
-#start { min-width: 11rem; }
+.status { margin: 6px 0 10px; font: 400 18px/22px var(--ts-grot); }
+#start { min-width: 160px; }
+.ws .hint strong { font: 500 22px/20px var(--ts-term); background: var(--ts-ink); color: var(--ts-body); padding: 0 5px; letter-spacing: 1px; }
 
-.said { margin-top: 1.5rem; }
-.reply, .transcript { margin: 0; min-height: 2.6em; overflow-wrap: anywhere; }
-.reply { font-family: var(--serif); font-size: 2.15rem; line-height: 1.12; letter-spacing: -0.01em; }
-.transcript { font-size: 1.2rem; padding-top: 0.6rem; border-top: 1px solid var(--line); min-height: 2.2em; }
+.said { margin-top: 16px; }
+.reply, .transcript { margin: 0; min-height: 2.4em; overflow-wrap: anywhere; }
+.reply { font: 500 28px/31px var(--ts-grot); letter-spacing: 0.3px; }
+.transcript { padding-top: 6px; border-top: 1px solid var(--ts-ink); font: 400 18px/22px var(--ts-grot); }
 
-/* Hold to talk, a large disc. Idle it is dark. Held, a green fill grows from its centre and a ring breathes. */
-.talk-row { display: flex; align-items: center; gap: 1.2rem; margin: 1.6rem 0 0.4rem; }
+/* Hold to talk: an ink tile. Held, it turns gold and its rule doubles. */
+.talk-row { display: flex; align-items: center; gap: 14px; margin: 18px 0 6px; }
 .talk-row .hint { margin: 0; }
 .talk {
-  position: relative; isolation: isolate; flex: none;
-  width: 9.6rem; height: 9.6rem; min-width: 96px; min-height: 96px;
-  padding: 1rem; border: 0; border-radius: 50%;
-  background: none; color: var(--paper);
-  font-size: 1.15rem; line-height: 1.15; text-wrap: balance;
-  cursor: pointer;
-  touch-action: none; user-select: none; -webkit-user-select: none;
+  flex: none; width: 150px; height: 96px; padding: 10px;
+  border: 0; border-radius: 0;
+  background: var(--ts-ink); color: var(--ts-paper);
+  font: 500 22px/24px var(--ts-grot); letter-spacing: 0.6px; text-wrap: balance;
+  cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none;
+  transition: color 0.5s var(--ts-ease);
 }
-.talk::before { content: ""; position: absolute; inset: 0; z-index: -2; border-radius: 50%; background: #212121; transition: transform 0.5s var(--expo); }
-.talk::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform 0.69s var(--expo); }
-.talk:hover:not(:disabled)::before { transform: scale(1.04); }
-.talk.listening::after { transform: scale(1.02); }
-.talk.listening { animation: talk-ring 1.4s var(--power3) infinite alternate; outline: 1.5px solid var(--accent); outline-offset: 0.35rem; }
-.talk:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.35rem; }
+.talk:hover:not(:disabled) { color: var(--ts-gold); }
+.talk.listening { background: var(--ts-gold); color: var(--ts-ink); box-shadow: 0 0 0 3px var(--ts-ink); }
 .talk:disabled { opacity: 0.45; }
-@keyframes talk-ring { from { outline-offset: 0.2rem; } to { outline-offset: 0.75rem; } }
-@media (prefers-color-scheme: dark) {
-  .talk { color: #212121; }
-  .talk::before { background: var(--paper); }
-}
 
-.error { margin: 0.8rem 0; padding: 0.8rem 1rem; background: var(--error-soft); color: var(--error); font-size: 1.05rem; }
+.error { margin: 10px 0; padding: 8px 10px; background: var(--error-soft); color: var(--error); box-shadow: inset 0 0 0 1px var(--error); font: 400 17px/20.4px var(--ts-grot); }
 
-/* PIN keypad: outlined discs. The fill rises on hover, and Send is dark. */
-.keypad { margin-top: 1.8rem; }
-.dots { display: block; min-height: 1.6em; margin-bottom: 0.6rem; font-size: 1.6rem; letter-spacing: 0.3em; }
-.dots-empty { font-size: 1.05rem; letter-spacing: normal; color: var(--muted); }
-.keys { display: grid; grid-template-columns: repeat(3, 4.2rem); gap: 0.7rem 1rem; }
+/* PIN keypad: square paper keys with terminal digits. */
+.keypad { margin-top: 18px; }
+.dots { display: block; min-height: 30px; margin-bottom: 8px; font: 500 30px/30px var(--ts-term); letter-spacing: 0.3em; }
+.dots-empty { font: 400 17px/20.4px var(--ts-grot); letter-spacing: 0.85px; color: var(--ts-ink-86); }
+.keys { display: grid; grid-template-columns: repeat(3, 64px); gap: 5px; }
 .key {
-  position: relative; isolation: isolate; overflow: hidden;
-  width: 4.2rem; height: 4.2rem; min-width: 52px; min-height: 52px;
-  padding: 0; border: 0; border-radius: 50%;
-  background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink);
-  font-size: 1.55rem; line-height: 1; cursor: pointer;
-  transition: color 0.5s var(--expo);
+  width: 64px; height: 56px; padding: 0;
+  border: 0; border-radius: 0;
+  background: var(--ts-paper); color: var(--ts-ink); box-shadow: inset 0 0 0 1px var(--ts-ink);
+  font: 500 36px/36px var(--ts-term); cursor: pointer;
+  transition: color 0.5s var(--ts-ease);
 }
-.key::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--ink); transform: translateY(102%); transition: transform 0.6s var(--expo); }
-.key:hover:not(:disabled), .key:active:not(:disabled) { color: var(--paper); }
-.key:hover:not(:disabled)::before, .key:active:not(:disabled)::before { transform: none; }
+.key:hover:not(:disabled), .key:active:not(:disabled) { color: var(--ts-state); }
 .key:disabled { opacity: 0.4; }
-.key-word { font-size: 0.95rem; }
-.key.send { background: var(--ink); color: var(--paper); }
-.key.send::before { background: var(--accent); }
-@media (prefers-color-scheme: dark) {
-  .key:hover:not(:disabled), .key:active:not(:disabled), .key.send { color: #212121; }
-}
+.key-word { font: 500 15px/18px var(--ts-grot); letter-spacing: 0.75px; }
+.key.send { background: var(--ts-ink); color: var(--ts-paper); }
+.key.send:hover:not(:disabled) { background: var(--ts-state); color: var(--ts-paper); }
 
-/* Folded sections: the typed box, demo controls and the event log. */
-.fold { margin-top: 1.6rem; border-top: 1px solid var(--line); }
+/* Folds: the FAQ row. Dashed left rule closed, solid open, the outlined icon turns over. */
+.fold { margin-top: 16px; border-left: 1px dashed var(--ts-ink); padding-left: 10px; }
+.fold[open] { border-left-style: solid; }
 .fold summary {
-  display: flex; align-items: center; justify-content: space-between;
-  min-height: 3rem; padding: 0.6rem 0; list-style: none; cursor: pointer;
-  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.02em;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 40px; list-style: none; cursor: pointer;
+  font: 300 13px/15.6px var(--ts-mono); letter-spacing: 0.65px; text-transform: uppercase;
 }
 .fold summary::-webkit-details-marker { display: none; }
-.fold summary::after { content: "+"; font-size: 1.3rem; line-height: 1; transition: transform 0.6s var(--expo); }
-.fold[open] summary::after { transform: rotate(45deg); }
-.typed-form { margin-top: 0.2rem; }
-.typed-row { display: flex; gap: 0.6rem; align-items: stretch; }
+.fold summary::after {
+  content: "+"; flex: none; display: grid; place-items: center; width: 20px; height: 20px;
+  box-shadow: inset 0 0 0 1px var(--ts-ink);
+  font: 400 16px/1 var(--ts-mono);
+  transition: transform 0.17s var(--ts-ease);
+}
+.fold[open] summary::after { content: "\2212"; transform: rotate(180deg); }
+.typed-row { display: flex; gap: 5px; align-items: stretch; }
 .typed-row input { flex: 1 1 auto; min-width: 0; }
-.typed-row .pill { flex: none; }
+.typed-row .pill { flex: none; min-height: 40px; }
 
-.demo-body { padding-bottom: 0.3rem; }
-.lines { margin: 0.8rem 0 0; padding-left: 1.4rem; }
-.lines li { margin: 0.25rem 0; overflow-wrap: anywhere; }
-.lines .expected { list-style: none; margin-left: -1.4rem; color: var(--muted); font-size: 1.02rem; }
-.timing { margin: 1rem 0 0; color: var(--muted); font-size: 1.02rem; }
+.demo-body { padding-bottom: 4px; }
+.lines { margin: 10px 0 0; padding-left: 20px; }
+.lines li { margin: 4px 0; overflow-wrap: anywhere; }
+.lines .expected { list-style: none; margin-left: -20px; color: var(--ts-ink-86); }
+.timing { margin: 12px 0 0; color: var(--ts-ink-86); font: 400 17px/20.4px var(--ts-grot); }
 
-/* ---- What the line said, with receipts ---- */
-.receipts-summary { margin: 0.4rem 0 0; padding-bottom: 1rem; font-size: 1.15rem; border-bottom: 1px solid var(--ink); }
-@media (min-width: 768px) {
-  /* Short enough that the newest reply, at the box's bottom, stays on a 1280 by 800 screen. The list scrolls to its
-     newest reply, so an older line can stop part way up the box. The rule sits on the summary, a little above the box,
-     and the box's top fades out, so a line scrolling away dissolves before it reaches the rule instead of being cut by
-     it. The top padding keeps the first reply clear of the fade while the list is at its top. */
-  .receipts-scroll {
-    max-height: max(320px, calc(100vh - 21.5rem)); overflow-y: auto;
-    margin-top: 0.5rem; padding: 1.4rem 0.4rem 0 0;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 0.4rem, #000 2.6rem);
-    mask-image: linear-gradient(to bottom, transparent 0, transparent 0.4rem, #000 2.6rem);
-  }
+/* ---- What the line said ---- */
+.receipts-summary { margin: 6px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--ts-ink); font: 400 18px/22px var(--ts-grot); }
+@media (min-width: 810px) {
+  .receipts-scroll { max-height: max(360px, calc(100vh - 220px)); overflow-y: auto; margin-top: 4px; padding-right: 4px; }
 }
 .receipts { list-style: none; margin: 0; padding: 0; }
-/* After the call ends, the way to keep a receipt of it. */
-.keep { margin-top: 1.2rem; padding-top: 1.1rem; border-top: 1px solid var(--ink); }
+.keep { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ts-ink); }
 .keep[hidden] { display: none; }
-.pill[hidden] { display: none; }
-.ws .keep .pill { color: var(--fg); text-decoration: none; white-space: normal; text-align: left; }
-.ws .keep .pill:hover, .ws .keep .pill:focus-visible { color: var(--fill-fg); }
-.keep .hint { margin-top: 0.7rem; }
-.turn { padding: 1.2rem 0 1.3rem; border-bottom: 1px solid var(--line); }
+.ws .keep .pill { white-space: normal; text-align: left; }
+.turn { padding: 12px 0 14px; border-bottom: 1px dashed var(--ts-ink); }
 .turn:last-child { border-bottom: 0; }
-.turn-time { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
-.sentence { margin: 0 0 0.7rem; }
+.turn-time { margin: 0 0 8px; font: 300 12px/14.4px var(--ts-mono); letter-spacing: 0.6px; text-transform: uppercase; }
+.sentence { margin: 0 0 8px; }
 .sentence:last-child { margin-bottom: 0; }
-.sentence-text { font-family: var(--serif); font-size: 1.7rem; line-height: 1.18; letter-spacing: -0.005em; margin-right: 0.5rem; }
+.sentence-text { font: 500 20px/24px var(--ts-grot); letter-spacing: 0.4px; margin-right: 6px; }
 
-/* The proof chips are the page's heroes: dark pills, like unseen's active filter, each with a green check. */
+/* Proof chips are terminal tags. A proven one carries a check, a blocked one a red rule. */
 .chips { display: inline; }
 .chip {
-  display: inline-flex; align-items: center; gap: 0.45rem;
-  margin: 0.35rem 0.4rem 0 0;
-  padding: 0.38rem 0.85rem 0.38rem 0.7rem;
-  border-radius: 180px;
-  font-family: var(--sans); font-size: 0.9rem; line-height: 1.25; letter-spacing: -0.01em;
-  vertical-align: 0.2rem; overflow-wrap: anywhere;
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 4px 4px 0 0; padding: 2px 6px;
+  background: var(--ts-chip); color: var(--ts-ink);
+  font: 500 16px/16px var(--ts-term); letter-spacing: 0.32px; text-transform: lowercase;
+  vertical-align: 2px; overflow-wrap: anywhere;
 }
-.chip-proven { background: #212121; color: var(--pill-on); }
-.chip-proven::before {
-  content: ""; flex: none;
-  width: 0.36rem; height: 0.66rem; margin: 0 0.15rem 0.15rem 0.15rem;
-  border: solid #8fd1b4; border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-.chip-blocked { background: transparent; color: var(--error); box-shadow: inset 0 0 0 2px var(--error); }
-.problems { margin: 0.3rem 0 0; padding-left: 1.3rem; color: var(--error); font-size: 1.02rem; }
+.chip-proven::before { content: ""; flex: none; width: 5px; height: 9px; margin: 0 2px 3px 1px; border: solid var(--ts-ink); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.chip-blocked { background: var(--error-soft); color: var(--error); box-shadow: inset 0 0 0 1px var(--error); }
+.problems { margin: 6px 0 0; padding-left: 20px; color: var(--error); font: 400 17px/20.4px var(--ts-grot); }
 .sentence-blocked .sentence-text { text-decoration: underline wavy var(--error); text-underline-offset: 4px; }
-@media (prefers-color-scheme: dark) {
-  .chip-proven { background: var(--pill-on); color: #212121; }
-  .chip-proven::before { border-color: #1d6a50; }
-}
 
 /* ---- PayPal's record ---- */
-.pending { margin-bottom: 1.2rem; padding: 1.2rem 1.3rem; background: #212121; color: var(--pill-on); }
-.pending p { margin: 0.15rem 0; }
-.pending .hint { color: #d9d3cf; }
-.pending-title { font-family: var(--serif); font-style: italic; font-size: 2rem; line-height: 1.05; }
-@media (prefers-color-scheme: dark) {
-  .pending { background: var(--pill-on); color: #212121; }
-  .pending .hint { color: #4a4643; }
-}
+.pending { margin-bottom: 12px; padding: 10px; background: var(--ts-ink); color: var(--ts-body); }
+.pending p { margin: 2px 0; }
+.pending .hint { color: var(--ts-body); }
+.pending-title { font: 500 36px/36px var(--ts-term); color: var(--ts-gold); }
 
-.gift { margin-bottom: 1.2rem; padding: 1.2rem 1.3rem; background: var(--sunk); border: 2px solid transparent; }
-.gift-status { margin: 0; font-family: var(--serif); font-size: 3.6rem; line-height: 1; letter-spacing: -0.02em; transform-origin: 0 70%; }
-.gift[data-status="ACTIVE"] .gift-status { color: var(--accent); }
-.gift[data-status="SUSPENDED"] .gift-status { color: var(--warn); }
-.gift-read { margin: 0.5rem 0 0.9rem; color: var(--muted); font-size: 1.02rem; }
-/* "PayPal said no", a calm red mark. The status above it still comes from PayPal's fresh read (A12). */
-.gift.refused { border-color: var(--error); }
-.gift-refused { margin: 0.7rem 0 0.2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+.gift { margin-bottom: 12px; padding: 10px; background: var(--ts-paper); box-shadow: inset 0 0 0 1px var(--ts-ink); }
+.gift-status { display: inline-block; margin: 2px 0; font: 500 56px/52px var(--ts-term); text-transform: uppercase; transform-origin: 0 70%; }
+.gift-read { margin: 6px 0 10px; color: var(--ts-ink-86); font: 400 16px/19px var(--ts-grot); }
+.gift.refused { box-shadow: inset 0 0 0 2px var(--error); }
+.gift-refused { margin: 8px 0 2px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .gift-refused[hidden] { display: none; }
-.gift-refused__mark {
-  display: inline-block; padding: 0.3rem 0.75rem; border-radius: 999px;
-  background: var(--error-soft); color: var(--error); box-shadow: inset 0 0 0 1.5px var(--error);
-  font-size: 0.85rem; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.04em;
-}
-.gift-refused__why { font-size: 1.02rem; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
-.gift-change { margin: -0.4rem 0 0.9rem; font-size: 1.05rem; }
-/* With no invoice on the call, app.js leaves its number and status empty, and the card shows one line instead of empty rows. */
-.invoice-none { display: none; margin: 0; font-size: 1.05rem; color: var(--muted); }
+.gift-refused__mark { display: inline-block; padding: 2px 6px; background: var(--error-soft); color: var(--error); box-shadow: inset 0 0 0 1px var(--error); font: 500 16px/16px var(--ts-term); text-transform: lowercase; }
+.gift-refused__why { font: 400 16px/19px var(--ts-grot); overflow-wrap: anywhere; }
+.gift-change { margin: -4px 0 10px; font: 400 16px/19px var(--ts-grot); }
+.invoice-none, .cover-none { margin: 0; font: 400 16px/19px var(--ts-grot); color: var(--ts-ink-86); }
+.invoice-none { display: none; }
 .invoice:has(#inv-number:empty):has(#inv-status:empty) .invoice-none { display: block; }
 .invoice:has(#inv-number:empty):has(#inv-status:empty) .facts { display: none; }
-.cover-none { margin: 0; font-size: 1.05rem; color: var(--muted); }
-.cover-outcome { display: none; margin: 0 0 .75rem; font-size: 1.05rem; }
+.cover-outcome { display: none; margin: 0 0 10px; font: 400 16px/19px var(--ts-grot); }
 .cover.has-cover .cover-none { display: none; }
 .cover.has-cover .cover-outcome { display: block; }
 .cover:not(.has-cover) .facts { display: none; }
 
-/* When something went wrong: a short timeline with one rule down its left side, on the gift cards' own surface. */
-.recovery { margin-bottom: 1.2rem; padding: 1.2rem 1.3rem; background: var(--sunk); border: 2px solid var(--warn); }
-.panel h3.recovery-title { margin: 0 0 0.8rem; font-family: var(--serif); font-style: italic; font-size: 2rem; line-height: 1.05; letter-spacing: 0; text-transform: none; color: var(--ink); }
-.recovery-run { margin: 0 0 0.9rem; padding: 0.45rem 0.7rem; background: var(--warn-soft); font-size: 0.98rem; line-height: 1.35; }
+/* A change that PayPal read back becomes the black count tile. */
+.gift.changed .gift-status { padding: 2px 8px 0; background: var(--ts-ink); color: var(--ts-body); }
+.gift.changed[data-status="SUSPENDED"] .gift-status { color: var(--ts-gold); }
+.gift.flash .gift-status { animation: land 0.39s cubic-bezier(0.2, 1.4, 0.4, 1) 1; }
+@keyframes land { from { transform: translateY(20px) scaleY(1.13); } to { transform: none; } }
+
+.recovery { margin-bottom: 12px; padding: 10px; background: var(--ts-paper); box-shadow: inset 0 0 0 2px var(--warn); }
+.panel h3.recovery-title { margin: 0 0 8px; font: 500 22px/24px var(--ts-grot); letter-spacing: 0.4px; text-transform: none; color: var(--ts-ink); }
+.recovery-run { margin: 0 0 8px; padding: 4px 6px; background: var(--warn-soft); font: 400 15px/18px var(--ts-grot); }
 .recovery-list, .recovery-steps { list-style: none; margin: 0; padding: 0; }
-.recovery-incident + .recovery-incident { margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid var(--line); }
-.recovery-step { position: relative; padding: 0 0 0.85rem 1.05rem; border-left: 1px solid var(--ink); }
+.recovery-incident + .recovery-incident { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--ts-ink); }
+.recovery-step { position: relative; padding: 0 0 8px 12px; border-left: 1px solid var(--ts-ink); }
 .recovery-step:last-child { padding-bottom: 0; }
-.recovery-step::before { content: ""; position: absolute; left: -0.28rem; top: 0.42rem; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--ink); }
-.recovery-step-now::before { background: var(--accent); }
-.recovery-label { margin: 0; font-size: 0.8rem; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
-.recovery-text { margin: 0.1rem 0 0; font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }
-.recovery-meta { margin: 0.1rem 0 0; font-size: 0.82rem; line-height: 1.35; color: var(--muted); overflow-wrap: anywhere; }
+.recovery-step::before { content: ""; position: absolute; left: -4px; top: 6px; width: 7px; height: 7px; background: var(--ts-ink); }
+.recovery-step-now::before { background: var(--ts-gold); box-shadow: 0 0 0 1px var(--ts-ink); }
+.recovery-label { margin: 0; font: 300 12px/14.4px var(--ts-mono); letter-spacing: 0.6px; text-transform: uppercase; color: var(--ts-ink-86); }
+.recovery-text { margin: 2px 0 0; font: 400 16px/19px var(--ts-grot); overflow-wrap: anywhere; }
+.recovery-meta { margin: 2px 0 0; font: 300 12px/14.4px var(--ts-mono); color: var(--ts-ink-86); overflow-wrap: anywhere; }
 
-/* The moment a change's read-back lands. The border takes the new status's colour and stays for the rest of the call,
-   the status word sits on its own tint, underlined, and it pops once as it lands. */
-.gift.changed { border-color: var(--accent); }
-.gift.changed[data-status="SUSPENDED"] { border-color: var(--warn); }
-.gift.changed .gift-status {
-  display: inline-block;
-  padding: 0.05em 0.18em 0.1em;
-  background: var(--accent-soft);
-  text-decoration: underline 2px;
-  text-underline-offset: 0.12em;
-}
-.gift.changed[data-status="SUSPENDED"] .gift-status { background: var(--warn-soft); }
-.gift.flash .gift-status { animation: land 0.9s var(--expo-out) 1; }
-@keyframes land {
-  from { transform: scale(1.22); }
-  to { transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .gift.flash .gift-status { animation: none; }
-}
-
-.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1rem; margin: 0; font-size: 1.05rem; }
-.facts dt { color: var(--muted); }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font: 400 16px/19px var(--ts-grot); }
+.facts dt { font: 300 13px/19px var(--ts-mono); letter-spacing: 0.65px; text-transform: uppercase; color: var(--ts-ink-86); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
-.mono { font-family: var(--mono); font-size: 0.9rem; }
-.ws a { color: var(--ink); text-underline-offset: 0.2em; }
+.mono { font-family: var(--ts-mono); font-size: 14px; }
+.ws a { color: var(--ts-ink); }
 
-.events { margin: 0.4rem 0 0; padding: 0; list-style: none; max-height: 28rem; overflow-y: auto; }
-.event { padding: 0.55rem 0; border-bottom: 1px solid var(--line); font-size: 0.98rem; overflow-wrap: anywhere; }
-.event-write, .event-yes { font-weight: 560; }
+/* The event log is a terminal pane. */
+.log .hint { margin-bottom: 6px; }
+.events { margin: 0; padding: 6px 8px; list-style: none; max-height: 340px; overflow-y: auto; background: var(--ts-ink); color: var(--ts-body); }
+.event { padding: 3px 0; font: 400 18px/20px var(--ts-term); letter-spacing: 0.18px; overflow-wrap: anywhere; }
+.event-write, .event-yes { color: var(--ts-gold); }
 
-.foot {
-  grid-column: 1 / -1;
-  display: flex; justify-content: space-between; gap: 1rem;
-  margin-top: 1rem; font-size: 0.9rem; color: var(--chrome-ink);
-}
-.foot p { margin: 0; }
-
-/* On a laptop the receipts and PayPal's record stay in view while the call column scrolls, so the gift card's change
-   is on screen the moment it lands. */
-@media (min-width: 1140px) {
-  .receipts-card, .record { position: sticky; top: 5.4rem; }
-  .record { max-height: calc(100vh - 7.4rem); overflow-y: auto; }
-  .events { max-height: none; overflow: visible; }
+/* On a laptop the receipts and PayPal's record stay in view while the call column scrolls. */
+@media (min-width: 1200px) {
+  .receipts-card, .record { position: sticky; top: 20px; }
 }
 
-/* ---- Two columns, then one ---- */
-@media (max-width: 1139px) {
-  .ws { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+/* ---- Questions, on gold ---- */
+.faq-sec .faq-grid { margin-top: 50px; display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 50px 100px; align-items: start; }
+.faq { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.faq__item { border-left: 1px dashed var(--ts-ink); padding-left: 14px; }
+.faq__item.is-open { border-left-style: solid; }
+.faq__q {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  width: 100%; min-height: 40px; padding: 8px 0; border: 0; background: none; text-align: left; cursor: pointer;
+  font: 400 30px/30px var(--ts-grot); letter-spacing: 1.2px; color: var(--ts-ink);
+  transition: color 0.5s var(--ts-ease);
+}
+.faq__q:hover { color: var(--ts-state); }
+.faq__icon { flex: none; width: 20px; height: 20px; box-shadow: inset 0 0 0 1px currentColor; position: relative; transition: transform 0.17s var(--ts-ease); }
+.faq__icon::before, .faq__icon::after { content: ""; position: absolute; left: 50%; top: 50%; background: currentColor; }
+.faq__icon::before { width: 10px; height: 1px; margin: -0.5px 0 0 -5px; }
+.faq__icon::after { width: 1px; height: 10px; margin: -5px 0 0 -0.5px; }
+.faq__item.is-open .faq__icon { transform: rotate(180deg); }
+.faq__item.is-open .faq__icon::after { display: none; }
+.faq__a { padding: 4px 0 14px; max-width: 640px; }
+.faq__a[hidden] { display: none; }
+.faq__a .lead { color: var(--ts-ink-86); }
+
+/* ---- Below 1200 ---- */
+@media (max-width: 1199.98px) {
+  .hero__row { grid-template-columns: 1fr; gap: 50px; }
+  .hero__copy { padding-right: 0; }
+  .ws { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record { grid-column: 1 / -1; }
+  .line-head { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 767px) {
-  .hero { padding-bottom: 4.5rem; }
-  .hero__caps { font-size: 0.8rem; max-width: 18rem; line-height: 1.35; margin-bottom: 1.2rem; }
-  .hero__l1 { font-size: 11.5vw; }
-  .hero__l2 { font-size: 10.6vw; letter-spacing: -0.02em; }
-  .hero__note { bottom: 5.4rem; max-width: 17rem; }
-  .ws { grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 5.2rem 1.15rem 2rem; font-size: 1.15rem; }
+/* ---- Phones ---- */
+@media (max-width: 809.98px) {
+  .hero { padding-top: calc(44px + 30px); }
+  .hero .marks { margin-bottom: 30px; padding: 16px 12px 20px; }
+  .hero__text { grid-template-columns: 1fr; }
+  .hero__copy { gap: 30px; }
+  .desk { height: auto; display: grid; gap: 12px; }
+  .desk .win { position: relative; left: auto; right: auto; top: auto; width: auto; }
+  .desk__caption { position: static; }
+  .ws { grid-template-columns: minmax(0, 1fr); gap: 14px; font-size: 17px; }
   .record { grid-column: auto; }
-  .panel { padding: 1.3rem 1.15rem 1.5rem; }
-  .panel h2 { font-size: 2.2rem; }
-  .reply { font-size: 1.9rem; }
-  .talk-row { gap: 1rem; }
-  .talk { width: 8.6rem; height: 8.6rem; }
-  .keys { grid-template-columns: repeat(3, 4.6rem); gap: 0.8rem 1.2rem; }
-  .key { width: 4.6rem; height: 4.6rem; }
-  .sentence-text { font-size: 1.6rem; }
-  .gift-status { font-size: 3rem; }
-  .foot { flex-direction: column; }
+  .reply { font-size: 24px; line-height: 27px; }
+  .talk { width: 132px; height: 88px; }
+  .keys { grid-template-columns: repeat(3, 72px); }
+  .key { width: 72px; height: 56px; }
+  .gift-status { font-size: 46px; line-height: 44px; }
+  .faq-sec .faq-grid { grid-template-columns: 1fr; gap: 30px; }
+  .faq__q { font-size: 22px; line-height: 24px; }
 }
 
-/* A jump from the nav lands below the fixed header, not under the logo. */
-#receipts-title, #record-title { scroll-margin-top: 6rem; }
+#receipts-title, #record-title, #workspace { scroll-margin-top: 20px; }

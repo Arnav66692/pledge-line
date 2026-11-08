@@ -1,79 +1,63 @@
-/* The subscribers page. It wears the donor page's chrome from chrome.css (header, menu, cursor, pills, colours in both
-   light and dark) and adds one reading column. No scene, no call and no script of its own. */
+/* The subscribers page in the typesafe system: one paper ground, a big headline, then each section as a text row with
+   its title on the left and dashed-rule lists on the right. No script of its own beyond the shared menu. */
 
 main.sub-page {
-  position: relative;
-  z-index: 2;
-  max-width: 56rem;
-  margin: 6.5rem auto 2rem;
-  padding: 2.6rem 2.4rem 1.6rem;
-  background: var(--surface);
-  border-radius: 1.5rem;
-  color: var(--ink);
-  font-size: 1rem;
+  width: min(1240px, calc(100% - 2 * var(--ts-side)));
+  margin: 0 auto;
+  padding: calc(36px + 64px) 0 var(--ts-sec);
+  color: var(--ts-ink);
 }
+main.sub-page:focus { outline: none; }
 
-.sub-page section { border-top: 1px solid var(--line); padding: 2.2rem 0; }
-.sub-page section:first-child { border-top: 0; padding-top: 0.4rem; }
-
-.sub-kicker {
-  margin: 0 0 1.2rem;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+.sub-page section {
+  display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 20px 100px;
+  padding: 50px 0; border-top: 1px solid var(--ts-ink);
 }
+.sub-page section.sub-intro { display: block; border-top: 0; padding: 0 0 50px; }
+
+.sub-kicker { margin: 0 0 20px; font: 300 16px/19.2px var(--ts-mono); letter-spacing: 0.8px; text-transform: none; }
 
 .sub-page h1 {
-  margin: 0 0 1.6rem;
-  font-family: var(--serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: clamp(2.6rem, 6vw, 5.2rem);
-  line-height: 1.02;
-  letter-spacing: -0.02em;
+  margin: -0.12em 0 50px; padding-bottom: 0.2em;
+  font: 500 110px/92px var(--ts-grot); letter-spacing: normal; text-wrap: balance;
 }
+.sub-page h2 { margin: 0; font: 500 30px/27px var(--ts-grot); letter-spacing: 0.6px; }
 
-.sub-page h2 {
-  margin: 0 0 1rem;
-  font-weight: 400;
-  font-size: clamp(1.6rem, 3vw, 2.1rem);
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-}
+.sub-page p { max-width: 640px; margin: 0 0 14px; font: 400 17px/20.4px var(--ts-grot); letter-spacing: 0.85px; }
+.sub-intro .sub-lead { font: 400 22px/26.4px var(--ts-grot); letter-spacing: 1.1px; }
+.sub-intro { display: block; }
+.sub-intro > .sub-lead { display: inline-block; vertical-align: top; width: min(400px, 100%); margin-right: 20px; }
+.sub-page .sub-note { margin-top: 20px; font: 300 13px/15.6px var(--ts-mono); letter-spacing: 0.65px; color: var(--ts-ink-86); }
 
-.sub-page p { max-width: 42rem; margin: 0 0 1rem; line-height: 1.55; }
-.sub-lead { font-size: 1.18rem; }
-.sub-note { font-size: 0.88rem; color: var(--muted); }
+.sub-list { list-style: none; margin: 0 0 14px; padding: 0; max-width: 720px; display: grid; gap: 10px; }
+.sub-list li { padding: 6px 0 6px 14px; border-left: 1px dashed var(--ts-ink); font: 400 17px/20.4px var(--ts-grot); letter-spacing: 0.85px; }
+.sub-list li:hover { border-left-style: solid; }
+.sub-list strong { font-weight: 500; }
 
-.sub-list { list-style: none; margin: 0; padding: 0; max-width: 42rem; }
-.sub-list li { border-top: 1px solid var(--line); padding: 0.95rem 0; line-height: 1.5; }
-.sub-list strong { font-weight: 560; }
+.sub-page a.sub-link { overflow-wrap: anywhere; }
+.sub-page a.pill { margin-top: 10px; }
 
-.sub-page a.sub-link { text-underline-offset: 4px; overflow-wrap: anywhere; }
-
-.sub-page a.pill { margin-top: 0.4rem; text-decoration: none; }
-
+/* The footer strip, ink, three columns. */
 .sub-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.6rem 1.6rem;
-  max-width: 56rem;
-  margin: 0 auto 2.4rem;
-  padding: 0 2.4rem;
-  font-size: 0.9rem;
-  color: var(--chrome-ink);
+  display: grid; grid-template-columns: 364fr 632fr 364fr; gap: 24px; align-items: center;
+  min-height: 68px; padding: 14px max(var(--ts-side), calc((100% - 1240px) / 2));
+  background: var(--ts-ink); color: var(--ts-paper); --ts-state: var(--ts-gold);
+  font: 400 15px/18px var(--ts-grot); letter-spacing: 0.75px;
 }
 .sub-foot p { margin: 0; }
-.sub-foot a { text-underline-offset: 4px; }
+.sub-foot p:nth-child(2) { display: flex; gap: 18px; justify-content: center; }
+.sub-foot p:last-child { text-align: right; }
+.sub-foot :focus-visible { outline-color: var(--ts-gold); }
 
-@media (max-width: 767px) {
-  main.sub-page {
-    margin: 5.6rem 16px 1.5rem;
-    padding: 1.9rem 1.2rem 1.2rem;
-  }
-  .sub-page section { padding: 1.6rem 0; }
-  .sub-foot { margin: 0 16px 2rem; padding: 0; flex-direction: column; align-items: flex-start; }
+@media (max-width: 1199.98px) {
+  .sub-page h1 { font-size: 80px; line-height: 70px; }
+}
+@media (max-width: 809.98px) {
+  main.sub-page { padding-top: calc(44px + 30px); }
+  .sub-page section { grid-template-columns: 1fr; padding: 30px 0; }
+  .sub-page h1 { font-size: 44px; line-height: 40px; margin-bottom: 30px; }
+  .sub-intro > .sub-lead { display: block; width: auto; margin-right: 0; }
+  .sub-foot { grid-template-columns: 1fr; }
+  .sub-foot p:nth-child(2) { justify-content: flex-start; }
+  .sub-foot p:last-child { text-align: left; }
 }
