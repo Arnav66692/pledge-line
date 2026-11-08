@@ -42,10 +42,12 @@ services:
       # This release uses the operator-attested API-credit scope; deployment must not reset it.
       - key: AI_PREPAID_ONLY_CONFIRMED
         value: "true"
+      # The Nov 5 scope (pledge-line-functional-20261105, $3.00) is kept as it was. This scope was created Nov 8 with
+      # scripts/ai-check.js --migrate before this change, so the server finds it at startup.
       - key: AI_BUDGET_SCOPE
-        value: pledge-line-functional-20261105
+        value: pledge-line-judging-20261108
       - key: AI_ANTHROPIC_LIMIT_USD
-        value: "3.00"
+        value: "10.00"
       - key: AI_JEV_LIMIT_USD
         value: "0.10"
       - key: DATABASE_URL
