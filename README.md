@@ -4,7 +4,9 @@ Try `/rehearsal` for a credential-free donor-relief simulation with six inspecta
 
 A donor support line and supply desk for small nonprofits, with explicit approval before PayPal sandbox actions and receipts backed by provider records.
 
-[Working demo](https://pledge-line.onrender.com/demo) · [Documentation](docs/README.md) · [Setup](SETUP.md) · [AI evidence](docs/AI-VALUE-EVIDENCE-2026-11-05.md) · [pledge-proof, the claim checker as a library](packages/pledge-proof/README.md)
+[Donor line demo](https://pledge-line.onrender.com/) · [Covered Month and rehearsal](https://pledge-line.onrender.com/demo) · [Documentation](docs/README.md) · [Setup](SETUP.md) · [AI evidence](docs/AI-VALUE-EVIDENCE-2026-11-05.md) · [pledge-proof, the claim checker as a library](packages/pledge-proof/README.md)
+
+Hosted donor line: open the Donor line demo link, press **Start call**, and enter the demo PIN **2468** on the keypad. The gift is a PayPal sandbox subscription, so no real money moves.
 
 Pledge Line lets a fictional donor pause or restart a monthly gift, request a one-time invoice, or review an unfamiliar charge through voice or text. Its supply desk turns a purchasing goal into reviewed limits, compares supplier quotes and settles an approved plan. Models can suggest intent and terms; application code controls consent and payment authority.
 
