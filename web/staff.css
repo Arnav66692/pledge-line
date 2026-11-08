@@ -226,3 +226,24 @@ input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
   .sentence-head { flex-direction: column; gap: 2px; }
   .foot { flex-direction: column; }
 }
+
+/* ---- The typesafe layer. Staff sits on the ink ground, gold is the state colour, headings are upright grotesk ---- */
+html[data-page="staff"] {
+  --night: #1e1e1e; --night-2: #262626; --night-3: #303030;
+  --accent: #ffc439; --accent-soft: rgb(255 196 57 / 0.14); --proven: #ffc439;
+  --focus: #ffc439; --ts-state: #ffc439;
+}
+html[data-page="staff"] body { background: var(--night); }
+html[data-page="staff"] h1, html[data-page="staff"] h2, html[data-page="staff"] h3, .case-title__a {
+  font-family: var(--ts-grot) !important; font-style: normal !important; font-weight: 500 !important; letter-spacing: normal !important;
+}
+.staff { padding-top: calc(36px + 100px); }
+.case-head { text-align: left; margin-left: 0; }
+.case-title { font-size: 150px; line-height: 120px; margin-top: -0.12em; padding-bottom: 0.24em; }
+.case-caps, .field-label { font: 300 13px/15.6px var(--ts-mono); letter-spacing: 0.65px; }
+.case-kicker { margin-left: 0; font: 400 22px/26.4px var(--ts-grot); letter-spacing: 1.1px; }
+.case-note { margin-left: 0; }
+.key-card { margin-left: 0; }
+.key-card h2 { font-size: 64px !important; line-height: 57.6px; }
+@media (max-width: 1199.98px) { .case-title { font-size: 110px; line-height: 92px; } }
+@media (max-width: 809.98px) { .staff { padding-top: 74px; max-width: calc(100% - 20px); } .case-title { font-size: 54px; line-height: 43.2px; } .key-card h2 { font-size: 40px !important; line-height: 38px; } }
