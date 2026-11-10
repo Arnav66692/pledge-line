@@ -63,8 +63,12 @@ export function createMainAgent({ gateway }) {
         if (MUTATIONS.has(input.intent) && (clarity.needsClarification || clarity.declinedIntents.includes(input.intent))) return result('unclear', { clarificationRequired: true });
         return result(input.intent, { amountDollars: Math.round(input.amount_dollars * 100) / 100, empathy: input.empathy });
       } catch {
-        // There is no alternate-provider or subscription fallback on a stopped, unavailable or malformed call.
-        return result('unclear', { error: 'AI_UNAVAILABLE' });
+        // No second paid provider ever takes over. The local rules router (the same one ROUTER_MODE=rules runs)
+        // keeps the line answering when the AI is stopped, out of budget or malformed. Code still owns consent.
+        const fallback = rulesRoute(text, state);
+        const clarity = assessIntentClarity(redact(text));
+        if (MUTATIONS.has(fallback.intent) && (clarity.needsClarification || clarity.declinedIntents.includes(fallback.intent))) return result('unclear', { model: 'rules', error: 'AI_UNAVAILABLE', clarificationRequired: true });
+        return result(fallback.intent, { amountDollars: fallback.amountDollars ?? 0, model: 'rules', error: 'AI_UNAVAILABLE', ...(fallback.clarifyGift ? { clarifyGift: true } : {}) });
       }
     },
 

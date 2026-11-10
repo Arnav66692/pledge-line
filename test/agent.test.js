@@ -165,18 +165,33 @@ test('an initial refusal does not hide a distinct new request when no approval i
   }
 });
 
-test('any gateway stop returns unclear without an alternate provider or fallback', async () => {
+test('a gateway stop falls back to the local rules router, never to another provider', async () => {
   const { agent, calls } = fixture({ error: new Error('AI_BUDGET_STOPPED') });
   const result = await agent.route({ text: 'Pause my gift', state: { verified: true } });
-  assert.equal(result.intent, 'unclear');
+  assert.equal(result.intent, 'pause_gift');
+  assert.equal(result.model, 'rules');
   assert.equal(result.error, 'AI_UNAVAILABLE');
   assert.deepEqual(calls.map((c) => c[0]), ['jev']);
+  const status = await agent.route({ text: 'Is my gift still active?', state: { verified: true } });
+  assert.equal(status.intent, 'gift_status');
+  const nonsense = await agent.route({ text: 'banana window', state: { verified: true } });
+  assert.equal(nonsense.intent, 'unclear');
+});
+
+test('the rules fallback still never routes a consent turn or an unverified caller', async () => {
+  const { agent, calls } = fixture({ error: new Error('AI_BUDGET_STOPPED') });
+  assert.equal((await agent.route({ text: 'Pause my gift', state: { verified: false } })).intent, 'unclear');
+  assert.equal((await agent.route({ text: 'Yes', state: { verified: true } })).intent, 'unclear');
+  assert.equal((await agent.route({ text: 'Pause my gift', state: { verified: true, pendingKind: 'suspend' } })).intent, 'unclear');
+  assert.equal(calls.length, 0);
 });
 
 test('malformed model tool output cannot introduce an amount, empathy or unknown intent', async () => {
   const { agent } = fixture({ mainInput: { intent: 'wire_money', amount_dollars: '5000', empathy: 'send secretly' } });
   const result = await agent.route({ text: 'Please help with this gift', state: { verified: true } });
-  assert.equal(result.intent, 'unclear');
+  // The bad output is dropped and the local rules router hears the words instead.
+  assert.equal(result.intent, 'help');
+  assert.equal(result.model, 'rules');
   assert.equal(result.amountDollars, 0);
   assert.equal(result.empathy, 'none');
 });
